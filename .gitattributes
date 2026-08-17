@@ -1,0 +1,25 @@
+# QuillMD — git attributes for byte-stable fixtures & cross-platform correctness
+
+# Text files: normalize to LF in the repo, LF on Linux checkout, CRLF on Windows checkout
+# (application handles EOL detection itself; git default is fine for source)
+* text=auto
+
+# Shell scripts MUST stay LF even on Windows checkouts (Git Bash requires LF)
+*.sh text eol=lf
+
+# CRLF fixture files: pin to CRLF so byte-identity tests are stable across platforms
+fixtures/crlf/** text eol=crlf
+fixtures/mixed-eol/** text eol=lf
+
+# BOM and binary-sensitive fixtures: treat as binary so git NEVER rewrites them
+# (no autocrlf, no BOM stripping, no line-ending conversion)
+fixtures/bom/** -text
+fixtures/emoji/** -text
+fixtures/windows-path/** -text
+fixtures/nested-task/** -text
+
+# Lockfiles: keep exact
+package-lock.json -text
+
+# Build output never committed
+quarto-book/_output/** -text

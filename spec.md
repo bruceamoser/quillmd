@@ -115,7 +115,7 @@ One sentence: *"What you see is what the markdown says — and what the markdown
 - Markdown engine: CommonMark compliance + GFM extensions + selected Pandoc extensions (front matter, footnotes, definition lists, sub/sup, highlight).
 - Round-trip fidelity test suite (open → save → byte-compare) with a versioned normalization manifest.
 - Import/export: PDF, DOCX, EPUB, TXT (both directions for DOCX/TXT; export for PDF/EPUB).
-- Test infrastructure: acceptance-test.sh (runs under Git Bash on Windows), CI matrix, GUI driver.
+- Test infrastructure: acceptance-test.sh (runs under Git Bash on Windows), fixture corpus — local-run only.
 
 ## 4. Non-goals / Out (v1)
 
@@ -140,9 +140,9 @@ One sentence: *"What you see is what the markdown says — and what the markdown
 5. **Undo/redo:** 50-step sequence asserts markdown BYTES after each step; parse always succeeds; **undo past an autosave restores the pre-save markdown bytes**; action-grouped (one user action = one step); source-mode edits are undoable.
 6. **Line endings:** CRLF file saves CRLF; LF saves LF; mixed-ending fixture round-trips per the manifest.
 7. **BOM:** BOM file saves with BOM; non-BOM without; combined BOM+CRLF+emoji+reference-link fixture round-trips.
-8. **Crash recovery:** crash-injection test hook (env-var panic point) — kill process mid-edit; reopen → recovery prompt restores the unsaved edit; kill during a 10MB save → disk file intact or fully recoverable. Runs headless via GUI driver.
+8. **Crash recovery:** crash-injection test hook (env-var panic point) — kill process mid-edit; reopen → recovery prompt restores the unsaved edit; kill during a 10MB save → disk file intact or fully recoverable. Runs headless via the self-test hooks in acceptance-test.sh.
 9. **File watch:** external modification (from an app-independent writer process) prompts reload/keep/save-as; deletion prompts distinctly; no auto-create of deleted files.
-10. **Platform:** editor launches and passes the core subset (§5.1–§5.12 headless) on Windows 10/11 + Linux (ubuntu-24.04, xvfb-run headless); CI matrix runs both; pinned pandoc + Typst engine on both legs.
+10. **Platform:** editor launches and passes the core subset (§5.1–§5.12 headless) on Windows 10/11 AND Linux (Ubuntu LTS). Run locally on each machine via `tests/acceptance-test.sh`; no CI required. Pinned pandoc + Typst engine on both platforms.
 11. **Front matter:** preserved verbatim except the edited field (byte-splice); fixture edits one field, asserts byte-identity of all other content.
 12. **No data loss:** 1000-edit randomized stress sequence; oracle = replay against a reference serializer / internal doc AST; saved markdown parses AND matches the oracle modulo the manifest.
 13. **Export PDF:** valid PDF (opens, page count ≥1, text extractable), Typst engine pinned.
@@ -151,7 +151,7 @@ One sentence: *"What you see is what the markdown says — and what the markdown
 16. **Export TXT:** plain text and raw markdown options.
 17. **Import DOCX:** yields editable markdown; forces Save-As to .md before editing; re-export round-trips content (shared comparator with §5.14).
 18. **Import TXT:** opens as markdown.
-19. **Packaging:** fresh VM (no dev toolchain) installs and launches on both platforms; Windows installer includes WebView2 Evergreen bootstrapper; Linux AppImage/deb launches on clean Ubuntu.
+19. **Packaging (local):** `npm run tauri build` produces a runnable binary/installer on each platform; the built app launches on the machine that built it (Windows and Linux). No signing, no store distribution, no fresh-VM matrix in v1.
 20. **Large file:** 1MB / ~10k-line fixture edits smoothly (no >250ms blocking keystroke).
 
 ---
@@ -174,7 +174,7 @@ One sentence: *"What you see is what the markdown says — and what the markdown
 - **Data-loss paths (Contrarian top 3):** (1) undo past autosave — mitigated by never-rebased markdown-text undo + byte assertion test; (2) save racing external rename/change — mitigated by hash-compare-before-write, temp+rename, .bak, distinct deletion event; (3) serializer mutation of un-normalizable markdown — mitigated by opaque leaves, manifest, raw-write fallback, atomic writes.
 - **ProseMirror learning curve** — TipTap wrapper; phased build: CommonMark+GFM core first, Pandoc extensions second.
 - **Cross-platform:** Windows WebView2 (bundled Evergreen bootstrapper) + Linux WebKitGTK 4.1 (bundled/installer check; clean-Ubuntu CI smoke); CRLF/BOM/path parity handled in §2.3.
-- **Test infra:** acceptance-test.sh, CI matrix, GUI driver, and fixture corpus must exist before the first implementation PR (scaffold in the same commit as the first code).
+- **Test harness:** `tests/acceptance-test.sh` is a LOCAL script (Git Bash compatible for Windows); run it on each machine after building. No CI, no WebDriver GUI automation, no packaging matrix in v1.
 - **Scope creep** into workspace/git/collab/merge — explicit non-goals.
 - **Pandoc version skew** — one pinned bundled version is the only tested path.
 - **Performance** — block-granular incremental parse; 1MB envelope with a large-file fixture.

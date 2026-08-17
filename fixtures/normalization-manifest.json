@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "updated": "2026-08-16",
+  "note": "Council-reviewed normalization manifest for QuillMD round-trip fidelity. Anything listed here MAY normalize on save, justified per entry. Anything NOT listed must round-trip byte-exactly. Changes to this manifest require a council round + Bruce sign-off (they change the product promise). Initial entries are implemented defaults from council round 1 — Bruce can veto any entry with one word.",
+  "manifest": [
+    {
+      "id": "norm-001",
+      "construct": "Reference links",
+      "example": "[foo][bar] + [bar]: url",
+      "behavior": "May be re-inlined to [foo](url) on save when the edited block touches them",
+      "justification": "Reference definitions are unrepresentable as PM inline nodes; re-inlining is the standard MD-editor normalization",
+      "user_visible": "Reference-style links become inline-style after editing that block",
+      "feature": "Links (inline, reference, auto)"
+    },
+    {
+      "id": "norm-002",
+      "construct": "Inline raw HTML",
+      "example": "<span class=\"x\">text</span>",
+      "behavior": "Stored as opaque verbatim leaf node; preserved byte-exactly unless the user edits inside it",
+      "justification": "HTML with embedded markdown cannot round-trip through a PM schema; opaque leaf prevents silent mutation",
+      "user_visible": "HTML blocks are read-only regions in WYSIWYG; edit them in Source mode",
+      "feature": "HTML passthrough"
+    },
+    {
+      "id": "norm-003",
+      "construct": "Tight vs loose lists",
+      "example": "- a\n- b (tight) vs - a\n\n- b (loose)",
+      "behavior": "List tightness may normalize to the document's dominant style when a list block is re-serialized",
+      "justification": "PM list model loses the tight/loose distinction; preserving it requires custom node serialization per list",
+      "user_visible": "Blank lines between list items may be added/removed after editing that list",
+      "feature": "Lists (unordered, ordered, task, nested)"
+    },
+    {
+      "id": "norm-004",
+      "construct": "Indented code blocks",
+      "example": "    code (4-space indent)",
+      "behavior": "May be converted to fenced code blocks (```) when the block is edited",
+      "justification": "Indented code has ambiguous boundaries with lists; fenced is the canonical PM representation",
+      "user_visible": "4-space-indented code becomes fenced code after editing",
+      "feature": "Code blocks (fenced + indented)"
+    },
+    {
+      "id": "norm-005",
+      "construct": "Hard line breaks",
+      "example": "line 1  \nline 2 (two-space break)",
+      "behavior": "Two-space hard breaks may normalize to backslash breaks (\\\\) or vice versa within edited blocks",
+      "justification": "Multiple hard-break syntaxes exist in CommonMark; the serializer picks one canonical form",
+      "user_visible": "Hard break style may change after editing that paragraph",
+      "feature": "Paragraphs, line breaks"
+    },
+    {
+      "id": "norm-006",
+      "construct": "Setext vs ATX headings",
+      "example": "Title\n===== (setext) vs # Title (ATX)",
+      "behavior": "Setext headings may normalize to ATX (#) form when edited",
+      "justification": "PM heading node serializes to ATX; setext is preserved only in untouched blocks",
+      "user_visible": "Underline-style headings become #-style after editing",
+      "feature": "Headings (H1-H6)"
+    },
+    {
+      "id": "norm-007",
+      "construct": "Emphasis delimiter style",
+      "example": "*em* vs _em_; **bold** vs __bold__",
+      "behavior": "Delimiter style may normalize within edited text (underscore → asterisk)",
+      "justification": "PM emits asterisk delimiters; underscores are accepted on input but normalized on output",
+      "user_visible": "Underscore emphasis becomes asterisks after editing that text",
+      "feature": "Bold, italic, strikethrough, inline code"
+    },
+    {
+      "id": "norm-008",
+      "construct": "YAML front matter formatting",
+      "example": "---\nkey: value\n---",
+      "behavior": "Byte-splice editing: only the edited field changes; all other fields and formatting preserved verbatim",
+      "justification": "Structured editor edits one field via byte splice; never re-serializes the whole block",
+      "user_visible": "Editing one front-matter field leaves all others byte-identical",
+      "feature": "YAML front matter"
+    }
+  ]
+}
