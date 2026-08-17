@@ -113,7 +113,7 @@ Round-trip fidelity is tested against a 50-fixture corpus in `fixtures/` — eve
 - **Spec:** [spec.md](spec.md) — requirements, acceptance criteria, architecture
 - **Council:** [COUNCIL.md](COUNCIL.md) — five-lens software review charter
 - **Council rounds:** [docs/council-rounds.md](docs/council-rounds.md)
-- **Packaging:** [docs/packaging.md](docs/packaging.md) — installer build + fresh-machine checklist
+- **Packaging:** [docs/packaging.md](docs/packaging.md) - installer build + fresh-machine checklist
 
 ## Status
 
