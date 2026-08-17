@@ -22,6 +22,13 @@ pub struct SaveResult {
     pub hash: String,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct DirEntry {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+}
+
 fn err(kind: &str, msg: impl Display) -> String {
     format!("{kind}:{msg}")
 }
@@ -100,6 +107,59 @@ pub fn import_document(path: String, out_md_path: String) -> Result<(), String> 
 pub fn recover_snapshot(path: String) -> Option<Vec<u8>> {
     let p = PathBuf::from(&path);
     fs::read(snapshot::snapshot_path_for(&p)).ok()
+}
+
+/// Lists one directory level (non-recursive, on-demand expansion). Directories
+/// sort first, then files, case-insensitively. Reserved Windows names and
+/// unreadable entries are skipped so the explorer stays robust across
+/// platforms.
+#[tauri::command]
+pub fn list_dir(path: String) -> Result<Vec<DirEntry>, String> {
+    let p = PathBuf::from(&path);
+    let rd = fs::read_dir(&p).map_err(|e| err("io", format!("read_dir {}: {e}", p.display())))?;
+    let mut entries: Vec<DirEntry> = Vec::new();
+    for item in rd {
+        let Ok(item) = item else { continue };
+        let name = item.file_name().to_string_lossy().to_string();
+        if crate::fs::paths::is_windows_reserved(&name) {
+            continue;
+        }
+        let is_dir = item.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        entries.push(DirEntry {
+            name,
+            path: item.path().to_string_lossy().to_string(),
+            is_dir,
+        });
+    }
+    entries.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    Ok(entries)
+}
+
+#[tauri::command]
+pub fn get_recent_files(app: tauri::AppHandle) -> Vec<String> {
+    crate::menu::load_recent(&app)
+}
+
+/// Persists the recent-files list and rebuilds the native menu so the File >
+/// Recent Files submenu stays in sync with the frontend.
+#[tauri::command]
+pub fn set_recent_files(app: tauri::AppHandle, recent: Vec<String>) -> Result<(), String> {
+    let mut seen = std::collections::HashSet::new();
+    let deduped: Vec<String> = recent
+        .into_iter()
+        .filter(|p| !p.is_empty() && seen.insert(p.clone()))
+        .collect();
+    let capped: Vec<String> = deduped
+        .into_iter()
+        .take(crate::menu::RECENT_CAP)
+        .collect();
+    crate::menu::save_recent(&app, &capped);
+    crate::menu::refresh(&app, &capped).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -204,5 +264,37 @@ mod tests {
             recover_snapshot(dir.path().join("nope.md").display().to_string()),
             None
         );
+    }
+
+    #[test]
+    fn list_dir_sorts_dirs_first() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("b.md"), b"b").unwrap();
+        fs::write(dir.path().join("a.md"), b"a").unwrap();
+        fs::create_dir(dir.path().join("sub")).unwrap();
+
+        let entries = list_dir(dir.path().display().to_string()).unwrap();
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["sub", "a.md", "b.md"]);
+        assert!(entries[0].is_dir);
+        assert!(!entries[1].is_dir);
+        assert_eq!(entries[1].path, dir.path().join("a.md").display().to_string());
+    }
+
+    #[test]
+    fn list_dir_skips_reserved_names() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("CON"), b"x").unwrap();
+        fs::write(dir.path().join("ok.md"), b"x").unwrap();
+
+        let entries = list_dir(dir.path().display().to_string()).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "ok.md");
+    }
+
+    #[test]
+    fn list_dir_errors_on_missing_path() {
+        let res = list_dir("/nonexistent/quillmd/probe".to_string());
+        assert!(res.is_err());
     }
 }

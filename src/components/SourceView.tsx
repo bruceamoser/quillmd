@@ -25,7 +25,7 @@ export default function SourceView({ value, onChange, readOnly = false }: Source
         onChange={onChange}
         readOnly={readOnly}
         height="100%"
-        theme="light"
+        theme="dark"
         extensions={[markdown({ codeLanguages })]}
       />
     </div>
