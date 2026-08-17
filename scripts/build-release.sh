@@ -21,6 +21,7 @@ has_sidecar() {
   [ -f "$BIN_DIR/${tool}-${TRIPLE}" ] || [ -f "$BIN_DIR/${tool}-${TRIPLE}.exe" ]
 }
 
+# Build first, then gate: the acceptance script drives the built binary.
 cd "$ROOT"
 if has_sidecar pandoc && has_sidecar typst; then
   echo "bundling pandoc + typst sidecars"
@@ -28,4 +29,15 @@ if has_sidecar pandoc && has_sidecar typst; then
 else
   echo "sidecars absent; building without externalBin (PATH fallback at runtime)"
   npm run tauri build
+fi
+
+# Acceptance gate AFTER the build so a broken release never ships.
+echo "running acceptance gate (core + export subsets)..."
+if ! bash tests/acceptance-test.sh core; then
+  echo "ACCEPTANCE CORE FAILED - release aborted" >&2
+  exit 1
+fi
+if ! bash tests/acceptance-test.sh export; then
+  echo "ACCEPTANCE EXPORT FAILED - release aborted" >&2
+  exit 1
 fi
