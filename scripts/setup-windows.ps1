@@ -34,15 +34,32 @@ if ($cargo) {
     Write-Host "       (PATH is not refreshed in the current session)."
 }
 
-# 4. MSVC linker (link.exe) - needed by Tauri's native deps
-$link = Get-Command link -ErrorAction SilentlyContinue
-if ($link) {
-    Write-Host "[OK]   MSVC linker found"
-} else {
-    Write-Host "[MISS] MSVC Build Tools not found." -ForegroundColor Yellow
-    Write-Host "       Install Visual Studio 2022 Community:"
-    Write-Host "       Visual Studio Installer -> Modify -> check 'Desktop development with C++'"
-    Write-Host "       (or: winget install Microsoft.VisualStudio.2022.BuildTools --override '--add Microsoft.VisualStudio.Workload.VCTools --passive')"
+# 4. MSVC Build Tools - NOT a PATH check. link.exe lives deep in the VS
+#    install and is never on PATH by default. rustc discovers MSVC via
+#    vswhere automatically, so cargo does NOT need link on PATH.
+$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+$msvcFound = $false
+if (Test-Path $vswhere) {
+    $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null
+    if ($vsPath) {
+        $msvcFound = $true
+        Write-Host "[OK]   MSVC Build Tools detected: $vsPath" -ForegroundColor Green
+    }
+}
+if (-not $msvcFound) {
+    # Fallback: check for any installed MSVC toolset directory
+    $vcDirs = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio\*\*\VC\Tools\MSVC" -Directory -ErrorAction SilentlyContinue
+    if ($vcDirs) {
+        $msvcFound = $true
+        Write-Host "[OK]   MSVC toolset detected: $($vcDirs[0].FullName)"
+    }
+}
+if (-not $msvcFound) {
+    Write-Host "[MISS] MSVC Build Tools not detected." -ForegroundColor Yellow
+    Write-Host "       Install Visual Studio 2022 Build Tools (winget):"
+    Write-Host "       winget install Microsoft.VisualStudio.2022.BuildTools --override '--add Microsoft.VisualStudio.Workload.VCTools --passive --norestart'"
+    Write-Host "       Or VS Installer -> Modify -> 'Desktop development with C++'"
+    Write-Host "       NOTE: cargo does NOT need link.exe on PATH; rustc finds MSVC automatically."
 }
 
 # 5. Git
@@ -80,10 +97,11 @@ Write-Host "=== Summary ===" -ForegroundColor Cyan
 $missing = @()
 if (-not $node) { $missing += "Node.js" }
 if (-not $cargo) { $missing += "Rust/cargo" }
-if (-not $link) { $missing += "MSVC Build Tools" }
 if (-not $git) { $missing += "Git" }
 if ($missing.Count -eq 0) {
-    Write-Host "All core prerequisites present. Next:" -ForegroundColor Green
+    Write-Host "Core prerequisites present (Node, Rust, Git)." -ForegroundColor Green
+    Write-Host "MSVC: $(if ($msvcFound) { 'detected' } else { 'NOT detected - install Build Tools before cargo build' })"
+    Write-Host "Next:"
     Write-Host "   npm install"
     Write-Host "   npm run tauri dev"
 } else {
