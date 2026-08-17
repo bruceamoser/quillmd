@@ -28,7 +28,17 @@ fail()  { echo "FAIL"; FAIL=$((FAIL+1)); FAILED_TESTS+=("$1"); }
 # App under test. In CI this is the built binary; for headless dev it can be
 # overridden with QUILLMD_BIN. GUI-driven tests require the WebDriver harness
 # (Tauri v2 WebDriver / Playwright WebDriver mode) — see spec §6.
-APP_BIN="${QUILLMD_BIN:-target/release/quillmd}"
+# Tauri builds the binary under src-tauri/target; accept QUILLMD_BIN override,
+# the repo-root target (older layout), or the src-tauri target.
+if [ -n "${QUILLMD_BIN:-}" ]; then
+    APP_BIN="$QUILLMD_BIN"
+elif [ -x "$ROOT/target/release/quillmd" ]; then
+    APP_BIN="$ROOT/target/release/quillmd"
+elif [ -x "$ROOT/src-tauri/target/release/quillmd" ]; then
+    APP_BIN="$ROOT/src-tauri/target/release/quillmd"
+else
+    APP_BIN="$ROOT/target/release/quillmd"
+fi
 DRIVER="${QUILLMD_DRIVER:-}"
 
 # --- §5.1 round-trip fidelity -------------------------------------------
@@ -127,7 +137,7 @@ test_stress() {
 test_export_pdf() {
     note "5.13 export PDF (typst)"
     if command -v pandoc >/dev/null && command -v typst >/dev/null; then
-        pandoc "$FIXTURES/clean/headings.md" -o "$ROOT/target/out.pdf" --pdf-engine=typst 2>/dev/null \
+        pandoc "$FIXTURES/clean/headings.md" -o "$ROOT/target/out.pdf" --pdf-engine=typst -V mainfont="DejaVu Sans" 2>/dev/null \
             && [ -s "$ROOT/target/out.pdf" ] && pass "5.13 export PDF (typst)" || fail "5.13 export PDF (typst)"
     else
         echo "SKIP (needs pandoc + typst)"

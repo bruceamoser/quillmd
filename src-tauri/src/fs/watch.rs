@@ -119,3 +119,40 @@ impl Watcher {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn external_writer_emits_modified_then_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("doc.md");
+        fs::write(&path, b"one").unwrap();
+
+        let watcher = Watcher::new(&path).unwrap();
+        thread::sleep(Duration::from_millis(100));
+
+        // An app-independent writer modifies the watched file, then deletes it.
+        fs::write(&path, b"two").unwrap();
+        thread::sleep(Duration::from_millis(100));
+        fs::remove_file(&path).unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut saw_modified = false;
+        let mut saw_deleted = false;
+        while Instant::now() < deadline && !(saw_modified && saw_deleted) {
+            match watcher.try_recv() {
+                Some(WatchEvent::Modified) => saw_modified = true,
+                Some(WatchEvent::Deleted) => saw_deleted = true,
+                _ => thread::sleep(Duration::from_millis(20)),
+            }
+        }
+
+        assert!(saw_modified, "expected a Modified event for an external write");
+        assert!(saw_deleted, "expected a Deleted event for an external delete");
+    }
+}
