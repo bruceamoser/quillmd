@@ -20,13 +20,14 @@ WYSIWYG markdown editor with **native markdown persistence** — the `.md` file 
 
 ## Requirements
 
-| | Linux | Windows |
-|---|---|---|
-| Node.js | ≥ 20 | ≥ 20 |
-| Rust | stable (via rustup) | stable (via rustup) |
-| Pandoc | ≥ 3.0 (for import/export; optional for editing) | ≥ 3.0 |
-| Typst | latest (for PDF export; optional) | latest |
+| Node.js | ≥ 20 | ≥ 20 (nodejs.org LTS) |
+| Rust | stable (via rustup) | stable — [rustup-init.exe](https://rustup.rs) |
+| MSVC Build Tools | — | VS 2022 *Desktop development with C++* workload (Tauri needs `link.exe`) |
+| Pandoc | ≥ 3.0 (for import/export; optional for editing) | ≥ 3.0 — `choco install pandoc` or [pandoc.org](https://pandoc.org) |
+| Typst | latest (for PDF export; optional) | latest — [releases](https://github.com/typst/typst/releases) |
 | System libs | `libwebkit2gtk-4.1-dev`, `libappindicator3-dev`, `librsvg2-dev`, `libdbus-1-dev`, `build-essential` | WebView2 (preinstalled on Win 10/11) |
+
+**Windows:** run `powershell -ExecutionPolicy Bypass -File scripts/setup-windows.ps1` — it checks every prerequisite, reports what's missing, and prints install commands. If you installed Rust *after* opening your terminal, **reopen the terminal** (PATH isn't refreshed in the current session) — that's the #1 cause of "failed to run cargo metadata" on Windows.
 
 ## Installation (from source)
 
