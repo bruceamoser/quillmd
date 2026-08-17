@@ -202,7 +202,6 @@ pub fn run() {
             commands::set_recent_files
         ])
         .setup(|app| {
-            use tauri::Manager;
             let recent = menu::load_recent(app.handle());
             match menu::build(app.handle(), &recent) {
                 Ok(menu) => {
