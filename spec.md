@@ -63,6 +63,16 @@ One sentence: *"What you see is what the markdown says — and what the markdown
 3. Search within file; optional regex.
 4. Multi-file: tabs. (Workspace/project tree is a NON-GOAL for v1 — see scope.)
 
+### 2.5 Import / Export (conversion)
+1. **Export to PDF:** render the current document to PDF (styled, print-ready). Table of contents option, page numbers, code highlighting preserved.
+2. **Export to Word (.docx):** lossless-ish conversion — headings, bold/italic, lists, tables, images, footnotes survive as native Word constructs.
+3. **Export to EPUB:** single-file EPUB for e-readers (cover, TOC, chapter splits from headings).
+4. **Export to TXT:** plain text (markdown stripped to readable text, or raw markdown per user choice).
+5. **Import from Word (.docx):** open a .docx and convert to markdown — the editor edits it natively in MD after import. Best-effort fidelity: headings, emphasis, lists, tables, footnotes, images.
+6. **Import from TXT:** open a .txt as markdown (no conversion needed, but file type recognized).
+7. Import/export fidelity is best-effort for foreign formats (docx/epub are lossy by nature); **markdown is the only lossless format**. The spec's round-trip fidelity guarantee (§2.1.4) applies to .md files only.
+8. Engine: **Pandoc** (or equivalent) as the conversion backend — proven, cross-platform, handles all four target formats. Bundled or invoked via system install (see architecture question §6.6).
+
 ---
 
 ## 3. Scope / In
@@ -70,6 +80,7 @@ One sentence: *"What you see is what the markdown says — and what the markdown
 - v1.0: single-file editing with tabs, full feature set above, Windows + Linux builds.
 - Markdown engine with CommonMark compliance + GFM extensions + selected Pandoc extensions (front matter, footnotes, definition lists, sub/sup, highlight).
 - Round-trip fidelity test suite (open → save → byte-compare).
+- Import/export: PDF, DOCX, EPUB, TXT (both directions for DOCX/TXT; export for PDF/EPUB).
 
 ## 4. Non-goals / Out (v1)
 
@@ -98,6 +109,12 @@ One sentence: *"What you see is what the markdown says — and what the markdown
 10. **Platform:** editor launches and passes core test suite on Windows 10/11 AND Linux (Ubuntu LTS). CI matrix runs both.
 11. **Front matter:** YAML front matter preserved verbatim (byte-identical) and editable as a structured block.
 12. **No data loss:** after any 1000-edit randomized stress sequence, saved markdown parses and matches the model state.
+13. **Export PDF:** exporting a fixture document produces a valid PDF (opens, page count ≥1, text extractable).
+14. **Export DOCX:** exporting a fixture with headings/lists/tables/footnotes produces a .docx that re-imports back to semantically equivalent markdown (content preserved, formatting normalized).
+15. **Export EPUB:** exporting a multi-heading fixture produces a valid EPUB (opens, TOC entries match headings).
+16. **Export TXT:** exports plain text (and raw markdown option).
+17. **Import DOCX:** opening a .docx fixture yields editable markdown; re-export round-trips content (normalization allowed).
+18. **Import TXT:** opening a .txt file loads as markdown.
 
 ---
 
@@ -112,6 +129,7 @@ One sentence: *"What you see is what the markdown says — and what the markdown
 3. **Undo model:** markdown-text-level undo vs ProseMirror document-level undo. Lean: ProseMirror native undo (doc-level) mapped to markdown on save — but spec requires parse-always-success, so need the test.
 4. **Auto-save + external change conflict:** save-on-interval + hash compare + prompt. Need Bruce's call on default (auto-save ON vs OFF by default).
 5. **Settings persistence:** per-user config file (JSON/TOML in user config dir) — v1 minimal, expanded later.
+6. **Conversion backend:** Pandoc bundled with the app vs system-install dependency. Lean: detect system pandoc first, bundle fallback for release builds (Windows especially, where users won't have it). PDF export also needs an engine (Pandoc's default pdf-engine is LaTeX — heavy; wkhtmltopdf/weasyprint/typst are lighter options). Note: our HOL book already builds via Quarto+Typst, so Typst is a known-quantity PDF path.
 
 ---
 
