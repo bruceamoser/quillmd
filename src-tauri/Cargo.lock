@@ -2673,7 +2673,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "quillmd-scaffold"
+name = "quillmd"
 version = "0.1.0"
 dependencies = [
  "serde",

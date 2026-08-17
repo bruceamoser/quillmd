@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "quillmd-scaffold",
+  "productName": "quillmd",
   "version": "0.1.0",
-  "identifier": "com.bmoser.quillmd-scaffold",
+  "identifier": "com.bmoser.quillmd",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "quillmd-scaffold",
+        "title": "quillmd",
         "width": 800,
         "height": 600
       }
