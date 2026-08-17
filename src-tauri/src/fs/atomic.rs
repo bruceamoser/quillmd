@@ -77,6 +77,19 @@ pub fn write_file_atomic(path: &Path, bytes: &[u8]) -> Result<(), AtomicWriteErr
     result
 }
 
+/// Atomically moves an already-written temp file (in the target directory)
+/// over the final target, then fsyncs the directory. Used by the conversion
+/// service to publish pandoc output without exposing a half-written file.
+pub fn rename_atomic(tmp_path: &Path, target: &Path) -> Result<(), AtomicWriteError> {
+    fs::rename(tmp_path, target).map_err(AtomicWriteError::Rename)?;
+    let dir: PathBuf = match target.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+        _ => PathBuf::from("."),
+    };
+    fsync_dir(&dir);
+    Ok(())
+}
+
 #[cfg(unix)]
 fn fsync_dir(dir: &Path) {
     if let Ok(d) = fs::File::open(dir) {
