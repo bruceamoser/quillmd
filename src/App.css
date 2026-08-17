@@ -1,84 +1,329 @@
 :root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  color: #0f0f0f;
-  background-color: #ffffff;
+  --bg: #1e1e1e;
+  --bg-elevated: #252526;
+  --bg-panel: #2d2d2d;
+  --bg-hover: #2a2d2e;
+  --bg-active: #37373d;
+  --border: #3c3c3c;
+  --text: #d4d4d4;
+  --text-bright: #ffffff;
+  --text-muted: #9d9d9d;
+  --text-faint: #6e6e6e;
+  --accent: #007acc;
+  --accent-hover: #1b8bd6;
+  --accent-soft: rgba(0, 122, 204, 0.18);
+  --danger: #f14c4c;
+  --warn: #cca700;
+  --font-ui: "Segoe UI", -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  --font-text: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
 }
+
+/* --- app shell ----------------------------------------------------------- */
 
 .quillmd-app {
   display: flex;
   flex-direction: column;
   height: 100vh;
-}
-
-.quillmd-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-bottom: 1px solid #e0e0e0;
-  background: #fafafa;
-}
-
-.quillmd-header button {
-  border: 1px solid #ccc;
-  background: #fff;
-  border-radius: 6px;
-  padding: 4px 10px;
-  cursor: pointer;
-}
-
-.quillmd-header button:hover {
-  border-color: #396cd8;
-}
-
-.quillmd-modes {
-  display: flex;
-  gap: 4px;
-  margin-left: auto;
-}
-
-.quillmd-mode-active {
-  border-color: #396cd8 !important;
-  background: #e8eeff !important;
-}
-
-.quillmd-path {
-  color: #666;
-  font-size: 13px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 40vw;
+}
+
+.quillmd-main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.quillmd-editor-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .quillmd-content {
   flex: 1;
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden;
 }
+
+/* --- header (browser dev fallback only) ---------------------------------- */
+
+.quillmd-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.quillmd-header button {
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.quillmd-header button:hover {
+  background: var(--bg-active);
+}
+
+.quillmd-menu-sep {
+  color: var(--border);
+}
+
+/* --- explorer ------------------------------------------------------------ */
+
+.quillmd-explorer {
+  background: var(--bg-elevated);
+  color: var(--text);
+  flex: 0 0 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  font-size: 13px;
+  border-right: 1px solid var(--border);
+}
+
+.quillmd-explorer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.quillmd-explorer-header button {
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.quillmd-explorer-header button:hover {
+  background: var(--bg-active);
+}
+
+.quillmd-explorer-section {
+  margin-bottom: 12px;
+}
+
+.quillmd-explorer-section-title {
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.quillmd-explorer-empty {
+  padding: 2px 12px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.quillmd-explorer-error {
+  padding: 4px 12px;
+  color: var(--danger);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.quillmd-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.quillmd-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 12px;
+  border: none;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.quillmd-tree-row:hover {
+  background: var(--bg-hover);
+}
+
+.quillmd-tree-row.quillmd-tree-active {
+  background: var(--accent-soft);
+}
+
+.quillmd-tree-row svg {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.quillmd-tree-dir svg {
+  color: #dcb67a;
+}
+
+.quillmd-tree-chevron {
+  flex: 0 0 auto;
+  width: 10px;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.quillmd-tree-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quillmd-tree-tag {
+  font-size: 10px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+}
+
+.quillmd-splitter {
+  flex: 0 0 auto;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 120ms;
+}
+
+.quillmd-splitter:hover {
+  background: var(--accent);
+}
+
+/* --- tab bar ------------------------------------------------------------- */
+
+.quillmd-tabbar {
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: 0 0 auto;
+}
+
+.quillmd-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 12px;
+  height: 36px;
+  border-right: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.quillmd-tab:hover {
+  background: var(--bg-hover);
+}
+
+.quillmd-tab.quillmd-tab-active {
+  background: var(--bg);
+  color: var(--text-bright);
+  box-shadow: inset 0 -1px 0 var(--bg);
+}
+
+.quillmd-tab-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quillmd-tab-dirty {
+  color: var(--warn);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.quillmd-tab-close {
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.quillmd-tab-close:hover {
+  background: var(--bg-active);
+  color: var(--text-bright);
+}
+
+.quillmd-tab-new {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 12px;
+}
+
+.quillmd-tab-new:hover {
+  color: var(--text-bright);
+}
+
+/* --- status bar ---------------------------------------------------------- */
 
 .quillmd-statusbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
-  border-top: 1px solid #e0e0e0;
-  background: #fafafa;
+  gap: 10px;
+  padding: 3px 10px;
+  background: var(--accent);
+  color: #ffffff;
   font-size: 12px;
-  color: #555;
+  flex: 0 0 auto;
 }
 
 .quillmd-status-sep {
-  color: #ccc;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .quillmd-status-spacer {
@@ -86,68 +331,142 @@ body {
 }
 
 .quillmd-status-dirty {
-  color: #d97706;
+  color: #ffd54f;
   font-weight: 700;
+}
+
+.quillmd-status-mode {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 11px;
+}
+
+.quillmd-status-modes {
+  display: flex;
+  gap: 2px;
+}
+
+.quillmd-status-modes button {
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-radius: 3px;
+  padding: 1px 7px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.quillmd-status-modes button:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.quillmd-status-modes button.quillmd-mode-active {
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--accent);
 }
 
 .quillmd-status-toast {
   position: fixed;
-  bottom: 36px;
+  bottom: 32px;
   right: 12px;
   background: #333;
   color: #fff;
   padding: 6px 12px;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  z-index: 200;
 }
 
-.quillmd-path-hint {
-  position: fixed;
-  bottom: 36px;
-  left: 12px;
-  font-size: 12px;
-  color: #999;
-}
+/* --- welcome ------------------------------------------------------------- */
 
-.quillmd-empty {
+.quillmd-welcome {
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  height: 100vh;
+  gap: 10px;
+  color: var(--text-muted);
 }
 
-.quillmd-empty button {
+.quillmd-welcome h1 {
+  color: var(--text);
+  font-size: 28px;
+  margin: 0;
+}
+
+.quillmd-welcome button {
   padding: 8px 20px;
-  border-radius: 8px;
-  border: 1px solid #396cd8;
-  background: #396cd8;
+  border-radius: 4px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
   color: #fff;
   cursor: pointer;
 }
 
-/* WYSIWYG editor */
+/* --- formatting toolbar -------------------------------------------------- */
+
+.quillmd-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
+
+.quillmd-toolbar button {
+  min-width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 6px;
+}
+
+.quillmd-toolbar button:hover {
+  background: var(--bg-active);
+}
+
+.quillmd-toolbar button:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.quillmd-toolbar button.quillmd-toolbar-active {
+  background: var(--accent-soft);
+  color: var(--text-bright);
+}
+
+.quillmd-toolbar-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+.quillmd-heading-select {
+  height: 28px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: 4px;
+  font-size: 13px;
+  padding: 0 4px;
+}
+
+/* --- WYSIWYG editor body ------------------------------------------------- */
 
 .quillmd-editor {
   height: 100%;
   display: flex;
   flex-direction: column;
-}
-
-.quillmd-toolbar {
-  display: flex;
-  gap: 4px;
-  padding: 6px 10px;
-  border-bottom: 1px solid #e0e0e0;
-}
-
-.quillmd-toolbar button {
-  min-width: 32px;
-  border: 1px solid #ccc;
-  background: #fff;
-  border-radius: 6px;
-  cursor: pointer;
 }
 
 .quillmd-editor-body {
@@ -158,97 +477,298 @@ body {
 
 .quillmd-placeholder {
   position: absolute;
-  top: 12px;
-  left: 16px;
-  color: #aaa;
+  top: 14px;
+  left: 24px;
+  color: var(--text-faint);
   pointer-events: none;
 }
 
 .quillmd-prosemirror {
   outline: none;
   min-height: 100%;
-  padding: 12px 16px 40vh;
+  padding: 16px 24px 45vh;
+  color: var(--text);
+  font-family: var(--font-text);
+  font-size: 15px;
+  line-height: 1.7;
+  max-width: 860px;
+  margin: 0 auto;
 }
 
 .quillmd-prosemirror > * + * {
-  margin-top: 0.5em;
+  margin-top: 0.6em;
+}
+
+/* Block hover affordance (council §2.1.5). */
+.quillmd-prosemirror > *:hover {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.quillmd-prosemirror h1,
+.quillmd-prosemirror h2,
+.quillmd-prosemirror h3,
+.quillmd-prosemirror h4,
+.quillmd-prosemirror h5,
+.quillmd-prosemirror h6 {
+  color: var(--text-bright);
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 1.2em 0 0.4em;
+}
+
+.quillmd-prosemirror h1 {
+  font-size: 2em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.3em;
+}
+
+.quillmd-prosemirror h2 {
+  font-size: 1.6em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.2em;
+}
+
+.quillmd-prosemirror h3 {
+  font-size: 1.3em;
+}
+
+.quillmd-prosemirror h4 {
+  font-size: 1.1em;
+}
+
+.quillmd-prosemirror h5 {
+  font-size: 1em;
+}
+
+.quillmd-prosemirror h6 {
+  font-size: 0.9em;
+  color: var(--text-muted);
+}
+
+.quillmd-prosemirror p {
+  margin: 0.4em 0;
+}
+
+.quillmd-prosemirror strong {
+  color: var(--text-bright);
+}
+
+.quillmd-prosemirror em {
+  font-style: italic;
+}
+
+.quillmd-prosemirror s {
+  color: var(--text-muted);
+}
+
+.quillmd-prosemirror a {
+  color: #4fc1ff;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.quillmd-prosemirror a:hover {
+  border-bottom-color: #4fc1ff;
 }
 
 .quillmd-prosemirror ul,
 .quillmd-prosemirror ol {
-  padding-left: 1.5em;
+  padding-left: 1.6em;
+}
+
+.quillmd-prosemirror li {
+  margin: 0.2em 0;
 }
 
 .quillmd-prosemirror blockquote {
-  border-left: 3px solid #ccc;
+  border-left: 3px solid var(--accent);
   margin-left: 0;
   padding-left: 1em;
-  color: #555;
+  color: var(--text-muted);
 }
 
 .quillmd-prosemirror pre {
-  background: #f5f5f5;
+  position: relative;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 10px 14px;
+  padding: 12px 14px;
   overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.quillmd-prosemirror pre::before {
+  content: attr(data-language);
+  display: block;
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.quillmd-prosemirror pre[data-language=""]::before,
+.quillmd-prosemirror pre[data-language="frontmatter"]::before {
+  content: none;
+}
+
+/* Front matter renders as a distinct structured block, not a code fence. */
+.quillmd-prosemirror pre[data-language="frontmatter"] {
+  background: var(--bg-panel);
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
 }
 
 .quillmd-prosemirror code {
-  background: #f0f0f0;
+  background: rgba(128, 128, 128, 0.16);
   border-radius: 4px;
-  padding: 1px 4px;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: #f0a070;
 }
 
 .quillmd-prosemirror pre code {
   background: none;
   padding: 0;
+  color: var(--text);
+  font-size: inherit;
 }
 
 .quillmd-prosemirror table {
   border-collapse: collapse;
   table-layout: fixed;
   width: 100%;
-  margin: 1em 0;
+  margin: 0.8em 0;
+  border: 1px solid var(--border);
 }
 
 .quillmd-prosemirror th,
 .quillmd-prosemirror td {
-  border: 1px solid #ccc;
-  padding: 4px 8px;
+  border: 1px solid var(--border);
+  padding: 6px 10px;
   vertical-align: top;
+  min-width: 40px;
+  position: relative;
 }
 
 .quillmd-prosemirror th {
-  background: #f5f5f5;
+  background: var(--bg-panel);
+  color: var(--text-bright);
+  font-weight: 600;
+}
+
+.quillmd-prosemirror td:hover {
+  outline: 1px solid var(--accent);
+}
+
+.quillmd-prosemirror hr {
+  border: none;
+  border-top: 2px solid var(--border);
+  margin: 1.2em 0;
 }
 
 .quillmd-prosemirror ul[data-type="taskList"] {
   list-style: none;
-  padding-left: 0.5em;
-}
-
-.quillmd-prosemirror li {
-  margin: 0.25em 0;
+  padding-left: 0.4em;
 }
 
 .quillmd-prosemirror ul[data-type="taskList"] li {
   display: flex;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .quillmd-prosemirror ul[data-type="taskList"] li > label {
   flex: 0 0 auto;
+  margin-top: 3px;
 }
+
+.quillmd-prosemirror ul[data-type="taskList"] input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+/* Footnote reference (inline atom). */
+.quillmd-prosemirror sup.quillmd-footnote-ref {
+  color: #4fc1ff;
+  cursor: pointer;
+  font-size: 0.75em;
+  padding: 0 1px;
+}
+
+.quillmd-prosemirror sup.quillmd-footnote-ref:hover {
+  text-decoration: underline;
+}
+
+/* Footnote definition block. */
+.quillmd-prosemirror .quillmd-footnote-def {
+  font-size: 0.9em;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  padding: 0.4em 0 0.4em 1em;
+  position: relative;
+}
+
+.quillmd-prosemirror .quillmd-footnote-def::before {
+  content: "[" attr(data-footnote-def) "]:";
+  display: inline-block;
+  margin-right: 0.5em;
+  color: #4fc1ff;
+  font-weight: 600;
+}
+
+.quillmd-prosemirror .quillmd-footnote-def > * {
+  display: inline;
+}
+
+.quillmd-prosemirror .quillmd-footnote-def > p {
+  display: inline;
+}
+
+/* Opaque read-only leaf (definition lists, unrepresentable constructs). */
+.quillmd-prosemirror .quillmd-opaque {
+  background: var(--bg-panel);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  position: relative;
+}
+
+.quillmd-prosemirror .quillmd-opaque::before {
+  content: attr(data-hint);
+  display: block;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+
+/* --- slash menu ---------------------------------------------------------- */
 
 .quillmd-slash-menu {
   position: fixed;
   z-index: 100;
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
   padding: 4px;
-  min-width: 240px;
+  min-width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
 }
 
 .quillmd-slash-item {
@@ -259,12 +779,14 @@ body {
   padding: 6px 10px;
   border: none;
   background: none;
+  color: var(--text);
   cursor: pointer;
   border-radius: 4px;
+  text-align: left;
 }
 
 .quillmd-slash-item:hover {
-  background: #f0f4ff;
+  background: var(--accent-soft);
 }
 
 .quillmd-slash-label {
@@ -272,17 +794,17 @@ body {
 }
 
 .quillmd-slash-hint {
-  color: #999;
+  color: var(--text-faint);
   font-size: 12px;
 }
 
 .quillmd-slash-empty {
   padding: 6px 10px;
-  color: #999;
+  color: var(--text-faint);
   font-size: 13px;
 }
 
-/* Source (CodeMirror) */
+/* --- source (CodeMirror) ------------------------------------------------- */
 
 .quillmd-source {
   height: 100%;
@@ -290,9 +812,10 @@ body {
 
 .quillmd-source .cm-editor {
   height: 100%;
+  font-size: 14px;
 }
 
-/* Split */
+/* --- split --------------------------------------------------------------- */
 
 .quillmd-split {
   display: flex;
@@ -306,10 +829,10 @@ body {
 }
 
 .quillmd-split-pane + .quillmd-split-pane {
-  border-left: 1px solid #e0e0e0;
+  border-left: 1px solid var(--border);
 }
 
-/* Preview */
+/* --- preview ------------------------------------------------------------- */
 
 .quillmd-preview {
   height: 100%;
@@ -318,6 +841,77 @@ body {
 }
 
 .quillmd-preview-content {
-  max-width: 760px;
+  max-width: 860px;
   margin: 0 auto;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.quillmd-preview-content h1,
+.quillmd-preview-content h2 {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.3em;
+}
+
+.quillmd-preview-content h1,
+.quillmd-preview-content h2,
+.quillmd-preview-content h3,
+.quillmd-preview-content h4,
+.quillmd-preview-content h5,
+.quillmd-preview-content h6 {
+  color: var(--text-bright);
+}
+
+.quillmd-preview-content a {
+  color: #4fc1ff;
+}
+
+.quillmd-preview-content pre {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+
+.quillmd-preview-content code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: rgba(128, 128, 128, 0.16);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.quillmd-preview-content pre code {
+  background: none;
+  padding: 0;
+}
+
+.quillmd-preview-content blockquote {
+  border-left: 3px solid var(--accent);
+  margin-left: 0;
+  padding-left: 1em;
+  color: var(--text-muted);
+}
+
+.quillmd-preview-content table {
+  border-collapse: collapse;
+  width: 100%;
+  border: 1px solid var(--border);
+}
+
+.quillmd-preview-content th,
+.quillmd-preview-content td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+}
+
+.quillmd-preview-content th {
+  background: var(--bg-panel);
+}
+
+.quillmd-preview-content hr {
+  border: none;
+  border-top: 2px solid var(--border);
 }

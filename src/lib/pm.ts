@@ -47,14 +47,14 @@ export function markdownToTiptap(markdown: string): JSONContent {
   const body = fm ? markdown.slice(fm.end) : markdown;
   const root = parseToAst(body);
   for (const child of root.children) {
-    const node = flowToTiptap(child as FlowNode);
+    const node = flowToTiptap(child as FlowNode, body);
     if (node) content.push(node);
   }
 
   return { type: "doc", content };
 }
 
-function flowToTiptap(node: FlowNode): JSONContent | null {
+function flowToTiptap(node: FlowNode, source: string): JSONContent | null {
   switch (node.type) {
     case "heading":
       return {
@@ -62,12 +62,32 @@ function flowToTiptap(node: FlowNode): JSONContent | null {
         attrs: { level: node.depth },
         content: inlineChildren(node.children),
       };
-    case "paragraph":
+    case "paragraph": {
+      const raw = node.position
+        ? source.slice(node.position.start.offset, node.position.end.offset)
+        : "";
+      if (isDefinitionListText(raw)) {
+        return { type: "opaqueBlock", attrs: { raw, hint: "Definition list" } };
+      }
       return { type: "paragraph", content: inlineChildren(node.children) };
+    }
+    case "footnoteDefinition": {
+      const content: JSONContent[] = [];
+      for (const child of node.children) {
+        const converted = flowToTiptap(child, source);
+        if (converted) content.push(converted);
+      }
+      if (content.length === 0) content.push({ type: "paragraph" });
+      return {
+        type: "footnoteDef",
+        attrs: { label: node.label ?? node.identifier },
+        content,
+      };
+    }
     case "blockquote":
-      return blockquoteToTiptap(node);
+      return blockquoteToTiptap(node, source);
     case "list":
-      return listToTiptap(node);
+      return listToTiptap(node, source);
     case "code":
       return {
         type: "codeBlock",
@@ -96,19 +116,19 @@ function flowToTiptap(node: FlowNode): JSONContent | null {
   }
 }
 
-function blockquoteToTiptap(node: Blockquote): JSONContent {
+function blockquoteToTiptap(node: Blockquote, source: string): JSONContent {
   const content: JSONContent[] = [];
   for (const child of node.children) {
-    const converted = flowToTiptap(child);
+    const converted = flowToTiptap(child, source);
     if (converted) content.push(converted);
   }
   return { type: "blockquote", content };
 }
 
-function listToTiptap(node: List): JSONContent {
+function listToTiptap(node: List, source: string): JSONContent {
   const content: JSONContent[] = [];
   for (const item of node.children) {
-    const converted = listItemToTiptap(item);
+    const converted = listItemToTiptap(item, source);
     if (converted) content.push(converted);
   }
   const tight = node.spread === false;
@@ -122,13 +142,13 @@ function listToTiptap(node: List): JSONContent {
   return { type: "bulletList", attrs: { tight }, content };
 }
 
-function listItemToTiptap(node: ListItem): JSONContent | null {
+function listItemToTiptap(node: ListItem, source: string): JSONContent | null {
   const children: JSONContent[] = [];
   for (const child of node.children) {
     if (child.type === "paragraph") {
       children.push({ type: "paragraph", content: inlineChildren(child.children) });
     } else {
-      const converted = flowToTiptap(child);
+      const converted = flowToTiptap(child, source);
       if (converted) children.push(converted);
     }
   }
@@ -178,6 +198,8 @@ function inlineToTiptap(node: PhrasingContent): JSONContent | null {
       return markWrapped(node.children, "strike");
     case "inlineCode":
       return { type: "text", text: node.value, marks: [{ type: "code" }] };
+    case "footnoteReference":
+      return { type: "footnoteRef", attrs: { label: node.label ?? node.identifier } };
     case "link":
       return markWrapped(node.children, "link", { href: node.url });
     case "image":
@@ -213,6 +235,18 @@ function markWrapped(
     return { type: "text", text: first.text ?? "", marks: [...(first.marks ?? []), ...marks] };
   }
   return { type: "text", text: "", marks, content };
+}
+
+// Definition lists parse as a single paragraph whose later lines all start
+// with a ": " marker (Pandoc style). The block model classifies these as an
+// opaque "definitionList" block; here we mirror that so WYSIWYG renders them
+// as a read-only leaf instead of a soft-wrapped paragraph. The raw text is
+// sliced from the source so any inline formatting on the term is preserved.
+function isDefinitionListText(text: string): boolean {
+  const lines = text.split("\n");
+  if (lines.length < 2) return false;
+  if (/^\s*:\s+/.test(lines[0])) return false;
+  return lines.slice(1).every((line) => /^\s*:\s+/.test(line));
 }
 
 // --- TipTap -> markdown ---------------------------------------------------
@@ -277,6 +311,17 @@ function tiptapToFlow(node: JSONContent): FlowNode | null {
       return { type: "thematicBreak" };
     case "table":
       return tableToMdast(node);
+    case "footnoteDef":
+      return {
+        type: "footnoteDefinition",
+        identifier: String(node.attrs?.label ?? ""),
+        label: String(node.attrs?.label ?? ""),
+        children: tiptapBlockChildren(node),
+      };
+    case "opaqueBlock":
+      // Emit as a raw HTML block so the verbatim text is not re-escaped by the
+      // serializer (which would corrupt formatted definition-list terms).
+      return { type: "html", value: String(node.attrs?.raw ?? "") };
     default:
       return null;
   }
@@ -353,6 +398,11 @@ function tiptapInline(node: JSONContent): PhrasingContent[] {
       });
       continue;
     }
+    if (child.type === "footnoteRef") {
+      const label = String(child.attrs?.label ?? "");
+      out.push({ type: "footnoteReference", identifier: label, label });
+      continue;
+    }
     if (child.type === "text") {
       out.push(...tiptapTextWithMarks(child.text ?? "", child.marks ?? []));
       continue;
@@ -379,6 +429,17 @@ function tiptapTextWithMarks(text: string, marks: NonNullable<JSONContent["marks
     } else if (type === "link") {
       const url = typeof mark.attrs?.href === "string" ? mark.attrs.href : "";
       current = [{ type: "link", url, children: current }];
+    } else if (type === "subscript") {
+      const joined = current.map(plainTextOf).join("");
+      current = [{ type: "text", value: `~${joined}~` }];
+    } else if (type === "superscript") {
+      const joined = current.map(plainTextOf).join("");
+      current = [{ type: "text", value: `^${joined}^` }];
+    } else if (type === "highlight") {
+      const joined = current.map(plainTextOf).join("");
+      current = [{ type: "text", value: `==${joined}==` }];
+    } else if (type === "underline") {
+      current = [{ type: "html", value: "<u>" }, ...current, { type: "html", value: "</u>" }];
     }
   }
   return current;

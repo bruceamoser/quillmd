@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
+import { Node, mergeAttributes } from "@tiptap/core";
 import type { Editor as CoreEditor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
+import Strike from "@tiptap/extension-strike";
+import CodeBlock from "@tiptap/extension-code-block";
 import Underline from "@tiptap/extension-underline";
 import Highlight from "@tiptap/extension-highlight";
 import Link from "@tiptap/extension-link";
@@ -14,7 +17,110 @@ import Table from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
-import { FRONTMATTER_LANG, markdownToTiptap, tiptapToMarkdown } from "../lib/pm";
+import { markdownToTiptap, tiptapToMarkdown } from "../lib/pm";
+import { registerEditorCommandListener, runEditorCommand } from "../lib/editorCommands";
+import type { EditorCommandId } from "../lib/editorCommands";
+import Toolbar from "./Toolbar";
+
+// Strikethrough is bound to Ctrl+Shift+X per spec §2.6 (the default Mod-Shift-s
+// collides with Save As).
+const Strikethrough = Strike.extend({
+  addKeyboardShortcuts() {
+    return { "Mod-Shift-x": () => this.editor.commands.toggleStrike() };
+  },
+});
+
+// CodeBlock with a data-language attribute so the CSS can render a language
+// label above each fenced block.
+const CodeBlockWithLang = CodeBlock.extend({
+  renderHTML({ node, HTMLAttributes }) {
+    const lang = node.attrs.language as string | null;
+    return [
+      "pre",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
+        "data-language": lang || null,
+      }),
+      ["code", { class: lang ? this.options.languageClassPrefix + lang : null }, 0],
+    ];
+  },
+});
+
+// Read-only verbatim leaf for constructs the PM schema cannot represent
+// (definition lists). The clean-path pipeline owns their bytes; WYSIWYG shows
+// them as a styled, non-editable block.
+const OpaqueBlock = Node.create({
+  name: "opaqueBlock",
+  group: "block",
+  atom: true,
+  addAttributes() {
+    return {
+      raw: { default: "" },
+      hint: { default: "" },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "div[data-opaque-block]" }];
+  },
+  renderHTML({ node }) {
+    return [
+      "div",
+      {
+        "data-opaque-block": "",
+        "data-hint": String(node.attrs.hint ?? ""),
+        class: "quillmd-opaque",
+      },
+      String(node.attrs.raw ?? ""),
+    ];
+  },
+});
+
+// Inline footnote reference atom. Click-to-edit relabels the reference.
+const FootnoteRef = Node.create({
+  name: "footnoteRef",
+  group: "inline",
+  inline: true,
+  atom: true,
+  addAttributes() {
+    return { label: { default: "" } };
+  },
+  parseHTML() {
+    return [{ tag: "sup[data-footnote-ref]" }];
+  },
+  renderHTML({ node }) {
+    return [
+      "sup",
+      {
+        "data-footnote-ref": String(node.attrs.label ?? ""),
+        class: "quillmd-footnote-ref",
+      },
+      `[${node.attrs.label ?? ""}]`,
+    ];
+  },
+});
+
+// Footnote definition block; the body is editable prose, the label is rendered
+// read-only via CSS so it never becomes a selectable part of the text.
+const FootnoteDef = Node.create({
+  name: "footnoteDef",
+  group: "block",
+  content: "block+",
+  addAttributes() {
+    return { label: { default: "" } };
+  },
+  parseHTML() {
+    return [{ tag: "div[data-footnote-def]" }];
+  },
+  renderHTML({ node }) {
+    return [
+      "div",
+      {
+        "data-footnote-def": String(node.attrs.label ?? ""),
+        class: "quillmd-footnote-def",
+      },
+      0,
+    ];
+  },
+});
 
 interface EditorProps {
   value: string;
@@ -30,63 +136,44 @@ interface SlashAction {
   run: (editor: CoreEditor) => void;
 }
 
+function commandAction(
+  key: string,
+  id: EditorCommandId,
+  label: string,
+  hint: string,
+): SlashAction {
+  return {
+    key,
+    label,
+    hint,
+    run: (editor) => runEditorCommand(editor, id),
+  };
+}
+
 const SLASH_ACTIONS: SlashAction[] = [
   {
-    key: "table",
-    label: "Table",
-    hint: "Insert a 3x3 GFM table",
-    run: (editor) =>
-      editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+    key: "heading",
+    label: "Heading",
+    hint: "Section heading (H2)",
+    run: (editor) => editor.chain().focus().toggleHeading({ level: 2 }).run(),
   },
-  {
-    key: "code",
-    label: "Code block",
-    hint: "Fenced code block",
-    run: (editor) => editor.chain().focus().toggleCodeBlock().run(),
-  },
-  {
-    key: "image",
-    label: "Image",
-    hint: "Embed an image",
-    run: (editor) => editor.chain().focus().setImage({ src: "", alt: "" }).run(),
-  },
-  {
-    key: "link",
-    label: "Link",
-    hint: "Insert a hyperlink",
-    run: (editor) => {
-      const url = window.prompt("Link URL") ?? "";
-      if (url) editor.chain().focus().setLink({ href: url }).run();
-    },
-  },
-  {
-    key: "footnote",
-    label: "Footnote",
-    hint: "Footnote reference",
-    run: (editor) => editor.chain().focus().insertContent("[^1]").run(),
-  },
-  {
-    key: "hr",
-    label: "Horizontal rule",
-    hint: "Thematic break",
-    run: (editor) => editor.chain().focus().setHorizontalRule().run(),
-  },
-  {
-    key: "front-matter",
-    label: "Front matter",
-    hint: "YAML header block",
-    run: (editor) => {
-      editor
-        .chain()
-        .focus()
-        .insertContentAt(0, {
-          type: "codeBlock",
-          attrs: { language: FRONTMATTER_LANG },
-          content: [{ type: "text", text: "---\ntitle: \n---" }],
-        })
-        .run();
-    },
-  },
+  commandAction("table", "table", "Table", "Insert a 3x3 GFM table"),
+  commandAction("code", "codeBlock", "Code block", "Fenced code block"),
+  commandAction("image", "image", "Image", "Embed an image"),
+  commandAction("link", "link", "Link", "Insert a hyperlink"),
+  commandAction("footnote", "footnote", "Footnote", "Footnote reference"),
+  commandAction("hr", "hr", "Horizontal rule", "Thematic break"),
+  commandAction("front-matter", "frontmatter", "Front matter", "YAML header block"),
+  commandAction("blockquote", "blockquote", "Blockquote", "Quoted paragraph"),
+  commandAction("task-list", "taskList", "Task list", "Checkbox list"),
+  commandAction("bullet-list", "bulletList", "Bullet list", "Unordered list"),
+  commandAction("ordered-list", "orderedList", "Ordered list", "Numbered list"),
+  commandAction("strikethrough", "strike", "Strikethrough", "Deleted text"),
+  commandAction("subscript", "subscript", "Subscript", "H~2~O"),
+  commandAction("superscript", "superscript", "Superscript", "E=mc^2^"),
+  commandAction("highlight", "highlight", "Highlight", "==Marked text=="),
+  commandAction("emoji", "emoji", "Emoji", "Shortcode insert"),
+  commandAction("definition-list", "definitionList", "Definition list", "Read-only term list"),
 ];
 
 function deleteSlashRange(editor: CoreEditor): void {
@@ -119,8 +206,11 @@ export default function Editor({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        codeBlock: { HTMLAttributes: { class: "ql-code-block" } },
+        codeBlock: false,
+        strike: false,
       }),
+      Strikethrough,
+      CodeBlockWithLang,
       Underline,
       Highlight,
       Link.configure({ openOnClick: false, autolink: true }),
@@ -133,6 +223,9 @@ export default function Editor({
       TableRow,
       TableCell,
       TableHeader,
+      OpaqueBlock,
+      FootnoteRef,
+      FootnoteDef,
     ],
     content: markdownToTiptap(initialRef.current),
     editable: !readOnly,
@@ -144,6 +237,14 @@ export default function Editor({
       handleKeyDown: (_view, event) => {
         const active = editorRef.current;
         if (!active) return false;
+        const mod = event.ctrlKey || event.metaKey;
+
+        if (mod && event.key.toLowerCase() === "k") {
+          event.preventDefault();
+          runEditorCommand(active, "link");
+          return true;
+        }
+
         if (event.key === "Tab") {
           const { $from } = active.state.selection;
           const parent = $from.parent.type.name;
@@ -159,20 +260,67 @@ export default function Editor({
         }
         if (event.key === "Backspace") {
           const state = active.state;
-          if (state) {
-            const { $from } = state.selection;
-            const parent = $from.parent;
-            const isEmpty =
-              (parent.type.name === "listItem" || parent.type.name === "taskItem") &&
-              parent.childCount === 1 &&
-              parent.firstChild?.type.name === "paragraph" &&
-              parent.firstChild.content.size === 0;
-            if (isEmpty && $from.pos === $from.start()) {
+          const { $from } = state.selection;
+          const parent = $from.parent;
+          const isEmpty =
+            (parent.type.name === "listItem" || parent.type.name === "taskItem") &&
+            parent.childCount === 1 &&
+            parent.firstChild?.type.name === "paragraph" &&
+            parent.firstChild.content.size === 0;
+          if (isEmpty && $from.pos === $from.start()) {
+            event.preventDefault();
+            active.chain().focus().liftListItem("listItem").liftListItem("taskItem").run();
+            return true;
+          }
+        }
+        if (event.key === "ArrowDown") {
+          const { $from, empty } = active.state.selection;
+          if (empty) {
+            let depth = $from.depth;
+            while (depth > 0 && $from.node(depth).type.name !== "table") depth -= 1;
+            if (depth > 0 && $from.pos === $from.end(depth)) {
               event.preventDefault();
-              active.chain().focus().liftListItem("listItem").liftListItem("taskItem").run();
+              const after = $from.after(depth);
+              const nodeAfter = active.state.doc.nodeAt(after);
+              if (nodeAfter && nodeAfter.type.name === "paragraph") {
+                active.chain().focus().setTextSelection(after + 1).run();
+              } else {
+                active
+                  .chain()
+                  .focus()
+                  .insertContentAt(after, { type: "paragraph" })
+                  .setTextSelection(after + 1)
+                  .run();
+              }
               return true;
             }
           }
+        }
+        if (event.key === "Enter" && !event.shiftKey) {
+          const { $from, empty } = active.state.selection;
+          if (empty && $from.parent.type.name === "blockquote") {
+            const isEmptyQuote =
+              $from.parent.childCount === 1 &&
+              $from.parent.firstChild?.type.name === "paragraph" &&
+              $from.parent.firstChild.content.size === 0;
+            if (isEmptyQuote) {
+              event.preventDefault();
+              active.chain().focus().lift("blockquote").run();
+              return true;
+            }
+          }
+        }
+        return false;
+      },
+      handleClickOn: (_view, _pos, node, nodePos, _event, direct) => {
+        const active = editorRef.current;
+        if (!active || !direct) return false;
+        if (node.type.name === "footnoteRef") {
+          const label = window.prompt("Footnote label", String(node.attrs.label ?? "")) ?? "";
+          if (label && label !== node.attrs.label) {
+            active.chain().setNodeSelection(nodePos).updateAttributes("footnoteRef", { label }).run();
+          }
+          return true;
         }
         return false;
       },
@@ -202,6 +350,11 @@ export default function Editor({
 
   useEffect(() => {
     if (!editor) return;
+    return registerEditorCommandListener((id) => runEditorCommand(editor, id));
+  }, [editor]);
+
+  useEffect(() => {
+    if (!editor) return;
     if (value === lastEmittedRef.current) return;
     lastEmittedRef.current = value;
     editor.commands.setContent(markdownToTiptap(value));
@@ -224,48 +377,7 @@ export default function Editor({
 
   return (
     <div className="quillmd-editor">
-      {!readOnly && (
-        <div className="quillmd-toolbar">
-          <button
-            type="button"
-            title="Bold (Ctrl+B)"
-            onClick={() => editor?.chain().focus().toggleBold().run()}
-          >
-            B
-          </button>
-          <button
-            type="button"
-            title="Italic (Ctrl+I)"
-            onClick={() => editor?.chain().focus().toggleItalic().run()}
-          >
-            I
-          </button>
-          <button
-            type="button"
-            title="Strikethrough (Ctrl+Shift+X)"
-            onClick={() => editor?.chain().focus().toggleStrike().run()}
-          >
-            S
-          </button>
-          <button
-            type="button"
-            title="Inline code (Ctrl+E)"
-            onClick={() => editor?.chain().focus().toggleCode().run()}
-          >
-            {"</>"}
-          </button>
-          <button
-            type="button"
-            title="Link (Ctrl+K)"
-            onClick={() => {
-              const url = window.prompt("Link URL") ?? "";
-              if (url) editor?.chain().focus().setLink({ href: url }).run();
-            }}
-          >
-            Link
-          </button>
-        </div>
-      )}
+      {!readOnly && <Toolbar editor={editor} />}
       <div className="quillmd-editor-body">
         {placeholder && value === "" && (
           <div className="quillmd-placeholder">{placeholder}</div>

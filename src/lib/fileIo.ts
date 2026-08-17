@@ -127,6 +127,27 @@ export function runningInTauri(): boolean {
   return isTauri();
 }
 
+export interface DirEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+}
+
+// Lists one directory level (non-recursive). Directories sort first; reserved
+// Windows names are skipped by the Rust layer.
+export async function listDir(path: string): Promise<DirEntry[]> {
+  return invoke<DirEntry[]>("list_dir", { path });
+}
+
+export async function getRecentFiles(): Promise<string[]> {
+  return invoke<string[]>("get_recent_files");
+}
+
+// Persists the recent-files list and refreshes the native Recent Files submenu.
+export async function setRecentFiles(recent: string[]): Promise<void> {
+  await invoke("set_recent_files", { recent });
+}
+
 export type ExportFormat = "pdf" | "docx" | "epub" | "txt" | "txt-plain";
 
 // Calls the M3 Rust conversion service. Returns the export output path on
