@@ -101,7 +101,7 @@ Round-trip fidelity is tested against a 50-fixture corpus in `fixtures/` — eve
 - ✅ M3 — Pandoc import/export (PDF, DOCX, EPUB, TXT)
 - ⏳ **M5 — Self-contained installers (bundle pandoc+typst; MSI + AppImage/deb)** — the "install for a user" milestone, per Bruce 2026-08-17
 
-> **For end users:** QuillMD will ship as a single installer — no Node, Rust, or dev tools required. Running from source is for development only.
+> **For end users:** QuillMD ships as a single installer published on GitHub Releases — download, install, done. No Node, Rust, or dev tools required. Running from source is for development only.
 
 ## License
 
