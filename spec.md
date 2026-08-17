@@ -151,7 +151,7 @@ One sentence: *"What you see is what the markdown says — and what the markdown
 16. **Export TXT:** plain text and raw markdown options.
 17. **Import DOCX:** yields editable markdown; forces Save-As to .md before editing; re-export round-trips content (shared comparator with §5.14).
 18. **Import TXT:** opens as markdown.
-19. **Packaging (local):** `npm run tauri build` produces a runnable binary/installer on each platform; the built app launches on the machine that built it (Windows and Linux). No signing, no store distribution, no fresh-VM matrix in v1.
+19. **Packaging (end-user):** self-contained installers — Windows MSI + Linux AppImage/.deb — that bundle pandoc and typst as Tauri sidecars. A fresh machine with NO toolchain (no Node, Rust, MSVC, PATH work) installs and launches the app; open→edit→save→export PDF all work. Markdown editing works with zero external tools (sidecars only for import/export).
 20. **Large file:** 1MB / ~10k-line fixture edits smoothly (no >250ms blocking keystroke).
 
 ---

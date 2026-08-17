@@ -99,7 +99,9 @@ Round-trip fidelity is tested against a 50-fixture corpus in `fixtures/` — eve
 - ✅ M1 — Rust filesystem layer (atomic writes, hash-guard, encoding, snapshots, file watch)
 - ✅ M2 — Markdown engine + clean-path save pipeline (43/43 fixture round-trip)
 - ✅ M3 — Pandoc import/export (PDF, DOCX, EPUB, TXT)
-- ⏳ M4 — packaging polish, normalization-manifest finalization
+- ⏳ **M5 — Self-contained installers (bundle pandoc+typst; MSI + AppImage/deb)** — the "install for a user" milestone, per Bruce 2026-08-17
+
+> **For end users:** QuillMD will ship as a single installer — no Node, Rust, or dev tools required. Running from source is for development only.
 
 ## License
 
