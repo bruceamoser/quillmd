@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
-import { listDir } from "../lib/fileIo";
+import { listDir, runningInTauri } from "../lib/fileIo";
 import type { DirEntry } from "../lib/fileIo";
 
 interface ExplorerProps {
@@ -69,6 +69,23 @@ export default forwardRef<ExplorerHandle, ExplorerProps>(function Explorer(
   }, []);
 
   const openFolder = useCallback(async () => {
+    if (runningInTauri()) {
+      // Native folder picker (VSCode-class); falls back to a text prompt in
+      // browser dev where the Tauri dialog plugin is unavailable.
+      try {
+        const { open } = await import("@tauri-apps/plugin-dialog");
+        const selected = await open({ directory: true });
+        if (typeof selected === "string") {
+          setRoot(selected);
+          setError("");
+          setExpanded(new Set([selected]));
+          await loadChildren(selected);
+        }
+        return;
+      } catch {
+        // fall through to prompt in browser mode
+      }
+    }
     const path = window.prompt("Open folder (absolute path)") ?? "";
     if (!path) return;
     setRoot(path);
