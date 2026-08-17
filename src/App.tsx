@@ -83,7 +83,7 @@ const SHORTCUTS_TEXT = [
   "Ctrl+F / Ctrl+H: find / replace",
   "Ctrl+S / Ctrl+Shift+S: save / save as",
   "Ctrl+Z / Ctrl+Shift+Z: undo / redo",
-  "Ctrl+B: toggle explorer",
+  "Ctrl+Shift+E: toggle explorer",
 ].join("\n");
 
 function isAbsolutePath(p: string): boolean {
@@ -463,9 +463,7 @@ export default function App() {
       const mod = e.ctrlKey || e.metaKey;
       if (!mod) return;
       const key = e.key.toLowerCase();
-      if (key === "b") {
-        const target = e.target as HTMLElement | null;
-        if (target?.closest(".quillmd-prosemirror")) return;
+      if (key === "e" && e.shiftKey) {
         e.preventDefault();
         setExplorerOpen((open) => !open);
       } else if (key === "/") {
