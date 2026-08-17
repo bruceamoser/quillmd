@@ -3,13 +3,15 @@ import { createDocument, encodeDocument, saveDocument } from "./lib/pipeline";
 import {
   checkExternal,
   downloadBytes,
+  exportDocument,
+  importDocument,
   openFromFile,
   openPath,
   runningInTauri,
   saveAs,
   saveFile,
 } from "./lib/fileIo";
-import type { OpenFileResult } from "./lib/fileIo";
+import type { ExportFormat, OpenFileResult } from "./lib/fileIo";
 import Editor from "./components/Editor";
 import SourceView from "./components/SourceView";
 import SplitView from "./components/SplitView";
@@ -156,6 +158,57 @@ export default function App() {
     [doc],
   );
 
+  // --- M3 import/export ------------------------------------------------
+  const doExport = useCallback(
+    async (format: ExportFormat) => {
+      if (!doc) return;
+      setStatus(`Exporting ${format.toUpperCase()}...`);
+      const ext = format === "txt-plain" ? "txt" : format;
+      const defaultName = doc.path.replace(/\.[^.]+$/, "") + "." + ext;
+      if (runningInTauri()) {
+        const out = window.prompt(`Export as ${format.toUpperCase()}`, defaultName) ?? "";
+        if (!out) return;
+        try {
+          await exportDocument(doc.path, format, out);
+          setStatus(`Exported ${out}`);
+        } catch (err) {
+          setStatus(`Export failed: ${String(err)}`);
+        }
+      } else {
+        // Browser dev fallback: export from current text via pandoc is not
+        // possible in-browser; export raw markdown as the chosen extension.
+        const mime =
+          format === "pdf"
+            ? "application/pdf"
+            : format === "docx"
+              ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              : format === "epub"
+                ? "application/epub+zip"
+                : "text/plain";
+        downloadBytes(defaultName, new TextEncoder().encode(currentText), mime);
+        setStatus(`Exported ${defaultName} (dev: raw markdown bytes)`);
+      }
+    },
+    [doc, currentText],
+  );
+
+  const doImport = useCallback(async () => {
+    if (!doc) return;
+    setStatus("Importing DOCX...");
+    const src = window.prompt("Path to .docx file") ?? "";
+    if (!src) return;
+    const out = window.prompt("Save imported markdown as (.md)") ?? "";
+    if (!out) return;
+    try {
+      await importDocument(src, out);
+      const opened = await openPath(out);
+      applyOpened(opened);
+      setStatus(`Imported ${src} -> ${out}`);
+    } catch (err) {
+      setStatus(`Import failed: ${String(err)}`);
+    }
+  }, [doc, applyOpened]);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
@@ -219,6 +272,22 @@ export default function App() {
         </button>
         <button type="button" onClick={() => void doSaveAs()}>
           Save As
+        </button>
+        <span className="quillmd-menu-sep">|</span>
+        <button type="button" onClick={() => void doExport("pdf")}>
+          Export PDF
+        </button>
+        <button type="button" onClick={() => void doExport("docx")}>
+          Export DOCX
+        </button>
+        <button type="button" onClick={() => void doExport("epub")}>
+          Export EPUB
+        </button>
+        <button type="button" onClick={() => void doExport("txt")}>
+          Export TXT
+        </button>
+        <button type="button" onClick={() => void doImport()}>
+          Import DOCX
         </button>
         <div className="quillmd-modes">
           {(["wysiwyg", "source", "split", "preview"] as ViewMode[]).map((m) => (

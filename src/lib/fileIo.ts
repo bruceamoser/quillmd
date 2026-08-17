@@ -127,6 +127,23 @@ export function runningInTauri(): boolean {
   return isTauri();
 }
 
+export type ExportFormat = "pdf" | "docx" | "epub" | "txt" | "txt-plain";
+
+// Calls the M3 Rust conversion service. Returns the export output path on
+// success; throws a structured error on failure (tool_missing, same_path,
+// convert_failed, io).
+export async function exportDocument(
+  path: string,
+  format: ExportFormat,
+  outPath: string,
+): Promise<void> {
+  await invoke("export_document", { path, format, outPath });
+}
+
+export async function importDocument(docxPath: string, outMdPath: string): Promise<void> {
+  await invoke("import_document", { path: docxPath, outMdPath });
+}
+
 // Triggers a browser download of the given bytes (dev-only save fallback).
 export function downloadBytes(fileName: string, bytes: Uint8Array, mime = "text/markdown"): void {
   const blob = new Blob([bytes], { type: mime });

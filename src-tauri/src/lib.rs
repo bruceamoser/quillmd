@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod convert;
 pub mod fs;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -17,7 +18,9 @@ pub fn run() {
             commands::save_file,
             commands::save_as,
             commands::check_external,
-            commands::recover_snapshot
+            commands::recover_snapshot,
+            commands::export_document,
+            commands::import_document
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

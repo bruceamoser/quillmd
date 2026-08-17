@@ -83,6 +83,20 @@ pub fn check_external(path: String, expected_hash: String) -> ExternalStatus {
 }
 
 #[tauri::command]
+pub fn export_document(path: String, format: String, out_path: String) -> Result<(), String> {
+    let src = PathBuf::from(&path);
+    let dst = PathBuf::from(&out_path);
+    crate::convert::export(&src, &format, &dst).map_err(|e| e.to_json())
+}
+
+#[tauri::command]
+pub fn import_document(path: String, out_md_path: String) -> Result<(), String> {
+    let src = PathBuf::from(&path);
+    let dst = PathBuf::from(&out_md_path);
+    crate::convert::import_docx(&src, &dst).map_err(|e| e.to_json())
+}
+
+#[tauri::command]
 pub fn recover_snapshot(path: String) -> Option<Vec<u8>> {
     let p = PathBuf::from(&path);
     fs::read(snapshot::snapshot_path_for(&p)).ok()
