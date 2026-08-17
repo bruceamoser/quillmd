@@ -123,9 +123,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           gh release create "${{ steps.tag.outputs.tag }}" \
-            dist/quillmd-windows/* dist/quillmd-linux/* \
             --repo "${{ github.repository }}" \
             --title "QuillMD ${{ steps.tag.outputs.tag }}" \
             --notes "Self-contained installers (bundles pandoc + typst). No dev tools required." \
-            --draft || true
+            --draft
+          # Upload files only (find excludes directories like nsis/)
+          find dist -type f -print0 | while IFS= read -r -d '' f; do
+            gh release upload "${{ steps.tag.outputs.tag }}" "$f" \
+              --repo "${{ github.repository }}" --clobber
+          done
