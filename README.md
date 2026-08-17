@@ -124,6 +124,8 @@ Round-trip fidelity is tested against a 50-fixture corpus in `fixtures/` — eve
 
 > **For end users:** QuillMD ships as a single installer published on GitHub Releases — download, install, done. No Node, Rust, or dev tools required. Running from source is for development only.
 
+**Downloads:** https://github.com/bruceamoser/quillmd/releases (Windows `.msi`/`.exe`, Linux `.AppImage`/`.deb` — pandoc + typst bundled).
+
 ## License
 
 Private (internal).
