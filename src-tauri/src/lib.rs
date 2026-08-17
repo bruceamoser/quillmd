@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod convert;
 pub mod fs;
+pub mod menu;
 
 // Headless self-test hooks for tests/acceptance-test.sh (spec §5.8).
 // Each baseline exercises a real module and returns Ok(()) or an error. The
@@ -195,8 +196,26 @@ pub fn run() {
             commands::check_external,
             commands::recover_snapshot,
             commands::export_document,
-            commands::import_document
+            commands::import_document,
+            commands::list_dir,
+            commands::get_recent_files,
+            commands::set_recent_files
         ])
+        .setup(|app| {
+            use tauri::Manager;
+            let recent = menu::load_recent(app.handle());
+            match menu::build(app.handle(), &recent) {
+                Ok(menu) => {
+                    app.set_menu(menu).ok();
+                }
+                Err(e) => eprintln!("menu build failed: {e}"),
+            }
+            Ok(())
+        })
+        .on_menu_event(|app, event| {
+            use tauri::Emitter;
+            let _ = app.emit("menu-event", event.id().as_ref());
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
