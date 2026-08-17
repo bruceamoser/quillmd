@@ -1,0 +1,3 @@
+﻿# BOM with CRLF
+
+body

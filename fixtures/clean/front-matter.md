@@ -1,10 +1,10 @@
 ---
-title: Front Matter Fixture
+title: Fixture Document
 author: Bruce Moser
-tags: [quillmd, test]
+tags: [quillmd, test, roundtrip]
+custom: { nested: { deep: value }, list: [1, 2, 3] }
 ---
 
-# Front Matter
+# Front Matter Fixture
 
-This document exercises YAML front matter round-tripping. Opening and saving
-without edits must preserve the front matter byte-for-byte.
+Body with [a link](https://example.com) and **bold**.

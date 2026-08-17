@@ -1,0 +1,3 @@
+﻿# BOM with LF
+
+body
