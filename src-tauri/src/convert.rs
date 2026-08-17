@@ -61,8 +61,48 @@ pub fn typst_available() -> bool {
     tool_available("typst")
 }
 
+/// Resolves a conversion tool to an executable path. Order: (1) a bundled
+/// sidecar shipped next to the running binary (Tauri `externalBin`), then
+/// (2) the bare command name resolved from PATH. Returns `None` when no sidecar
+/// is present; callers then run the bare name.
+fn resolve_tool(name: &str) -> Option<PathBuf> {
+    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    resolve_in_dir(&dir, name)
+}
+
+/// Searches `dir` for a sidecar named `name`. Tauri bundles external binaries
+/// as `<name>-<target-triple>[.exe]` and strips the triple suffix when copying
+/// them next to the app, so we accept the bare name, a `.exe` suffix, and any
+/// `<name>-*` prefix to survive naming variations without hardcoding triples.
+fn resolve_in_dir(dir: &Path, name: &str) -> Option<PathBuf> {
+    let bare = dir.join(name);
+    if bare.is_file() {
+        return Some(bare);
+    }
+    let exe = dir.join(format!("{name}.exe"));
+    if exe.is_file() {
+        return Some(exe);
+    }
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() && entry.file_name().to_string_lossy().starts_with(&format!("{name}-")) {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+fn tool_command(name: &str) -> Command {
+    match resolve_tool(name) {
+        Some(path) => Command::new(path),
+        None => Command::new(name),
+    }
+}
+
 fn tool_available(tool: &str) -> bool {
-    Command::new(tool)
+    tool_command(tool)
         .arg("--version")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -217,7 +257,7 @@ fn convert_to(src: &Path, out: &Path, extra: &[&str]) -> Result<(), ConvertError
 }
 
 fn run_pandoc(args: &[OsString]) -> Result<(), ConvertError> {
-    let output = Command::new("pandoc")
+    let output = tool_command("pandoc")
         .args(args)
         .output()
         .map_err(|e| ConvertError::io(format!("failed to run pandoc: {e}")))?;
@@ -244,6 +284,29 @@ mod tests {
         let p = dir.join("doc.md");
         fs::write(&p, b"# Hello\n\nA *sample* document.\n").unwrap();
         p
+    }
+
+    #[test]
+    fn resolve_in_dir_finds_sidecar_variants() {
+        let dir = tempdir().unwrap();
+        let p = dir.path();
+
+        fs::write(p.join("pandoc"), b"x").unwrap();
+        assert_eq!(resolve_in_dir(p, "pandoc"), Some(p.join("pandoc")));
+
+        fs::write(p.join("typst-x86_64-unknown-linux-gnu"), b"x").unwrap();
+        assert_eq!(
+            resolve_in_dir(p, "typst"),
+            Some(p.join("typst-x86_64-unknown-linux-gnu"))
+        );
+
+        fs::write(p.join("pandoc-x86_64-pc-windows-msvc.exe"), b"x").unwrap();
+        assert_eq!(
+            resolve_in_dir(p, "pandoc"),
+            Some(p.join("pandoc"))
+        );
+
+        assert_eq!(resolve_in_dir(p, "nope"), None);
     }
 
     #[test]
@@ -341,7 +404,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let src = write_sample(dir.path());
         let docx = dir.path().join("src.docx");
-        let ok = Command::new("pandoc")
+        let ok = tool_command("pandoc")
             .arg(&src)
             .arg("-o")
             .arg(&docx)

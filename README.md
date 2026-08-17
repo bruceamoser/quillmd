@@ -55,16 +55,36 @@ Browser-only mode (no Tauri, for quick UI checks): `npm run dev` then open the p
 
 ## Building (release binaries)
 
+Release builds ship **self-contained installers** that bundle pandoc + typst
+as Tauri sidecars, so end users install nothing else: no Node, no Rust, no
+MSVC, no pandoc/typst on PATH. Editing markdown works with zero external tools;
+the sidecars are used only for import/export (PDF, DOCX, EPUB).
+
+Build the release bundles:
+
 ```bash
+# Linux / macOS: fetch pinned sidecars, then bundle
+bash scripts/build-release.sh
+
+# Windows (PowerShell): fetch pinned sidecars, then bundle the MSI
+powershell -ExecutionPolicy Bypass -File scripts/fetch-release-binaries.ps1
 npm run tauri build
 ```
 
+`scripts/build-release.sh` downloads pinned pandoc/typst binaries into
+`src-tauri/bin/` (via `scripts/fetch-release-binaries.sh`) and then runs
+`npm run tauri build`. If the sidecars are absent, the build still succeeds and
+the app falls back to the system `$PATH` at runtime (dev behavior).
+
 Produces:
 
-- **Linux:** `src-tauri/target/release/quillmd` (binary) + `.deb`/`.AppImage` bundles
+- **Linux:** `src-tauri/target/release/quillmd` (binary) + `.deb` + `.AppImage`
 - **Windows:** `src-tauri/target/release/quillmd.exe` + `.msi` installer
+  (`QuillMD-<version>-x64.msi`)
 
-Run the binary directly, or install the bundle.
+Run the binary directly, or install the bundle. The `.deb` declares its system
+dependencies; the `.AppImage` is fully self-contained. Fresh-machine verification
+steps are in [docs/packaging.md](docs/packaging.md).
 
 ## Tests
 
@@ -93,6 +113,7 @@ Round-trip fidelity is tested against a 50-fixture corpus in `fixtures/` — eve
 - **Spec:** [spec.md](spec.md) — requirements, acceptance criteria, architecture
 - **Council:** [COUNCIL.md](COUNCIL.md) — five-lens software review charter
 - **Council rounds:** [docs/council-rounds.md](docs/council-rounds.md)
+- **Packaging:** [docs/packaging.md](docs/packaging.md) - installer build + fresh-machine checklist
 
 ## Status
 
