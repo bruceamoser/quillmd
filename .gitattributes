@@ -9,7 +9,8 @@
 
 # CRLF fixture files: pin to CRLF so byte-identity tests are stable across platforms
 fixtures/crlf/** text eol=crlf
-fixtures/mixed-eol/** text eol=lf
+# Mixed-EOL fixture: must stay EXACTLY as generated (binary) so git never touches it
+fixtures/mixed-eol/** -text
 
 # BOM and binary-sensitive fixtures: treat as binary so git NEVER rewrites them
 # (no autocrlf, no BOM stripping, no line-ending conversion)
