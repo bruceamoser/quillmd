@@ -505,7 +505,7 @@ export function serializeAst(root: Root): string {
     bullet: "-",
     emphasis: "*",
     strong: "*",
-    fence: "```" as "`" | "~",
+    fence: "`",
     listItemIndent: "one",
   });
 }
