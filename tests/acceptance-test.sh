@@ -10,6 +10,8 @@
 #           p0-shell -> all app-shell checks: File > New (#24), Make a Copy /
 #                       Close / Close All (#25), File > Info (#26), drag & drop
 #                       (#27), multi-open + dialog choke point (#28)
+#           p1-editor -> plan 02 editor-core checks: underline toolbar/menu/
+#                       Ctrl+U wiring (#31)
 #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -400,6 +402,56 @@ test_shell_no_fileop_prompt() {
     fi
 }
 
+# --- p1-editor: underline (issue #31, plan 02 task 2.2) ----------------------------
+# The toggle behavior (registry run/active, Ctrl+U keydown, toolbar button
+# click + active state) is covered by the vitest suite
+# (src/lib/__tests__/underline.test.tsx); this section checks the app-level
+# wiring the GUI driver cannot reach headlessly: the native Format menu
+# carries Underline (Ctrl+U), App.tsx routes its id through the shared
+# registry, the toolbar renders the button, and the clean fixture contract
+# includes an untouched <u> document.
+test_editor_underline_menu_wiring() {
+    note "editor.underline Format menu item + Ctrl+U accelerator present"
+    if grep -q 'MenuItem::with_id(app, "format-underline", "Underline", true, Some("Ctrl+U"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '&underline' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "editor.underline Format menu item + Ctrl+U accelerator present"
+    else
+        fail "editor.underline Format menu item + Ctrl+U accelerator present"
+    fi
+}
+test_editor_underline_app_routing() {
+    note "editor.underline App.tsx routes format-underline + documents Ctrl+U"
+    if grep -q '"format-underline": "underline"' "$ROOT/src/App.tsx" \
+        && grep -q 'Ctrl+U' "$ROOT/src/App.tsx"; then
+        pass "editor.underline App.tsx routes format-underline + documents Ctrl+U"
+    else
+        fail "editor.underline App.tsx routes format-underline + documents Ctrl+U"
+    fi
+}
+test_editor_underline_toolbar() {
+    note "editor.underline toolbar button + registry shortcut present"
+    if grep -q '"underline"' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q '"underline"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'shortcut: "Ctrl+U"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'import Underline from "@tiptap/extension-underline"' "$ROOT/src/components/Editor.tsx"; then
+        pass "editor.underline toolbar button + registry shortcut present"
+    else
+        fail "editor.underline toolbar button + registry shortcut present"
+    fi
+}
+test_editor_underline_roundtrip_fixture() {
+    note "editor.underline untouched <u> fixture in the round-trip contract"
+    if [ -f "$FIXTURES/clean/underline-html.md" ] \
+        && grep -q '<u>' "$FIXTURES/clean/underline-html.md" \
+        && [ -f "$ROOT/src/lib/__tests__/underline.test.tsx" ] \
+        && grep -q 'pressCtrlU' "$ROOT/src/lib/__tests__/underline.test.tsx" \
+        && grep -q 'Underline (Ctrl+U)' "$ROOT/src/lib/__tests__/underline.test.tsx"; then
+        pass "editor.underline untouched <u> fixture in the round-trip contract"
+    else
+        fail "editor.underline untouched <u> fixture in the round-trip contract"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -441,6 +493,12 @@ case "$SUBSET" in
         test_shell_multiopen_menu_wiring
         test_shell_multiopen_interaction_test
         test_shell_no_fileop_prompt
+        ;;
+    p1-editor)
+        test_editor_underline_menu_wiring
+        test_editor_underline_app_routing
+        test_editor_underline_toolbar
+        test_editor_underline_roundtrip_fixture
         ;;
     shell)
         test_shell_new_bundled
@@ -501,9 +559,13 @@ case "$SUBSET" in
         test_shell_multiopen_menu_wiring
         test_shell_multiopen_interaction_test
         test_shell_no_fileop_prompt
+        test_editor_underline_menu_wiring
+        test_editor_underline_app_routing
+        test_editor_underline_toolbar
+        test_editor_underline_roundtrip_fixture
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac

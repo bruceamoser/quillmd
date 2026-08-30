@@ -15,6 +15,7 @@ interface ToolbarProps {
 const INLINE_CMDS: EditorCommandId[] = [
   "bold",
   "italic",
+  "underline",
   "strike",
   "code",
   "highlight",
@@ -42,6 +43,7 @@ const CMD = new Map(EDITOR_COMMANDS.map((c) => [c.id, c]));
 const GLYPHS: Partial<Record<EditorCommandId, string>> = {
   bold: "B",
   italic: "I",
+  underline: "U",
   strike: "S",
   code: "</>",
   highlight: "A",
