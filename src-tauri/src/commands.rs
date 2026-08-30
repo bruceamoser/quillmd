@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::fs;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
@@ -87,6 +88,34 @@ pub fn save_as(path: String, bytes: Vec<u8>) -> Result<SaveResult, String> {
 #[tauri::command]
 pub fn check_external(path: String, expected_hash: String) -> ExternalStatus {
     safety::check_external(std::path::Path::new(&path), &expected_hash)
+}
+
+/// OS metadata for the File > Info panel (plan 01 task 1.5, issue #26):
+/// size on disk plus the OS created/modified times in epoch milliseconds.
+/// `created` is `None` where the OS does not expose a birth time (Linux);
+/// `modified` is `None` only if the stat succeeded but the time query failed.
+#[derive(Debug, Serialize)]
+pub struct FileStat {
+    pub size: u64,
+    pub created: Option<u64>,
+    pub modified: Option<u64>,
+}
+
+fn millis(t: SystemTime) -> Option<u64> {
+    t.duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_millis() as u64)
+}
+
+#[tauri::command]
+pub fn file_stat(path: String) -> Result<FileStat, String> {
+    let p = PathBuf::from(&path);
+    let meta = fs::metadata(&p).map_err(|e| err("io", format!("stat {}: {e}", p.display())))?;
+    Ok(FileStat {
+        size: meta.len(),
+        created: meta.created().ok().and_then(millis),
+        modified: meta.modified().ok().and_then(millis),
+    })
 }
 
 #[tauri::command]
@@ -296,5 +325,35 @@ mod tests {
     fn list_dir_errors_on_missing_path() {
         let res = list_dir("/nonexistent/quillmd/probe".to_string());
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn file_stat_reports_size_and_modified() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("doc.md");
+        let payload = b"# Hello\nworld";
+        fs::write(&path, payload).unwrap();
+
+        let stat = file_stat(path.display().to_string()).unwrap();
+        assert_eq!(stat.size, payload.len() as u64);
+        let modified = stat.modified.expect("modified time must be present");
+        assert!(modified > 0, "modified must be a positive epoch-millis value");
+    }
+
+    #[test]
+    fn file_stat_empty_file_has_zero_size() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("empty.md");
+        fs::write(&path, b"").unwrap();
+
+        let stat = file_stat(path.display().to_string()).unwrap();
+        assert_eq!(stat.size, 0);
+    }
+
+    #[test]
+    fn file_stat_errors_on_missing_path() {
+        let res = file_stat("/nonexistent/quillmd/stat.md".to_string());
+        let msg = res.unwrap_err();
+        assert!(msg.starts_with("io:"), "got {msg}");
     }
 }

@@ -29,12 +29,13 @@ fn main() {
             Some("stress") => run_self_test(quillmd_lib::stress_baseline()),
             Some("large-file") => run_self_test(quillmd_lib::large_file_baseline()),
             Some("templates") => run_self_test(quillmd_lib::templates_baseline()),
+            Some("file-stat") => run_self_test(quillmd_lib::file_stat_baseline()),
             Some(other) => {
                 eprintln!("unknown self-test: {other}");
                 std::process::exit(2);
             }
             None => {
-                eprintln!("usage: quillmd --self-test <undo-bytes|line-endings|bom|crash-hook|file-watch|front-matter|stress|large-file|templates>");
+                eprintln!("usage: quillmd --self-test <undo-bytes|line-endings|bom|crash-hook|file-watch|front-matter|stress|large-file|templates|file-stat>");
                 std::process::exit(2);
             }
         },

@@ -92,6 +92,7 @@ fn build_file_menu<R: Runtime>(
     let close = MenuItem::with_id(app, "file-close", "Close", true, Some("Ctrl+W"))?;
     let close_all =
         MenuItem::with_id(app, "file-close-all", "Close All", true, None::<&str>)?;
+    let info = MenuItem::with_id(app, "file-info", "Info", true, None::<&str>)?;
     let exit = MenuItem::with_id(app, "file-exit", "Exit", true, Some("Ctrl+Q"))?;
 
     let mut recent_menu = SubmenuBuilder::new(app, "Recent Files");
@@ -124,7 +125,7 @@ fn build_file_menu<R: Runtime>(
         .separator()
         .items(&[&open, &open_folder, &make_copy])
         .separator()
-        .items(&[&save, &save_as, &close, &close_all])
+        .items(&[&save, &save_as, &close, &close_all, &info])
         .separator()
         .item(&recent_menu)
         .separator()

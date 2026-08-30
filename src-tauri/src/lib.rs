@@ -219,6 +219,31 @@ pub fn large_file_baseline() -> Result<(), SelfTestError> {
     Ok(())
 }
 
+/// Baseline for the file_stat command (plan 01 task 1.5, issue #26): stat a
+/// real temp file and assert the reported size matches the written payload
+/// and the OS exposes a modified time.
+pub fn file_stat_baseline() -> Result<(), SelfTestError> {
+    let dir = std::env::temp_dir().join(format!("quillmd-stat-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|e| SelfTestError(format!("mkdir: {e}")))?;
+    let path = dir.join("stat.md");
+    let payload = b"# stat baseline\n";
+    std::fs::write(&path, payload).map_err(|e| SelfTestError(format!("write: {e}")))?;
+    let stat = commands::file_stat(path.display().to_string())
+        .map_err(|e| SelfTestError(format!("file_stat: {e}")))?;
+    let _ = std::fs::remove_dir_all(&dir);
+    if stat.size != payload.len() as u64 {
+        return Err(SelfTestError(format!(
+            "file_stat baseline: size {} != {}",
+            stat.size,
+            payload.len()
+        )));
+    }
+    if stat.modified.is_none() {
+        return Err(SelfTestError("file_stat baseline: no modified time".into()));
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -229,6 +254,7 @@ pub fn run() {
             commands::save_file,
             commands::save_as,
             commands::check_external,
+            commands::file_stat,
             commands::recover_snapshot,
             commands::export_document,
             commands::import_document,

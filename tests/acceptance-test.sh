@@ -9,6 +9,7 @@
 #           pkg    -> §5.19 (packaging, requires built artifacts)
 #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
+#           info   -> p0-shell File > Info / document properties (issue #26)
 #           all    -> everything runnable in this environment
 set -euo pipefail
 
@@ -263,6 +264,47 @@ test_shell_copyclose_dirty_confirm() {
     fi
 }
 
+# --- p0-shell: File > Info / document properties (issue #26) -------------------
+# The property computations (word/char/line counts, byte formatting, and the
+# file_stat collection against a known fixture) are covered by the vitest
+# suite (src/lib/__tests__/docInfo.test.ts) and the cargo tests
+# (commands.rs file_stat); this section checks the app-level wiring the GUI
+# driver cannot reach headlessly: file_stat is live in the built binary, the
+# native File menu carries the Info item, and App.tsx routes its id to the
+# properties flyout.
+test_shell_info_stat_selftest() {
+    note "shell.info file_stat live in binary (self-test)"
+    if [ ! -x "$APP_BIN" ]; then
+        echo "SKIP (binary not built)"
+        return
+    fi
+    local out
+    out=$("$APP_BIN" --self-test file-stat 2>/dev/null || echo "MISSING")
+    if [ "$out" = "OK" ]; then pass "shell.info file_stat live in binary (self-test)"; else fail "shell.info file_stat live in binary (self-test)"; fi
+}
+test_shell_info_menu_wiring() {
+    note "shell.info File > Info menu item present"
+    if grep -q 'MenuItem::with_id(app, "file-info", "Info"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '\.items(&\[&save, &save_as, &close, &close_all, &info\])' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "shell.info File > Info menu item present"
+    else
+        fail "shell.info File > Info menu item present"
+    fi
+}
+test_shell_info_app_routing() {
+    note "shell.info App.tsx routes file-info to the properties flyout"
+    if grep -q 'id === "file-info"' "$ROOT/src/App.tsx" \
+        && grep -q 'from "./lib/docInfo"' "$ROOT/src/App.tsx" \
+        && grep -q 'from "./components/DocInfoPanel"' "$ROOT/src/App.tsx" \
+        && [ -f "$ROOT/src/components/DocInfoPanel.tsx" ] \
+        && grep -q '"file_stat"' "$ROOT/src/lib/fileIo.ts" \
+        && grep -q 'commands::file_stat' "$ROOT/src-tauri/src/lib.rs"; then
+        pass "shell.info App.tsx routes file-info to the properties flyout"
+    else
+        fail "shell.info App.tsx routes file-info to the properties flyout"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -298,6 +340,11 @@ case "$SUBSET" in
         test_shell_copyclose_app_routing
         test_shell_copyclose_dirty_confirm
         ;;
+    info)
+        test_shell_info_stat_selftest
+        test_shell_info_menu_wiring
+        test_shell_info_app_routing
+        ;;
     pkg)
         note "5.19 packaging (fresh-VM install+launch)"
         # CI-only: installs on fresh VM. Local: assert artifacts exist.
@@ -329,9 +376,12 @@ case "$SUBSET" in
         test_shell_copyclose_menu_wiring
         test_shell_copyclose_app_routing
         test_shell_copyclose_dirty_confirm
+        test_shell_info_stat_selftest
+        test_shell_info_menu_wiring
+        test_shell_info_app_routing
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|shell|copyclose|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|shell|copyclose|info|all)" >&2
         exit 2
         ;;
 esac
