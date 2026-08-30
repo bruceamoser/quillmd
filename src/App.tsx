@@ -90,6 +90,8 @@ const MENU_TO_COMMAND: Record<string, EditorCommandId> = {
   "format-align-left": "alignLeft",
   "format-align-center": "alignCenter",
   "format-align-right": "alignRight",
+  "format-indent": "indent",
+  "format-outdent": "outdent",
   "format-clear": "clearFormatting",
 };
 
@@ -104,6 +106,8 @@ const SHORTCUTS_TEXT = [
   "Ctrl+N: new document",
   "Ctrl+B / Ctrl+I / Ctrl+U: bold / italic / underline",
   "Ctrl+K: link",
+  "Ctrl+] / Ctrl+[: indent / outdent (list item or quote level)",
+  "Tab / Shift+Tab: nest / un-nest list item or quote",
   "Ctrl+Shift+X: strikethrough",
   "Ctrl+E: inline code",
   "Ctrl+/: toggle WYSIWYG / Source",

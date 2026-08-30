@@ -225,12 +225,19 @@ fn build_format_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
     let superscript =
         MenuItem::with_id(app, "format-superscript", "Superscript", true, None::<&str>)?;
     let clear = MenuItem::with_id(app, "format-clear", "Clear Formatting", true, None::<&str>)?;
+    // The bracket accelerators use the named key forms: muda displays them
+    // as Ctrl+]/Ctrl+[ and parses the literals identically, but the names
+    // keep the string delimiters unambiguous.
+    let indent = MenuItem::with_id(app, "format-indent", "Indent", true, Some("Ctrl+BracketRight"))?;
+    let outdent = MenuItem::with_id(app, "format-outdent", "Outdent", true, Some("Ctrl+BracketLeft"))?;
 
+    // Word parity (plan 02 §2.5): the Paragraph group carries alignment plus
+    // indent/outdent (list nesting and quote levels) on Ctrl+]/Ctrl+[.
     let mut paragraph = SubmenuBuilder::new(app, "Paragraph");
     paragraph = paragraph.text("format-align-left", "Align Left");
     paragraph = paragraph.text("format-align-center", "Align Center");
     paragraph = paragraph.text("format-align-right", "Align Right");
-    let paragraph = paragraph.build()?;
+    let paragraph = paragraph.separator().item(&indent).item(&outdent).build()?;
 
     let format = SubmenuBuilder::new(app, "Format")
         .items(&[&bold, &italic, &underline, &strike, &code, &highlight, &subscript, &superscript])

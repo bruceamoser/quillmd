@@ -12,7 +12,8 @@
 #                       (#27), multi-open + dialog choke point (#28)
  #           p1-editor -> plan 02 editor-core checks: underline toolbar/menu/
  #                       Ctrl+U wiring (#31), text alignment toolbar/menu/
- #                       serializer wiring (#32)
+ #                       serializer wiring (#32), indent/outdent + list
+ #                       keyboard (Ctrl+]/[ + Tab) wiring (#33)
 #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -508,6 +509,61 @@ test_editor_alignment_roundtrip_fixture() {
     fi
 }
 
+# --- p1-editor: indent/outdent + list keyboard (issue #33, plan 02 task 2.4) ----
+# The command behavior (native sink/lift on list items, quote wrap/lift,
+# Tab/Shift+Tab and Ctrl+]/Ctrl+[ keydown in the editor view, toolbar buttons)
+# is covered by the vitest suite (src/lib/__tests__/indent.test.tsx); this
+# section checks the app-level wiring the GUI driver cannot reach headlessly:
+# the native Format > Paragraph menu carries Indent (Ctrl+]) / Outdent
+# (Ctrl+[), App.tsx routes their ids through the shared registry and lists
+# the shortcuts in the Help > Shortcuts text.
+test_editor_indent_menu_wiring() {
+    note "editor.indent Format > Paragraph Indent/Outdent + Ctrl+]/[ present"
+    if grep -q 'MenuItem::with_id(app, "format-indent", "Indent", true, Some("Ctrl+BracketRight"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "format-outdent", "Outdent", true, Some("Ctrl+BracketLeft"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '&indent' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '&outdent' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "editor.indent Format > Paragraph Indent/Outdent + Ctrl+]/[ present"
+    else
+        fail "editor.indent Format > Paragraph Indent/Outdent + Ctrl+]/[ present"
+    fi
+}
+test_editor_indent_app_routing() {
+    note "editor.indent App.tsx routes format-indent/outdent + documents shortcuts"
+    if grep -q '"format-indent": "indent"' "$ROOT/src/App.tsx" \
+        && grep -q '"format-outdent": "outdent"' "$ROOT/src/App.tsx" \
+        && grep -q 'Ctrl+\] / Ctrl+\[: indent / outdent' "$ROOT/src/App.tsx" \
+        && grep -q 'Tab / Shift+Tab: nest / un-nest' "$ROOT/src/App.tsx"; then
+        pass "editor.indent App.tsx routes format-indent/outdent + documents shortcuts"
+    else
+        fail "editor.indent App.tsx routes format-indent/outdent + documents shortcuts"
+    fi
+}
+test_editor_indent_toolbar() {
+    note "editor.indent toolbar group + registry shortcuts present"
+    if grep -q '"indent"' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q '"outdent"' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'shortcut: "Ctrl+\]"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'shortcut: "Ctrl+\["' "$ROOT/src/lib/editorCommands.ts"; then
+        pass "editor.indent toolbar group + registry shortcuts present"
+    else
+        fail "editor.indent toolbar group + registry shortcuts present"
+    fi
+}
+test_editor_indent_keydown() {
+    note "editor.indent Ctrl+]/[ + Tab keydown handled in the editor view"
+    if grep -q 'event.key === "\]"' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'event.key === "\["' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'event.key === "Tab"' "$ROOT/src/components/Editor.tsx" \
+        && [ -f "$ROOT/src/lib/__tests__/indent.test.tsx" ] \
+        && grep -q 'handleEditorKeyDown' "$ROOT/src/lib/__tests__/indent.test.tsx" \
+        && grep -q 'blockquote' "$ROOT/src/lib/__tests__/indent.test.tsx"; then
+        pass "editor.indent Ctrl+]/[ + Tab keydown handled in the editor view"
+    else
+        fail "editor.indent Ctrl+]/[ + Tab keydown handled in the editor view"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -559,6 +615,10 @@ case "$SUBSET" in
         test_editor_alignment_app_routing
         test_editor_alignment_toolbar
         test_editor_alignment_roundtrip_fixture
+        test_editor_indent_menu_wiring
+        test_editor_indent_app_routing
+        test_editor_indent_toolbar
+        test_editor_indent_keydown
         ;;
     shell)
         test_shell_new_bundled
@@ -623,6 +683,14 @@ case "$SUBSET" in
         test_editor_underline_app_routing
         test_editor_underline_toolbar
         test_editor_underline_roundtrip_fixture
+        test_editor_alignment_menu_wiring
+        test_editor_alignment_app_routing
+        test_editor_alignment_toolbar
+        test_editor_alignment_roundtrip_fixture
+        test_editor_indent_menu_wiring
+        test_editor_indent_app_routing
+        test_editor_indent_toolbar
+        test_editor_indent_keydown
         ;;
     *)
         echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|shell|copyclose|info|dragdrop|all)" >&2
