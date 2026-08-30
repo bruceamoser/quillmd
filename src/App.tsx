@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { createDocument, encodeDocument, saveDocument } from "./lib/pipeline";
 import {
   checkExternal,
@@ -36,6 +37,7 @@ import { collectDocInfo } from "./lib/docInfo";
 import type { DocInfo } from "./lib/docInfo";
 import { dispatchEditorCommand } from "./lib/editorCommands";
 import type { EditorCommandId } from "./lib/editorCommands";
+import { handleDroppedPaths } from "./lib/dragDrop";
 import Editor from "./components/Editor";
 import DocInfoPanel from "./components/DocInfoPanel";
 import SourceView from "./components/SourceView";
@@ -578,6 +580,40 @@ export default function App() {
       unlisten?.();
     };
   }, [handleMenuEvent]);
+
+  // Drag & drop (plan 01 task 1.6, issue #27): Tauri emits tauri://drag-*
+  // events to the webview by default; on drop each .md file opens as a tab,
+  // each folder switches the Explorer root, and every dropped item gets its
+  // own status-bar line (skipped non-markdown files included). In browser dev
+  // the Tauri event stream does not exist, so this listener is never set up.
+  useEffect(() => {
+    if (!runningInTauri()) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void getCurrentWebview()
+      .onDragDropEvent((event) => {
+        if (event.payload.type !== "drop") return;
+        void handleDroppedPaths(event.payload.paths, {
+          openFile: openByPath,
+          openFolder: (path) => {
+            setExplorerOpen(true);
+            explorerRef.current?.openFolderPath(path);
+          },
+          status: setStatus,
+        });
+      })
+      .then((fn) => {
+        if (disposed) {
+          fn();
+        } else {
+          unlisten = fn;
+        }
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [openByPath]);
 
   // Load recent files once under Tauri.
   useEffect(() => {
