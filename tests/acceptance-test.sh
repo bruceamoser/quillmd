@@ -10,8 +10,9 @@
 #           p0-shell -> all app-shell checks: File > New (#24), Make a Copy /
 #                       Close / Close All (#25), File > Info (#26), drag & drop
 #                       (#27), multi-open + dialog choke point (#28)
-#           p1-editor -> plan 02 editor-core checks: underline toolbar/menu/
-#                       Ctrl+U wiring (#31)
+ #           p1-editor -> plan 02 editor-core checks: underline toolbar/menu/
+ #                       Ctrl+U wiring (#31), text alignment toolbar/menu/
+ #                       serializer wiring (#32)
 #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -452,6 +453,61 @@ test_editor_underline_roundtrip_fixture() {
     fi
 }
 
+# --- p1-editor: alignment (issue #32, plan 02 task 2.3) ---------------------------
+# The command/serializer behavior (outermost-block alignment, the quillmd-align-*
+# wrapper, clean-path splice, toolbar group) is covered by the vitest suite
+# (src/lib/__tests__/alignment.test.tsx); this section checks the app-level
+# wiring the GUI driver cannot reach headlessly: the native Format > Paragraph
+# submenu, App.tsx routing through the shared registry, the toolbar group +
+# textAlign node attribute, and the clean fixture contract for aligned docs.
+test_editor_alignment_menu_wiring() {
+    note "editor.alignment Format > Paragraph submenu (left/center/right) present"
+    if grep -q 'SubmenuBuilder::new(app, "Paragraph")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"format-align-left"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"format-align-center"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"format-align-right"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '&paragraph' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "editor.alignment Format > Paragraph submenu (left/center/right) present"
+    else
+        fail "editor.alignment Format > Paragraph submenu (left/center/right) present"
+    fi
+}
+test_editor_alignment_app_routing() {
+    note "editor.alignment App.tsx routes format-align-* through the registry"
+    if grep -q '"format-align-left": "alignLeft"' "$ROOT/src/App.tsx" \
+        && grep -q '"format-align-center": "alignCenter"' "$ROOT/src/App.tsx" \
+        && grep -q '"format-align-right": "alignRight"' "$ROOT/src/App.tsx"; then
+        pass "editor.alignment App.tsx routes format-align-* through the registry"
+    else
+        fail "editor.alignment App.tsx routes format-align-* through the registry"
+    fi
+}
+test_editor_alignment_toolbar() {
+    note "editor.alignment toolbar group + textAlign node attribute present"
+    if grep -q '"alignLeft"' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q '"alignCenter"' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q '"alignRight"' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'textAlign' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'textAlign' "$ROOT/src/lib/pm.ts"; then
+        pass "editor.alignment toolbar group + textAlign node attribute present"
+    else
+        fail "editor.alignment toolbar group + textAlign node attribute present"
+    fi
+}
+test_editor_alignment_roundtrip_fixture() {
+    note "editor.alignment aligned fixtures in the round-trip contract"
+    if [ -f "$FIXTURES/clean/align-center.md" ] \
+        && grep -q 'quillmd-align-center' "$FIXTURES/clean/align-center.md" \
+        && [ -f "$FIXTURES/clean/align-right.md" ] \
+        && grep -q 'quillmd-align-right' "$FIXTURES/clean/align-right.md" \
+        && [ -f "$ROOT/src/lib/__tests__/alignment.test.tsx" ] \
+        && grep -q 'quillmd-align-center' "$ROOT/src/lib/__tests__/alignment.test.tsx"; then
+        pass "editor.alignment aligned fixtures in the round-trip contract"
+    else
+        fail "editor.alignment aligned fixtures in the round-trip contract"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -499,6 +555,10 @@ case "$SUBSET" in
         test_editor_underline_app_routing
         test_editor_underline_toolbar
         test_editor_underline_roundtrip_fixture
+        test_editor_alignment_menu_wiring
+        test_editor_alignment_app_routing
+        test_editor_alignment_toolbar
+        test_editor_alignment_roundtrip_fixture
         ;;
     shell)
         test_shell_new_bundled

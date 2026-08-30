@@ -5,6 +5,10 @@ import type { Editor as CoreEditor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Strike from "@tiptap/extension-strike";
 import CodeBlock from "@tiptap/extension-code-block";
+import Paragraph from "@tiptap/extension-paragraph";
+import Heading from "@tiptap/extension-heading";
+import Blockquote from "@tiptap/extension-blockquote";
+import { ALIGN_CLASSES } from "../lib/pm";
 import Underline from "@tiptap/extension-underline";
 import Highlight from "@tiptap/extension-highlight";
 import Link from "@tiptap/extension-link";
@@ -30,9 +34,35 @@ const Strikethrough = Strike.extend({
   },
 });
 
+// Text alignment (task 2.3): a textAlign node attribute parsed/serialized as
+// the quillmd-align-* class. pm.ts maps it to/from the HTML wrapper block.
+function parseAlign(element: HTMLElement): string | null {
+  for (const [align, cls] of Object.entries(ALIGN_CLASSES)) {
+    if (element.classList.contains(cls)) return align;
+  }
+  return null;
+}
+
+function renderAlign(attrs: Record<string, unknown>): Record<string, string> {
+  const t = attrs.textAlign;
+  return t === "center" || t === "right" ? { class: ALIGN_CLASSES[t] } : {};
+}
+
+const textAlignAttribute = {
+  default: null,
+  parseHTML: (element: HTMLElement) => parseAlign(element),
+  renderHTML: (attrs: Record<string, unknown>) => renderAlign(attrs),
+};
+
 // CodeBlock with a data-language attribute so the CSS can render a language
 // label above each fenced block.
-const CodeBlockWithLang = CodeBlock.extend({
+export const CodeBlockWithLang = CodeBlock.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      textAlign: textAlignAttribute,
+    };
+  },
   renderHTML({ node, HTMLAttributes }) {
     const lang = node.attrs.language as string | null;
     return [
@@ -42,6 +72,33 @@ const CodeBlockWithLang = CodeBlock.extend({
       }),
       ["code", { class: lang ? this.options.languageClassPrefix + lang : null }, 0],
     ];
+  },
+});
+
+export const AlignedParagraph = Paragraph.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      textAlign: textAlignAttribute,
+    };
+  },
+});
+
+export const AlignedHeading = Heading.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      textAlign: textAlignAttribute,
+    };
+  },
+});
+
+export const AlignedBlockquote = Blockquote.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      textAlign: textAlignAttribute,
+    };
   },
 });
 
@@ -206,10 +263,16 @@ export default function Editor({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
+        paragraph: false,
+        heading: false,
+        blockquote: false,
         codeBlock: false,
         strike: false,
       }),
       Strikethrough,
+      AlignedParagraph,
+      AlignedHeading,
+      AlignedBlockquote,
       CodeBlockWithLang,
       Underline,
       Highlight,

@@ -37,6 +37,9 @@ const BLOCK_CMDS: EditorCommandId[] = [
   "footnote",
 ];
 
+// Block alignment group (plan 02 task 2.3).
+const ALIGN_CMDS: EditorCommandId[] = ["alignLeft", "alignCenter", "alignRight"];
+
 const CMD = new Map(EDITOR_COMMANDS.map((c) => [c.id, c]));
 
 // Compact glyph per command; the full label + shortcut live in the title.
@@ -59,6 +62,9 @@ const GLYPHS: Partial<Record<EditorCommandId, string>> = {
   codeBlock: "{ }",
   hr: "\u2014",
   footnote: "[^1]",
+  alignLeft: "L",
+  alignCenter: "C",
+  alignRight: "R",
 };
 
 function title(cmdId: EditorCommandId): string {
@@ -121,6 +127,9 @@ export default function Toolbar({ editor }: ToolbarProps) {
 
       <span className="quillmd-toolbar-sep" />
       {BLOCK_CMDS.map(renderButton)}
+
+      <span className="quillmd-toolbar-sep" />
+      {ALIGN_CMDS.map(renderButton)}
 
       <span className="quillmd-toolbar-sep" />
       <button
