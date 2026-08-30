@@ -66,6 +66,36 @@ export async function saveAsDocument(
   }
 }
 
+// Default Make-a-copy destination: <stem>-copy.<ext> next to the original
+// (/docs/notes.md -> /docs/notes-copy.md, C:\docs\notes.md ->
+// C:\docs\notes-copy.md) so the save dialog never suggests overwriting the
+// source file. Untitled documents copy to untitled-N.md.
+export function makeCopyDefaultName(path: string): string {
+  if (isUntitledPath(path)) return untitledDefaultName(path);
+  const m = /^(.*)\.([^.\\]+)$/.exec(path);
+  if (m) return `${m[1]}-copy.${m[2]}`;
+  return path === "" ? "untitled-copy.md" : `${path}-copy.md`;
+}
+
+// File > Make a copy: pick the destination through the save dialog, write
+// the current bytes, and open the copy as a new independent tab (plan 01
+// §2.4 / acceptance #4). The original tab is left untouched.
+export async function makeCopyDocument(
+  doc: Pick<OpenFileResult, "path">,
+  bytes: Uint8Array,
+  deps: FileMenuDeps,
+): Promise<void> {
+  const out = await pickSavePath(makeCopyDefaultName(doc.path), MARKDOWN_FILTER, "Make a Copy");
+  if (out === null) return;
+  try {
+    await saveAs(out, bytes);
+    await deps.openByPath(out);
+    deps.status(`Copied to ${out}`);
+  } catch (err) {
+    deps.status(`Make a copy failed: ${out} (${String(err)})`);
+  }
+}
+
 // Extension for an export format (txt-plain writes .txt like txt).
 export function exportExtension(format: ExportFormat): string {
   return format === "txt-plain" ? "txt" : format;

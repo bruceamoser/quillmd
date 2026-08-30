@@ -9,6 +9,8 @@ import {
   exportFilter,
   importDocx,
   importOutputName,
+  makeCopyDefaultName,
+  makeCopyDocument,
   openPickedFiles,
   saveAsDefaultName,
   saveAsDocument,
@@ -177,6 +179,70 @@ describe("File > Save As (#23)", () => {
     await saveAsDocument({ path: "/docs/notes.md" }, new Uint8Array([1]), deps);
     expect(openByPath).not.toHaveBeenCalled();
     expect(status).toHaveBeenCalledWith("Save as failed: /docs/copy.md (Error: disk full)");
+  });
+});
+
+describe("File > Make a copy (#25)", () => {
+  it("seeds the save dialog with <stem>-copy.<ext>, writes, and opens the copy", async () => {
+    g.isTauri = true;
+    tauriIpc((cmd, payload) => {
+      if (cmd === "plugin:dialog|save") {
+        expect(saveOptionsOf({ cmd, payload })).toEqual({
+          defaultPath: "/docs/notes-copy.md",
+          filters: [MARKDOWN_FILTER],
+          title: "Make a Copy",
+        });
+        return "/docs/notes-copy.md";
+      }
+      if (cmd === "save_as") {
+        expect(payload).toEqual({ path: "/docs/notes-copy.md", bytes: [1, 2, 3] });
+        return { hash: "abc123" };
+      }
+      throw new Error(`unexpected IPC ${cmd}`);
+    });
+    const { deps, openByPath, status } = makeDeps();
+    await makeCopyDocument({ path: "/docs/notes.md" }, new Uint8Array([1, 2, 3]), deps);
+    // The copy opens as its own tab; the original path is never rewritten.
+    expect(openByPath).toHaveBeenCalledWith("/docs/notes-copy.md");
+    expect(status).toHaveBeenCalledWith("Copied to /docs/notes-copy.md");
+  });
+
+  it("derives the default copy name per path shape (Windows + extensionless)", () => {
+    expect(makeCopyDefaultName("/docs/notes.md")).toBe("/docs/notes-copy.md");
+    expect(makeCopyDefaultName("C:\\docs\\notes.md")).toBe("C:\\docs\\notes-copy.md");
+    expect(makeCopyDefaultName("C:\\docs\\report.markdown")).toBe("C:\\docs\\report-copy.markdown");
+    expect(makeCopyDefaultName("notes.md")).toBe("notes-copy.md");
+    expect(makeCopyDefaultName("notes")).toBe("notes-copy.md");
+    expect(makeCopyDefaultName("")).toBe("untitled-copy.md");
+  });
+
+  it("seeds untitled-N.md for synthetic untitled paths", () => {
+    expect(makeCopyDefaultName(":new:2")).toBe("untitled-2.md");
+  });
+
+  it("does not write anything when the save dialog is cancelled", async () => {
+    g.isTauri = true;
+    const calls = tauriIpc((cmd) => (cmd === "plugin:dialog|save" ? null : undefined));
+    const { deps, openByPath, status } = makeDeps();
+    await makeCopyDocument({ path: "/docs/notes.md" }, new Uint8Array([1]), deps);
+    expect(calls.map((c) => c.cmd)).toEqual(["plugin:dialog|save"]);
+    expect(openByPath).not.toHaveBeenCalled();
+    expect(status).not.toHaveBeenCalled();
+  });
+
+  it("reports write failures in the status bar without opening a tab", async () => {
+    g.isTauri = true;
+    tauriIpc((cmd) => {
+      if (cmd === "plugin:dialog|save") return "/docs/notes-copy.md";
+      if (cmd === "save_as") throw new Error("disk full");
+      throw new Error(`unexpected IPC ${cmd}`);
+    });
+    const { deps, openByPath, status } = makeDeps();
+    await makeCopyDocument({ path: "/docs/notes.md" }, new Uint8Array([1]), deps);
+    expect(openByPath).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(
+      "Make a copy failed: /docs/notes-copy.md (Error: disk full)",
+    );
   });
 });
 

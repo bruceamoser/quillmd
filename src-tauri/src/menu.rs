@@ -87,6 +87,11 @@ fn build_file_menu<R: Runtime>(
         MenuItem::with_id(app, "file-open-folder", "Open Folder...", true, Some("Ctrl+Shift+O"))?;
     let save = MenuItem::with_id(app, "file-save", "Save", true, Some("Ctrl+S"))?;
     let save_as = MenuItem::with_id(app, "file-save-as", "Save As...", true, Some("Ctrl+Shift+S"))?;
+    let make_copy =
+        MenuItem::with_id(app, "file-make-a-copy", "Make a Copy", true, None::<&str>)?;
+    let close = MenuItem::with_id(app, "file-close", "Close", true, Some("Ctrl+W"))?;
+    let close_all =
+        MenuItem::with_id(app, "file-close-all", "Close All", true, None::<&str>)?;
     let exit = MenuItem::with_id(app, "file-exit", "Exit", true, Some("Ctrl+Q"))?;
 
     let mut recent_menu = SubmenuBuilder::new(app, "Recent Files");
@@ -117,9 +122,9 @@ fn build_file_menu<R: Runtime>(
         .item(&new_doc)
         .item(&new_template)
         .separator()
-        .items(&[&open, &open_folder])
+        .items(&[&open, &open_folder, &make_copy])
         .separator()
-        .items(&[&save, &save_as])
+        .items(&[&save, &save_as, &close, &close_all])
         .separator()
         .item(&recent_menu)
         .separator()

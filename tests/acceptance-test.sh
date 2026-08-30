@@ -8,6 +8,7 @@
 #           export -> §5.13-5.18 (requires pandoc + typst)
 #           pkg    -> §5.19 (packaging, requires built artifacts)
 #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
+#           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           all    -> everything runnable in this environment
 set -euo pipefail
 
@@ -222,6 +223,46 @@ test_shell_new_menu_wiring() {
     fi
 }
 
+# --- p0-shell: Make a copy + Close + Close All (issue #25) -----------------------
+# The dirty-check semantics (confirm only when dirty, native message dialog
+# under Tauri) and the make-a-copy dialog flow are covered by the vitest
+# suites (src/lib/__tests__/tabClose.test.ts, fileMenu.test.ts); this section
+# checks the app-level wiring the GUI driver cannot reach headlessly: the
+# native File menu carries the three items and App.tsx routes their ids.
+test_shell_copyclose_menu_wiring() {
+    note "shell.copyclose File menu items present"
+    if grep -q 'MenuItem::with_id(app, "file-make-a-copy", "Make a Copy"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "file-close", "Close", true, Some("Ctrl+W"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "file-close-all", "Close All"' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "shell.copyclose File menu items present"
+    else
+        fail "shell.copyclose File menu items present"
+    fi
+}
+test_shell_copyclose_app_routing() {
+    note "shell.copyclose App.tsx menu-event routing present"
+    if grep -q 'id === "file-make-a-copy"' "$ROOT/src/App.tsx" \
+        && grep -q 'id === "file-close"' "$ROOT/src/App.tsx" \
+        && grep -q 'id === "file-close-all"' "$ROOT/src/App.tsx" \
+        && grep -q 'from "./lib/tabClose"' "$ROOT/src/App.tsx" \
+        && grep -q "makeCopyDocument(" "$ROOT/src/App.tsx"; then
+        pass "shell.copyclose App.tsx menu-event routing present"
+    else
+        fail "shell.copyclose App.tsx menu-event routing present"
+    fi
+}
+test_shell_copyclose_dirty_confirm() {
+    note "shell.copyclose close dirty-check uses native confirm"
+    if grep -q "confirmCloseTab(" "$ROOT/src/App.tsx" \
+        && grep -q "confirmCloseAll(" "$ROOT/src/App.tsx" \
+        && grep -q 'from "./dialogs"' "$ROOT/src/lib/tabClose.ts" \
+        && ! grep -q 'window.confirm' "$ROOT/src/lib/tabClose.ts"; then
+        pass "shell.copyclose close dirty-check uses native confirm"
+    else
+        fail "shell.copyclose close dirty-check uses native confirm"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -252,6 +293,11 @@ case "$SUBSET" in
         test_shell_new_bundled
         test_shell_new_menu_wiring
         ;;
+    copyclose)
+        test_shell_copyclose_menu_wiring
+        test_shell_copyclose_app_routing
+        test_shell_copyclose_dirty_confirm
+        ;;
     pkg)
         note "5.19 packaging (fresh-VM install+launch)"
         # CI-only: installs on fresh VM. Local: assert artifacts exist.
@@ -280,9 +326,12 @@ case "$SUBSET" in
         test_import_docx
         test_shell_new_bundled
         test_shell_new_menu_wiring
+        test_shell_copyclose_menu_wiring
+        test_shell_copyclose_app_routing
+        test_shell_copyclose_dirty_confirm
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|shell|copyclose|all)" >&2
         exit 2
         ;;
 esac
