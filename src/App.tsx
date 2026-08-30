@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { createDocument, encodeDocument, saveDocument } from "./lib/pipeline";
 import {
-  baseName,
   checkExternal,
   downloadBytes,
   getRecentFiles,
@@ -18,9 +17,11 @@ import {
   exportDefaultName,
   exportDocumentAs,
   importDocx,
+  makeCopyDocument,
   openPickedFiles,
   saveAsDocument,
 } from "./lib/fileMenu";
+import { confirmCloseAll, confirmCloseTab, docDisplayName } from "./lib/tabClose";
 import {
   isUntitledPath,
   makeUntitledDoc,
@@ -99,6 +100,7 @@ const SHORTCUTS_TEXT = [
   "Ctrl+/: toggle WYSIWYG / Source",
   "Ctrl+F / Ctrl+H: find / replace",
   "Ctrl+S / Ctrl+Shift+S: save / save as",
+  "Ctrl+W: close tab",
   "Ctrl+Z / Ctrl+Shift+Z: undo / redo",
   "Ctrl+Shift+E: toggle explorer",
 ].join("\n");
@@ -399,11 +401,18 @@ export default function App() {
     }
   }, [activeDoc, openByPath]);
 
+  // Closes one tab. A dirty tab confirms through the native dialog first
+  // (plan 01 §2.5 / acceptance #5); a clean tab closes without any prompt.
+  // The active tab moves to the rightmost remaining tab, or to the welcome
+  // screen when the last tab closes.
   const closeDoc = useCallback(
-    (path: string) => {
+    async (path: string) => {
       const d = docs[path];
-      if (d && d.currentText !== d.open.source) {
-        if (!window.confirm(`${baseName(path)} has unsaved changes. Close anyway?`)) return;
+      if (!d) return;
+      const dirty = d.currentText !== d.open.source;
+      if (dirty) {
+        const ok = await confirmCloseTab({ path, displayName: docDisplayName(path), dirty });
+        if (!ok) return;
       }
       const next = { ...docs };
       delete next[path];
@@ -415,6 +424,39 @@ export default function App() {
     },
     [docs, activePath],
   );
+
+  // File > Close All: confirms once, listing the dirty tabs (clean-only
+  // batches close without a dialog), then removes every tab.
+  const closeAll = useCallback(async () => {
+    const docsList = Object.values(docs);
+    if (docsList.length === 0) return;
+    const ok = await confirmCloseAll(
+      docsList.map((d) => ({
+        path: d.open.path,
+        displayName: docDisplayName(d.open.path),
+        dirty: d.currentText !== d.open.source,
+      })),
+    );
+    if (!ok) return;
+    setDocs({});
+    setActivePath(null);
+    setStatus("Closed all documents");
+  }, [docs]);
+
+  // File > Make a copy: serializes the current text through the clean-path
+  // pipeline (verbatim bytes when untouched), picks a new .md destination,
+  // writes it, and opens the copy as a new independent tab. The original
+  // tab keeps its own state (plan 01 acceptance #4).
+  const doMakeCopy = useCallback(async () => {
+    const doc = activeDoc;
+    if (!doc || !model) return;
+    const result = saveDocument(model, doc.currentText);
+    const bytes =
+      result.kind === "verbatim"
+        ? doc.open.originalBytes
+        : encodeDocument(result.text, { eol: doc.open.eol, bom: doc.open.bom });
+    await makeCopyDocument(doc.open, bytes, { openByPath, status: setStatus });
+  }, [activeDoc, model, openByPath]);
 
   const doFind = useCallback(() => {
     const term = window.prompt("Find text") ?? "";
@@ -440,6 +482,12 @@ export default function App() {
         void doSave();
       } else if (id === "file-save-as") {
         void doSaveAs();
+      } else if (id === "file-make-a-copy") {
+        void doMakeCopy();
+      } else if (id === "file-close") {
+        if (activePath) void closeDoc(activePath);
+      } else if (id === "file-close-all") {
+        void closeAll();
       } else if (id === "file-exit") {
         window.close();
       } else if (id.startsWith("file-recent-")) {
@@ -485,7 +533,24 @@ export default function App() {
         window.alert(SHORTCUTS_TEXT);
       }
     },
-    [doNew, doOpen, doSave, doSaveAs, doExport, doImport, doFind, setMode, toggleMode, recentFiles, openByPath, clearRecent],
+    [
+      doNew,
+      doOpen,
+      doSave,
+      doSaveAs,
+      doMakeCopy,
+      closeDoc,
+      closeAll,
+      doExport,
+      doImport,
+      doFind,
+      setMode,
+      toggleMode,
+      recentFiles,
+      activePath,
+      openByPath,
+      clearRecent,
+    ],
   );
 
   // Native menu events (Tauri only). In browser dev this listener never fires.
@@ -537,11 +602,14 @@ export default function App() {
       } else if (key === "s") {
         e.preventDefault();
         void doSave();
+      } else if (key === "w") {
+        e.preventDefault();
+        if (activePath) void closeDoc(activePath);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [toggleMode, doSave, doSaveAs, doNew]);
+  }, [toggleMode, doSave, doSaveAs, doNew, closeDoc, activePath]);
 
   const tabs = Object.entries(docs).map(([path, d]) => ({
     path,
@@ -583,6 +651,15 @@ export default function App() {
           <button type="button" onClick={() => void doSaveAs()}>
             Save As
           </button>
+          <button type="button" onClick={() => void doMakeCopy()}>
+            Make a Copy
+          </button>
+          <button type="button" onClick={() => activePath && void closeDoc(activePath)}>
+            Close
+          </button>
+          <button type="button" onClick={() => void closeAll()}>
+            Close All
+          </button>
           <span className="quillmd-menu-sep">|</span>
           <button type="button" onClick={() => void doExport("pdf")}>
             Export PDF
@@ -617,7 +694,7 @@ export default function App() {
             tabs={tabs}
             activePath={activePath ?? ""}
             onSelect={setActivePath}
-            onClose={(path) => closeDoc(path)}
+            onClose={(path) => void closeDoc(path)}
             onNewTab={doOpen}
           />
           <div className="quillmd-content" key={activePath ?? "welcome"}>
