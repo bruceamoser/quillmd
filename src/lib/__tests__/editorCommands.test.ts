@@ -12,6 +12,7 @@ import { NodeSelection } from "@tiptap/pm/state";
 import { markdownToTiptap, tiptapToMarkdown } from "../pm";
 import {
   EDITOR_COMMANDS,
+  applyViewSettings,
   dispatchEditorCommand,
   editorCommandActive,
   lineSpacingOf,
@@ -288,6 +289,58 @@ describe("registry expansion (plan 02 task 2.1)", () => {
     });
   });
 
+  // wordWrap + applyViewSettings (plan 02 task 2.5, issue #34): the persisted
+  // per-doc view settings land on the editor DOM as a CSS variable plus two
+  // wrapper classes. All of it is view-only.
+  describe("wordWrap (view-level)", () => {
+    it("toggles the no-wrap class and reports wrap as active", () => {
+      const editor = makeEditor("Hello world");
+      const dom = editor.view.dom as HTMLElement;
+      const before = md(editor);
+      // Wrap is on by default: the no-wrap class is absent.
+      expect(dom.classList.contains("quillmd-no-wrap")).toBe(false);
+      expect(editorCommandActive(editor, "wordWrap")).toBe(true);
+      expect(runEditorCommand(editor, "wordWrap")).toBe(true);
+      expect(dom.classList.contains("quillmd-no-wrap")).toBe(true);
+      expect(editorCommandActive(editor, "wordWrap")).toBe(false);
+      expect(md(editor)).toBe(before);
+      expect(runEditorCommand(editor, "wordWrap")).toBe(true);
+      expect(dom.classList.contains("quillmd-no-wrap")).toBe(false);
+      expect(editorCommandActive(editor, "wordWrap")).toBe(true);
+      expect(md(editor)).toBe(before);
+      editor.destroy();
+    });
+  });
+
+  describe("applyViewSettings (plan 02 task 2.5)", () => {
+    it("applies the line-spacing variable and both wrapper classes", () => {
+      const editor = makeEditor("Hello world");
+      const dom = editor.view.dom as HTMLElement;
+      applyViewSettings(editor, { lineSpacing: "1.5", wordWrap: false, showMarks: true });
+      expect(dom.style.getPropertyValue("--quillmd-line-spacing")).toBe("1.5");
+      expect(lineSpacingOf(editor)).toBe("1.5");
+      expect(dom.classList.contains("quillmd-show-marks")).toBe(true);
+      expect(dom.classList.contains("quillmd-no-wrap")).toBe(true);
+
+      // Re-applying the defaults clears the classes (idempotent restore).
+      applyViewSettings(editor, { lineSpacing: "single", wordWrap: true, showMarks: false });
+      expect(lineSpacingOf(editor)).toBe("single");
+      expect(dom.classList.contains("quillmd-show-marks")).toBe(false);
+      expect(dom.classList.contains("quillmd-no-wrap")).toBe(false);
+      editor.destroy();
+    });
+
+    it("never mutates the document", () => {
+      const editor = makeEditor("# Title\n\nHello **world**\n\n- a\n- b\n");
+      const before = md(editor);
+      cursorAfter(editor, "Hello");
+      applyViewSettings(editor, { lineSpacing: "double", wordWrap: false, showMarks: true });
+      runEditorCommand(editor, "wordWrap");
+      expect(md(editor)).toBe(before);
+      editor.destroy();
+    });
+  });
+
   describe("zoom (view-level)", () => {
     it("steps in and out in 10% increments with reset", () => {
       const editor = makeEditor("Hello world");
@@ -386,12 +439,13 @@ describe("registry expansion (plan 02 task 2.1)", () => {
   });
 
   describe("view-level commands never mutate the document", () => {
-    it("round-trip stays identical after lineSpacing, showMarks, zoom, alignment", () => {
+    it("round-trip stays identical after lineSpacing, showMarks, wordWrap, zoom, alignment", () => {
       const editor = makeEditor("# Title\n\nHello **world**\n\n- a\n- b\n");
       const before = md(editor);
       cursorAfter(editor, "Hello");
       runEditorCommand(editor, "lineSpacing", "double");
       runEditorCommand(editor, "showMarks");
+      runEditorCommand(editor, "wordWrap");
       runEditorCommand(editor, "zoom", "in");
       runEditorCommand(editor, "alignCenter");
       expect(md(editor)).toBe(before);

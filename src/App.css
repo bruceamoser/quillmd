@@ -576,9 +576,21 @@ body {
   color: var(--text);
   font-family: var(--font-text);
   font-size: 15px;
-  line-height: 1.7;
+  /* Line spacing (plan 02 task 2.5): the per-doc preset is applied as the
+     --quillmd-line-spacing CSS variable; the fallback is the "single"
+     default so an unset variable keeps the base look. */
+  line-height: var(--quillmd-line-spacing, 1.7);
   max-width: 860px;
   margin: 0 auto;
+}
+
+/* Word wrap off (plan 02 task 2.5): keep every space and stop wrapping, so
+   long lines run past the right edge and the editor body scrolls
+   horizontally. The class lands on the ProseMirror content container. */
+.quillmd-prosemirror.quillmd-no-wrap,
+.quillmd-prosemirror.quillmd-no-wrap * {
+  white-space: pre;
+  overflow-wrap: normal;
 }
 
 .quillmd-prosemirror > * + * {
@@ -916,6 +928,40 @@ body {
 
 .quillmd-split-pane + .quillmd-split-pane {
   border-left: 1px solid var(--border);
+}
+
+/* Show formatting marks (plan 02 task 2.5, issue #34): pure CSS on the
+   quillmd-show-marks wrapper class, no document mutation, so it can never
+   break the round-trip. Pilcrows (¶) flow inline at the end of each block's
+   text; a faint 1ch dot grid makes otherwise-invisible spaces visible (the
+   glyph covers the dot behind it, so dots read as space markers). */
+.quillmd-prosemirror.quillmd-show-marks p::after,
+.quillmd-prosemirror.quillmd-show-marks h1::after,
+.quillmd-prosemirror.quillmd-show-marks h2::after,
+.quillmd-prosemirror.quillmd-show-marks h3::after,
+.quillmd-prosemirror.quillmd-show-marks h4::after,
+.quillmd-prosemirror.quillmd-show-marks h5::after,
+.quillmd-prosemirror.quillmd-show-marks h6::after,
+.quillmd-prosemirror.quillmd-show-marks pre::after {
+  content: "\00B6";
+  margin-left: 0.15em;
+  color: var(--text-faint);
+  font-size: 0.85em;
+  user-select: none;
+  pointer-events: none;
+}
+
+.quillmd-prosemirror.quillmd-show-marks p,
+.quillmd-prosemirror.quillmd-show-marks h1,
+.quillmd-prosemirror.quillmd-show-marks h2,
+.quillmd-prosemirror.quillmd-show-marks h3,
+.quillmd-prosemirror.quillmd-show-marks h4,
+.quillmd-prosemirror.quillmd-show-marks h5,
+.quillmd-prosemirror.quillmd-show-marks h6,
+.quillmd-prosemirror.quillmd-show-marks li {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><circle cx='4' cy='4' r='1' fill='rgba(157,157,157,0.30)'/></svg>");
+  background-size: 1ch 8px;
+  background-repeat: repeat;
 }
 
 /* Block alignment (plan 02 task 2.3). The class is emitted on the block's own

@@ -1,4 +1,4 @@
-import CodeMirror from "@uiw/react-codemirror";
+import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { html } from "@codemirror/lang-html";
 import { javascript } from "@codemirror/lang-javascript";
@@ -15,9 +15,24 @@ interface SourceViewProps {
   value: string;
   onChange: (text: string) => void;
   readOnly?: boolean;
+  // Word wrap (plan 02 task 2.5): on by default (lineWrapping extension); off
+  // keeps CodeMirror's default horizontal scroll for long lines.
+  wrap?: boolean;
 }
 
-export default function SourceView({ value, onChange, readOnly = false }: SourceViewProps) {
+export default function SourceView({
+  value,
+  onChange,
+  readOnly = false,
+  wrap = true,
+}: SourceViewProps) {
+  // CodeMirror 6 does not wrap lines by default (long lines scroll
+  // horizontally). Word wrap on adds the lineWrapping extension; off keeps the
+  // default horizontal scroll. The extensions prop reconfigures the live view
+  // when it changes.
+  const extensions = wrap
+    ? [markdown({ codeLanguages }), EditorView.lineWrapping]
+    : [markdown({ codeLanguages })];
   return (
     <div className="quillmd-source">
       <CodeMirror
@@ -26,7 +41,7 @@ export default function SourceView({ value, onChange, readOnly = false }: Source
         readOnly={readOnly}
         height="100%"
         theme="dark"
-        extensions={[markdown({ codeLanguages })]}
+        extensions={extensions}
       />
     </div>
   );
