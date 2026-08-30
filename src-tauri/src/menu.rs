@@ -184,12 +184,23 @@ fn build_view_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> 
     let word_wrap =
         MenuItem::with_id(app, "view-word-wrap", "Word Wrap", true, None::<&str>)?;
 
+    // Zoom (plan 02 task 2.6, issue #35): 50-200% in 10% steps, per-doc
+    // persisted on the frontend. The accelerators are the Word parity ones:
+    // Ctrl+= zooms in, Ctrl+- out, Ctrl+0 resets.
+    let zoom_in = MenuItem::with_id(app, "view-zoom-in", "Zoom In", true, Some("Ctrl+="))?;
+    let zoom_out = MenuItem::with_id(app, "view-zoom-out", "Zoom Out", true, Some("Ctrl+-"))?;
+    let zoom_reset = MenuItem::with_id(app, "view-zoom-reset", "Reset Zoom", true, Some("Ctrl+0"))?;
+    let zoom = SubmenuBuilder::new(app, "Zoom")
+        .items(&[&zoom_in, &zoom_out, &zoom_reset])
+        .build()?;
+
     let view = SubmenuBuilder::new(app, "View")
         .items(&[&wysiwyg, &source, &split, &preview])
         .separator()
         .item(&toggle)
         .separator()
         .item(&line_spacing)
+        .item(&zoom)
         .item(&show_marks)
         .item(&word_wrap)
         .separator()

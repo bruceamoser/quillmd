@@ -14,7 +14,8 @@
  #                       Ctrl+U wiring (#31), text alignment toolbar/menu/
  #                       serializer wiring (#32), indent/outdent + list
  #                       keyboard (Ctrl+]/[ + Tab) wiring (#33), line spacing +
- #                       word wrap + formatting marks wiring (#34)
+  #                       word wrap + formatting marks wiring (#34), zoom
+  #                       state/menu submenu/shortcuts/Ctrl-wheel/status (#35)
 #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -627,6 +628,70 @@ test_editor_views_css() {
     fi
 }
 
+# --- p1-editor: zoom (issue #35, plan 02 task 2.6) ------------------------------
+# Per-doc zoom (50-200% in 10% steps) is a view preference persisted per path
+# (src/lib/__tests__/docSettings.test.ts) and applied to the editor content
+# container as the --quillmd-zoom CSS variable (editorCommands.test.ts
+# applyViewSettings + StatusBar.test.tsx). This section checks the app-level
+# wiring the GUI driver cannot reach headlessly: the native View > Zoom submenu
+# with Word-parity accelerators, App.tsx routing + Ctrl+wheel + Ctrl+=/-/0
+# shortcuts, the registry command, and the CSS/status-bar display.
+test_editor_zoom_menu_wiring() {
+    note "editor.zoom View > Zoom submenu (In/Out/Reset) with Ctrl+=/-/0 present"
+    if grep -q 'SubmenuBuilder::new(app, "Zoom")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "view-zoom-in", "Zoom In", true, Some("Ctrl+="))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "view-zoom-out", "Zoom Out", true, Some("Ctrl+-"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "view-zoom-reset", "Reset Zoom", true, Some("Ctrl+0"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '.item(&zoom)' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "editor.zoom View > Zoom submenu (In/Out/Reset) with Ctrl+=/-/0 present"
+    else
+        fail "editor.zoom View > Zoom submenu (In/Out/Reset) with Ctrl+=/-/0 present"
+    fi
+}
+test_editor_zoom_app_routing() {
+    note "editor.zoom App.tsx routes view-zoom-*, Ctrl-wheel, Ctrl+=/-/0 + persists"
+    if grep -q 'id === "view-zoom-in"' "$ROOT/src/App.tsx" \
+        && grep -q 'id === "view-zoom-out"' "$ROOT/src/App.tsx" \
+        && grep -q 'id === "view-zoom-reset"' "$ROOT/src/App.tsx" \
+        && grep -q 'e.ctrlKey' "$ROOT/src/App.tsx" \
+        && grep -q 'addEventListener("wheel"' "$ROOT/src/App.tsx" \
+        && grep -q 'key === "=" || key === "+"' "$ROOT/src/App.tsx" \
+        && grep -q 'key === "-"' "$ROOT/src/App.tsx" \
+        && grep -q 'key === "0"' "$ROOT/src/App.tsx" \
+        && grep -q 'changeZoom(' "$ROOT/src/App.tsx" \
+        && grep -q 'patchDocSettings({ zoom' "$ROOT/src/App.tsx"; then
+        pass "editor.zoom App.tsx routes view-zoom-*, Ctrl-wheel, Ctrl+=/-/0 + persists"
+    else
+        fail "editor.zoom App.tsx routes view-zoom-*, Ctrl-wheel, Ctrl+=/-/0 + persists"
+    fi
+}
+test_editor_zoom_registry() {
+    note "editor.zoom registry zoom command + applyViewSettings zoom + clampZoom present"
+    if grep -q 'id: "zoom"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export function clampZoom' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q '"--quillmd-zoom"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'ZOOM_VAR, String(clampZoom(settings.zoom))' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'zoom: number' "$ROOT/src/lib/docSettings.ts" \
+        && [ -f "$ROOT/src/lib/__tests__/statusBar.test.tsx" ] \
+        && grep -q 'restores the persisted zoom' "$ROOT/src/lib/__tests__/editorCommands.test.ts"; then
+        pass "editor.zoom registry zoom command + applyViewSettings zoom + clampZoom present"
+    else
+        fail "editor.zoom registry zoom command + applyViewSettings zoom + clampZoom present"
+    fi
+}
+test_editor_zoom_css_statusbar() {
+    note "editor.zoom CSS consumes --quillmd-zoom; status bar shows the percent"
+    if grep -q 'var(--quillmd-zoom' "$ROOT/src/App.css" \
+        && grep -q 'quillmd-status-zoom' "$ROOT/src/App.css" \
+        && grep -q 'zoom' "$ROOT/src/components/StatusBar.tsx" \
+        && grep -q 'onZoomReset' "$ROOT/src/components/StatusBar.tsx" \
+        && grep -q 'zoom={activeDoc?.settings.zoom' "$ROOT/src/App.tsx"; then
+        pass "editor.zoom CSS consumes --quillmd-zoom; status bar shows the percent"
+    else
+        fail "editor.zoom CSS consumes --quillmd-zoom; status bar shows the percent"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -686,6 +751,10 @@ case "$SUBSET" in
         test_editor_views_app_routing
         test_editor_views_registry
         test_editor_views_css
+        test_editor_zoom_menu_wiring
+        test_editor_zoom_app_routing
+        test_editor_zoom_registry
+        test_editor_zoom_css_statusbar
         ;;
     shell)
         test_shell_new_bundled
@@ -762,6 +831,10 @@ case "$SUBSET" in
         test_editor_views_app_routing
         test_editor_views_registry
         test_editor_views_css
+        test_editor_zoom_menu_wiring
+        test_editor_zoom_app_routing
+        test_editor_zoom_registry
+        test_editor_zoom_css_statusbar
         ;;
     *)
         echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|shell|copyclose|info|dragdrop|all)" >&2

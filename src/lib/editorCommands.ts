@@ -118,14 +118,16 @@ const SHOW_MARKS_CLASS = "quillmd-show-marks";
 // the content scrolls horizontally. Absent (the default) means wrap is on.
 const NO_WRAP_CLASS = "quillmd-no-wrap";
 
-// Applies a document's persisted view settings (plan 02 task 2.5) to the
-// editor DOM: the line-spacing CSS variable plus the formatting-marks and
-// no-wrap wrapper classes. The Editor calls this on mount and whenever the
-// settings change so a reopened tab restores its look; the toggling commands
-// mutate the same DOM state, which keeps re-application idempotent.
+// Applies a document's persisted view settings (plan 02 task 2.5, zoom per
+// task 2.6) to the editor DOM: the line-spacing and zoom CSS variables plus
+// the formatting-marks and no-wrap wrapper classes. The Editor calls this on
+// mount and whenever the settings change so a reopened tab restores its look;
+// the toggling commands mutate the same DOM state, which keeps re-application
+// idempotent.
 export function applyViewSettings(editor: CoreEditor, settings: DocSettings): void {
   const dom = editorDom(editor);
   dom.style.setProperty(LINE_SPACING_VAR, LINE_SPACING_CSS[settings.lineSpacing]);
+  dom.style.setProperty(ZOOM_VAR, String(clampZoom(settings.zoom)));
   dom.classList.toggle(SHOW_MARKS_CLASS, settings.showMarks);
   dom.classList.toggle(NO_WRAP_CLASS, !settings.wordWrap);
 }
@@ -176,9 +178,15 @@ export function zoomPercentOf(editor: CoreEditor): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(raw)));
 }
 
+// Clamps an arbitrary percent into the 50-200 zoom range, rounding to a whole
+// percent. A non-finite input falls back to the 100% default.
+export function clampZoom(percent: number): number {
+  if (!Number.isFinite(percent)) return ZOOM_DEFAULT;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(percent)));
+}
+
 function setZoomPercent(editor: CoreEditor, percent: number): void {
-  const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(percent)));
-  editorDom(editor).style.setProperty(ZOOM_VAR, String(clamped));
+  editorDom(editor).style.setProperty(ZOOM_VAR, String(clampZoom(percent)));
 }
 
 // Node types that carry per-block alignment (plan 02 §2.2). The textAlign
