@@ -241,6 +241,103 @@ function deleteSlashRange(editor: CoreEditor): void {
   }
 }
 
+// Key handling for the WYSIWYG view (plan 02 task 2.4). Covers the registry
+// commands that have no native extension keymap: Ctrl+K (link) and the Word
+// parity Ctrl+]/Ctrl+[ (indent/outdent). Tab/Shift+Tab re-nests list items
+// and blockquotes through the same registry commands the toolbar and menus
+// use (native sink/lift for lists, wrap/lift for quotes). Returns true when
+// the event was consumed.
+export function handleEditorKeyDown(editor: CoreEditor, event: KeyboardEvent): boolean {
+  const mod = event.ctrlKey || event.metaKey;
+
+  if (mod && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    runEditorCommand(editor, "link");
+    return true;
+  }
+
+  // Word parity: Ctrl+] indents, Ctrl+[ outdents (list nesting or one quote
+  // level). The registry command is a no-op outside list/quote contexts.
+  if (mod && !event.shiftKey && (event.key === "]" || event.key === "[")) {
+    event.preventDefault();
+    runEditorCommand(editor, event.key === "]" ? "indent" : "outdent");
+    return true;
+  }
+
+  if (event.key === "Tab") {
+    const { $from } = editor.state.selection;
+    // Ancestors, not just the parent: an empty list item holds the cursor in
+    // its (empty) paragraph, and a quote inside a list item is wrapped in
+    // both. Lists win: Tab nests the item, the quote level is untouched.
+    let inList = false;
+    let inQuote = false;
+    for (let depth = $from.depth; depth > 0; depth -= 1) {
+      const name = $from.node(depth).type.name;
+      if (name === "listItem" || name === "taskItem") inList = true;
+      else if (name === "blockquote") inQuote = true;
+    }
+    if (inList || inQuote) {
+      event.preventDefault();
+      runEditorCommand(editor, event.shiftKey ? "outdent" : "indent");
+      return true;
+    }
+  }
+
+  if (event.key === "Backspace") {
+    const state = editor.state;
+    const { $from } = state.selection;
+    const parent = $from.parent;
+    const isEmpty =
+      (parent.type.name === "listItem" || parent.type.name === "taskItem") &&
+      parent.childCount === 1 &&
+      parent.firstChild?.type.name === "paragraph" &&
+      parent.firstChild.content.size === 0;
+    if (isEmpty && $from.pos === $from.start()) {
+      event.preventDefault();
+      editor.chain().focus().liftListItem("listItem").liftListItem("taskItem").run();
+      return true;
+    }
+  }
+  if (event.key === "ArrowDown") {
+    const { $from, empty } = editor.state.selection;
+    if (empty) {
+      let depth = $from.depth;
+      while (depth > 0 && $from.node(depth).type.name !== "table") depth -= 1;
+      if (depth > 0 && $from.pos === $from.end(depth)) {
+        event.preventDefault();
+        const after = $from.after(depth);
+        const nodeAfter = editor.state.doc.nodeAt(after);
+        if (nodeAfter && nodeAfter.type.name === "paragraph") {
+          editor.chain().focus().setTextSelection(after + 1).run();
+        } else {
+          editor
+            .chain()
+            .focus()
+            .insertContentAt(after, { type: "paragraph" })
+            .setTextSelection(after + 1)
+            .run();
+        }
+        return true;
+      }
+    }
+  }
+  if (event.key === "Enter" && !event.shiftKey) {
+    const { $from, empty } = editor.state.selection;
+    if (empty && $from.parent.type.name === "blockquote") {
+      const isEmptyQuote =
+        $from.parent.childCount === 1 &&
+        $from.parent.firstChild?.type.name === "paragraph" &&
+        $from.parent.firstChild.content.size === 0;
+      if (isEmptyQuote) {
+        event.preventDefault();
+        editor.chain().focus().lift("blockquote").run();
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export default function Editor({
   value,
   onChange,
@@ -299,77 +396,7 @@ export default function Editor({
       },
       handleKeyDown: (_view, event) => {
         const active = editorRef.current;
-        if (!active) return false;
-        const mod = event.ctrlKey || event.metaKey;
-
-        if (mod && event.key.toLowerCase() === "k") {
-          event.preventDefault();
-          runEditorCommand(active, "link");
-          return true;
-        }
-
-        if (event.key === "Tab") {
-          const { $from } = active.state.selection;
-          const parent = $from.parent.type.name;
-          if (parent === "listItem" || parent === "taskItem") {
-            event.preventDefault();
-            runEditorCommand(active, event.shiftKey ? "outdent" : "indent");
-            return true;
-          }
-        }
-        if (event.key === "Backspace") {
-          const state = active.state;
-          const { $from } = state.selection;
-          const parent = $from.parent;
-          const isEmpty =
-            (parent.type.name === "listItem" || parent.type.name === "taskItem") &&
-            parent.childCount === 1 &&
-            parent.firstChild?.type.name === "paragraph" &&
-            parent.firstChild.content.size === 0;
-          if (isEmpty && $from.pos === $from.start()) {
-            event.preventDefault();
-            active.chain().focus().liftListItem("listItem").liftListItem("taskItem").run();
-            return true;
-          }
-        }
-        if (event.key === "ArrowDown") {
-          const { $from, empty } = active.state.selection;
-          if (empty) {
-            let depth = $from.depth;
-            while (depth > 0 && $from.node(depth).type.name !== "table") depth -= 1;
-            if (depth > 0 && $from.pos === $from.end(depth)) {
-              event.preventDefault();
-              const after = $from.after(depth);
-              const nodeAfter = active.state.doc.nodeAt(after);
-              if (nodeAfter && nodeAfter.type.name === "paragraph") {
-                active.chain().focus().setTextSelection(after + 1).run();
-              } else {
-                active
-                  .chain()
-                  .focus()
-                  .insertContentAt(after, { type: "paragraph" })
-                  .setTextSelection(after + 1)
-                  .run();
-              }
-              return true;
-            }
-          }
-        }
-        if (event.key === "Enter" && !event.shiftKey) {
-          const { $from, empty } = active.state.selection;
-          if (empty && $from.parent.type.name === "blockquote") {
-            const isEmptyQuote =
-              $from.parent.childCount === 1 &&
-              $from.parent.firstChild?.type.name === "paragraph" &&
-              $from.parent.firstChild.content.size === 0;
-            if (isEmptyQuote) {
-              event.preventDefault();
-              active.chain().focus().lift("blockquote").run();
-              return true;
-            }
-          }
-        }
-        return false;
+        return active ? handleEditorKeyDown(active, event) : false;
       },
       handleClickOn: (_view, _pos, node, nodePos, _event, direct) => {
         const active = editorRef.current;

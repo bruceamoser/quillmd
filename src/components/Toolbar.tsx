@@ -40,6 +40,9 @@ const BLOCK_CMDS: EditorCommandId[] = [
 // Block alignment group (plan 02 task 2.3).
 const ALIGN_CMDS: EditorCommandId[] = ["alignLeft", "alignCenter", "alignRight"];
 
+// Indent/outdent group (plan 02 task 2.4): list nesting and quote levels.
+const INDENT_CMDS: EditorCommandId[] = ["indent", "outdent"];
+
 const CMD = new Map(EDITOR_COMMANDS.map((c) => [c.id, c]));
 
 // Compact glyph per command; the full label + shortcut live in the title.
@@ -65,6 +68,8 @@ const GLYPHS: Partial<Record<EditorCommandId, string>> = {
   alignLeft: "L",
   alignCenter: "C",
   alignRight: "R",
+  indent: "\u21E5",
+  outdent: "\u21E4",
 };
 
 function title(cmdId: EditorCommandId): string {
@@ -130,6 +135,9 @@ export default function Toolbar({ editor }: ToolbarProps) {
 
       <span className="quillmd-toolbar-sep" />
       {ALIGN_CMDS.map(renderButton)}
+
+      <span className="quillmd-toolbar-sep" />
+      {INDENT_CMDS.map(renderButton)}
 
       <span className="quillmd-toolbar-sep" />
       <button
