@@ -10,6 +10,7 @@
 #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
+#           dragdrop -> p0-shell drag & drop open (issue #27)
 #           all    -> everything runnable in this environment
 set -euo pipefail
 
@@ -305,6 +306,48 @@ test_shell_info_app_routing() {
     fi
 }
 
+# --- p0-shell: drag & drop open (issue #27) ------------------------------------
+# The per-item classification (directories via the existing list_dir command,
+# markdown files, skipped non-markdown) and the per-dropped-item status
+# feedback are covered by the vitest suite
+# (src/lib/__tests__/dragDrop.test.ts); this section checks the app-level
+# wiring the GUI driver cannot reach headlessly: App.tsx listens for Tauri's
+# onDragDropEvent and routes drops through the shared handler, and the
+# Explorer exposes a programmatic folder open so a dropped folder switches
+# the Explorer root (plan 01 acceptance #7).
+test_shell_dragdrop_app_wiring() {
+    note "shell.dragdrop App.tsx listens for onDragDropEvent"
+    if grep -q 'onDragDropEvent' "$ROOT/src/App.tsx" \
+        && grep -q 'from "@tauri-apps/api/webview"' "$ROOT/src/App.tsx" \
+        && grep -q 'handleDroppedPaths(' "$ROOT/src/App.tsx" \
+        && grep -q 'from "./lib/dragDrop"' "$ROOT/src/App.tsx"; then
+        pass "shell.dragdrop App.tsx listens for onDragDropEvent"
+    else
+        fail "shell.dragdrop App.tsx listens for onDragDropEvent"
+    fi
+}
+test_shell_dragdrop_handler() {
+    note "shell.dragdrop drop handler classifies files and folders"
+    if grep -q 'listDir(' "$ROOT/src/lib/dragDrop.ts" \
+        && grep -q 'isMarkdownPath(' "$ROOT/src/lib/dragDrop.ts" \
+        && grep -q 'Opened folder' "$ROOT/src/lib/dragDrop.ts" \
+        && grep -q 'not a markdown file' "$ROOT/src/lib/dragDrop.ts"; then
+        pass "shell.dragdrop drop handler classifies files and folders"
+    else
+        fail "shell.dragdrop drop handler classifies files and folders"
+    fi
+}
+test_shell_dragdrop_explorer_root() {
+    note "shell.dragdrop Explorer switches root to a dropped folder"
+    if grep -q 'openFolderPath' "$ROOT/src/components/Explorer.tsx" \
+        && grep -q 'openFolderPath' "$ROOT/src/App.tsx" \
+        && [ -f "$ROOT/src/lib/__tests__/dragDrop.test.ts" ]; then
+        pass "shell.dragdrop Explorer switches root to a dropped folder"
+    else
+        fail "shell.dragdrop Explorer switches root to a dropped folder"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -345,6 +388,11 @@ case "$SUBSET" in
         test_shell_info_menu_wiring
         test_shell_info_app_routing
         ;;
+    dragdrop)
+        test_shell_dragdrop_app_wiring
+        test_shell_dragdrop_handler
+        test_shell_dragdrop_explorer_root
+        ;;
     pkg)
         note "5.19 packaging (fresh-VM install+launch)"
         # CI-only: installs on fresh VM. Local: assert artifacts exist.
@@ -379,9 +427,12 @@ case "$SUBSET" in
         test_shell_info_stat_selftest
         test_shell_info_menu_wiring
         test_shell_info_app_routing
+        test_shell_dragdrop_app_wiring
+        test_shell_dragdrop_handler
+        test_shell_dragdrop_explorer_root
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|shell|copyclose|info|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac

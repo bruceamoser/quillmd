@@ -13,6 +13,8 @@ interface ExplorerProps {
 
 export interface ExplorerHandle {
   openFolder: () => void;
+  // Switches the root to a known folder path (drag & drop, issue #27).
+  openFolderPath: (path: string) => void;
 }
 
 function FolderIcon({ open }: { open: boolean }) {
@@ -68,6 +70,18 @@ export default forwardRef<ExplorerHandle, ExplorerProps>(function Explorer(
     }
   }, []);
 
+  // Sets the explorer root to a known folder path and loads its first level.
+  // Shared by the Open Folder picker and drag & drop (issue #27).
+  const showFolder = useCallback(
+    (path: string) => {
+      setRoot(path);
+      setError("");
+      setExpanded(new Set([path]));
+      void loadChildren(path);
+    },
+    [loadChildren],
+  );
+
   const openFolder = useCallback(async () => {
     if (runningInTauri()) {
       // Native folder picker (VSCode-class); falls back to a text prompt in
@@ -76,10 +90,7 @@ export default forwardRef<ExplorerHandle, ExplorerProps>(function Explorer(
         const { open } = await import("@tauri-apps/plugin-dialog");
         const selected = await open({ directory: true });
         if (typeof selected === "string") {
-          setRoot(selected);
-          setError("");
-          setExpanded(new Set([selected]));
-          await loadChildren(selected);
+          showFolder(selected);
         }
         return;
       } catch {
@@ -88,13 +99,13 @@ export default forwardRef<ExplorerHandle, ExplorerProps>(function Explorer(
     }
     const path = window.prompt("Open folder (absolute path)") ?? "";
     if (!path) return;
-    setRoot(path);
-    setError("");
-    setExpanded(new Set([path]));
-    await loadChildren(path);
-  }, [loadChildren]);
+    showFolder(path);
+  }, [showFolder]);
 
-  useImperativeHandle(ref, () => ({ openFolder }), [openFolder]);
+  useImperativeHandle(ref, () => ({ openFolder, openFolderPath: showFolder }), [
+    openFolder,
+    showFolder,
+  ]);
 
   const toggleDir = useCallback(
     async (dir: string) => {
