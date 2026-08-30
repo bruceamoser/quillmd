@@ -129,6 +129,19 @@ export async function checkExternal(path: string, expectedHash: string): Promise
   return invoke<ExternalStatus>("check_external", { path, expectedHash });
 }
 
+// OS metadata from the Rust file_stat command (plan 01 task 1.5, issue #26).
+// created/modified are epoch milliseconds; created is null where the OS does
+// not expose a birth time (Linux).
+export interface FileStat {
+  size: number;
+  created: number | null;
+  modified: number | null;
+}
+
+export async function fileStat(path: string): Promise<FileStat> {
+  return invoke<FileStat>("file_stat", { path });
+}
+
 export async function recoverSnapshot(path: string): Promise<Uint8Array | null> {
   const res = await invoke<number[] | null>("recover_snapshot", { path });
   return res ? new Uint8Array(res) : null;

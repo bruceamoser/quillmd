@@ -32,9 +32,12 @@ import {
   untitledDisplayName,
 } from "./lib/newDoc";
 import { templateById } from "./lib/templates";
+import { collectDocInfo } from "./lib/docInfo";
+import type { DocInfo } from "./lib/docInfo";
 import { dispatchEditorCommand } from "./lib/editorCommands";
 import type { EditorCommandId } from "./lib/editorCommands";
 import Editor from "./components/Editor";
+import DocInfoPanel from "./components/DocInfoPanel";
 import SourceView from "./components/SourceView";
 import SplitView from "./components/SplitView";
 import PreviewView from "./components/PreviewView";
@@ -112,6 +115,9 @@ export default function App() {
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [explorerWidth, setExplorerWidth] = useState(240);
   const [statusbarVisible, setStatusbarVisible] = useState(true);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [infoData, setInfoData] = useState<DocInfo | null>(null);
+  const [infoLoading, setInfoLoading] = useState(false);
   const [status, setStatus] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const explorerRef = useRef<ExplorerHandle | null>(null);
@@ -488,6 +494,8 @@ export default function App() {
         if (activePath) void closeDoc(activePath);
       } else if (id === "file-close-all") {
         void closeAll();
+      } else if (id === "file-info") {
+        setInfoOpen((open) => !open);
       } else if (id === "file-exit") {
         window.close();
       } else if (id.startsWith("file-recent-")) {
@@ -581,6 +589,24 @@ export default function App() {
       });
   }, []);
 
+  // File > Info (plan 01 §2.6, issue #26): while the properties flyout is
+  // open, (re)collect the active doc's properties — live text counts plus
+  // file_stat for size and OS timestamps. Stale results are ignored if the
+  // tab switches or the panel closes mid-flight.
+  useEffect(() => {
+    if (!infoOpen || !activeDoc || !activePath) return;
+    let stale = false;
+    setInfoLoading(true);
+    void collectDocInfo(activeDoc.open, activeDoc.currentText, dirty).then((info) => {
+      if (stale) return;
+      setInfoData(info);
+      setInfoLoading(false);
+    });
+    return () => {
+      stale = true;
+    };
+  }, [infoOpen, activeDoc, activePath, dirty]);
+
   // App-level shortcuts (browser dev has no native menu accelerators).
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -660,6 +686,9 @@ export default function App() {
           <button type="button" onClick={() => void closeAll()}>
             Close All
           </button>
+          <button type="button" onClick={() => setInfoOpen((open) => !open)}>
+            Info
+          </button>
           <span className="quillmd-menu-sep">|</span>
           <button type="button" onClick={() => void doExport("pdf")}>
             Export PDF
@@ -697,20 +726,29 @@ export default function App() {
             onClose={(path) => void closeDoc(path)}
             onNewTab={doOpen}
           />
-          <div className="quillmd-content" key={activePath ?? "welcome"}>
-            {activeDoc ? (
-              editorView
-            ) : (
-              <div className="quillmd-welcome">
-                <h1>QuillMD</h1>
-                <p>Open a Markdown file to begin editing.</p>
-                <button type="button" onClick={doOpen}>
-                  Open file
-                </button>
-                <button type="button" onClick={() => doNew()}>
-                  New document
-                </button>
-              </div>
+          <div className="quillmd-body">
+            <div className="quillmd-content" key={activePath ?? "welcome"}>
+              {activeDoc ? (
+                editorView
+              ) : (
+                <div className="quillmd-welcome">
+                  <h1>QuillMD</h1>
+                  <p>Open a Markdown file to begin editing.</p>
+                  <button type="button" onClick={doOpen}>
+                    Open file
+                  </button>
+                  <button type="button" onClick={() => doNew()}>
+                    New document
+                  </button>
+                </div>
+              )}
+            </div>
+            {infoOpen && activeDoc && (
+              <DocInfoPanel
+                info={infoData}
+                loading={infoLoading}
+                onClose={() => setInfoOpen(false)}
+              />
             )}
           </div>
           {statusbarVisible && (
