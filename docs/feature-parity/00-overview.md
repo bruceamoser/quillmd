@@ -26,6 +26,7 @@ complete View menu — without abandoning the v1 invariants:
 | Find/Replace | `Edit > Find` is `window.prompt()` + `window.find` (often a no-op). No replace, no next/prev, no case/regex. |
 | Context menu | None — right-click is the WebView default. |
 | Tables | Insert 3x3 grid only; no add/remove row/col, no alignment, no column resize. |
+| Diagrams | None — a ` ```mermaid ` fence renders as a plain code block (no visualization, no insert affordance). |
 | Styles | None. Headings are the only "styles". No style gallery, no user-defined styles, no theme. |
 | Tools | None (no spell check, no word count dialog, no TOC, no document properties). |
 | Undo | Unified markdown-text undo (v1 invariant — keep). |
@@ -43,7 +44,7 @@ complete View menu — without abandoning the v1 invariants:
 | **Home > Paragraph** | Bullet, numbered, task (no Word equiv), indent out/in, line spacing, align L/C/R, show/hide ¶ | **Adopt**: lists (have), indent (map to markdown indent/heading-less blocks), alignment (limited markdown mapping — see plan 04), show formatting marks. |
 | **Home > Styles** | Style gallery (Normal, Heading 1-9, Title, Quote, Code), modify style, pick style | **Adopt** — plan 05: style gallery mapped to markdown block types + user CSS themes. |
 | **Home > Editing** | Find, Replace, Select, Word Count, Spell Check | **Adopt** — plans 07 and 09. |
-| **Insert** | Tables, Pictures, Shapes, Charts, Equation, Links, Header/Footer, Caption, Text Box, Comment, Symbol, Date/Time | **Adopt**: Tables (full editing), Pictures, Links, Symbols (emoji exists — expand), Date/Time, Comment (as HTML comment or GFM annotation — defer), Caption (defer). **Skip**: Shapes, Charts, Text Boxes (markdown-native equivalents don't exist; out of scope). |
+| **Insert** | Tables, Pictures, Shapes, Charts, Equation, Links, Header/Footer, Caption, Text Box, Comment, Symbol, Date/Time | **Adopt**: Tables (full editing), Pictures, Links, Symbols (emoji exists — expand), Date/Time, Comment (as HTML comment or GFM annotation — defer), Caption (defer). **Charts** → **Mermaid diagrams** (plan 11: fenced code blocks render live, export to PNG). **Skip**: Shapes, Text Boxes (markdown-native equivalents don't exist; out of scope). |
 | **Layout** | Margins, Orientation, Size, Columns, Spacing, Page Break, Drop Cap | **Adopt**: Page Break (`<div class="page-break"></div>` + Typst PDF), spacing/line-height via theme. **Skip**: margins/orientation/columns (theme-level only, via Typst template later). |
 | **References** | Table of Contents, Footnotes, Endnotes, Citations, Cross-references, Captions | **Adopt**: TOC (generate from headings), footnotes (have). **Defer**: citations/cross-refs/captions. |
 | **Review** | Spelling & Grammar, Thesaurus, Comments, Track Changes, Compare | **Adopt**: spell check (webview + HUNSPELL/`lrc` fallback), track changes via markdown diff view (defer). **Skip**: thesaurus, compare. |
@@ -56,18 +57,20 @@ complete View menu — without abandoning the v1 invariants:
 | **File** | New, Open, Make a copy, Import, Share, Download, Print, Save & share, Settings, Versions, Explore | **Adopt**: New, Open, Import, Download (have), Make a copy, Settings (per-doc defaults), Versions (we have crash snapshots — expose a "Restore snapshot" item). **Skip**: Share (local-first), Explore. |
 | **Edit** | Undo/Redo, Cut/Copy/Paste, Select all, Find and replace, Substitutions, Spelling, Translate | **Adopt**: Find and replace (real UI), spell check, paste options. **Defer**: substitutions, translate. |
 | **View** | Show blank pages, word wrap, ruler, zoom, Full screen | **Adopt**: wrap, zoom, full screen, view modes. **Skip**: ruler (no CSS page model). |
-| **Insert** | Page break, image, Table, Chart, Text box, Special characters, Comment, Link, Footnote, Date/time, Horizontal line, Equation | **Adopt**: page break, image, table, special characters, comment (defer), link, footnote, date/time, hr. **Skip**: chart, text box, equation (MathJax is a candidate stretch — park). |
+| **Insert** | Page break, image, Table, Chart, Text box, Special characters, Comment, Link, Footnote, Date/time, Horizontal line, Equation | **Adopt**: page break, image, table, special characters, comment (defer), link, footnote, date/time, hr. **Chart** → **Mermaid diagrams** (plan 11). **Skip**: text box, equation (MathJax is a candidate stretch — park). |
 | **Format** | Clear formatting, Text (font, size, color, underline, align), Paragraph (spacing, indent, lists), Lines & spacing, Borders & shading, Drop cap | **Adopt** as in Word row above. **Skip**: borders/shading (theme-level), drop cap (defer). |
 | **Tools** | Spelling, Word count, Research, Clear formatting, Clear document, Script editor, Macro | **Adopt**: word count, clear formatting, clear document (dangerous op with confirm). **Skip**: research, scripts, macros. |
 | **Extensions / Help** | Add-ons, What's new, Shortcuts | **Adopt**: shortcuts dialog (have, move to View or Help). |
 
 ### Net decisions
 
-- **Adopt (this program):** everything in the "Adopt" cells above → plans 01-09.
+- **Adopt (this program):** everything in the "Adopt" cells above → plans 01-11
+  (Charts in both apps map to Mermaid diagrams, plan 11).
 - **Defer (documented, not scheduled):** Format Painter, track-changes/compare, comments,
   citations, captions, MathJax, drop cap, margins/columns as first-class (theme-level only).
-- **Skip (no markdown-native model):** shapes, charts, text boxes, print dialog
+- **Skip (no markdown-native model):** shapes, text boxes, print dialog
   (Export PDF covers it), cloud sharing/sync, collaboration.
+  (Charts *are* covered — Mermaid, plan 11.)
 
 The guiding rule: **if it cannot round-trip through markdown (or a stable
 HTML/Typst attribute), it is not a first-class feature** — it is either a
@@ -79,7 +82,7 @@ theme/rendering concern or parked.
 |---|---|---|---|
 | **P0 — Foundation** | 01 | Native dialogs everywhere (open/save-as/export/import), New + New from template, Make a copy, native confirmation dialogs replacing `window.prompt/confirm`, Close/Close All | — |
 | **P1 — Editing core** | 02, 07 | Full WYSIWYG editor upgrade (underline, alignment, indent, zoom, spellcheck attr, formatting marks, paste-as-text), real Find & Replace panel | P0 |
-| **P2 — Presentation** | 04, 05, 06 | Fonts & sizes (family/size/underline/color/highlight via markdown attributes + CSS), style gallery + themes + modify, full table editing | P1 |
+| **P2 — Presentation** | 04, 05, 06, 11 | Fonts & sizes (family/size/underline/color/highlight via markdown attributes + CSS), style gallery + themes + modify, full table editing, Mermaid diagrams (insert/edit/visualize + PNG export) | P1 |
 | **P3 — Interaction** | 03, 08 | Context menus (editor, table, image, link, tabs, explorer), File menu completion (properties, close all, versions/snapshot restore) | P0 |
 | **P4 — Document tools** | 09, 10 | TOC pane + insert, word count dialog, spell check, special characters, date/time, page break; View menu completion + settings dialog + clear document | P1 |
 
@@ -96,7 +99,7 @@ Sequencing notes:
 
 ## 5. GitHub issue structure
 
-- One **parent issue per plan doc** (`docs/feature-parity/01-*.md` … `09-*.md`),
+- One **parent issue per plan doc** (`docs/feature-parity/01-*.md` … `11-*.md`),
   titled `P<0-4>/<area>: <name>`, labeled `enhancement` + `feature-parity`,
   milestone **Feature Parity (v2)**.
 - Each plan's **task breakdown** (last section of each doc) becomes **sub-issues**
