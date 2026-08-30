@@ -25,7 +25,9 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO="bruceamoser/quillmd"
 OPENCODE="${OPENCODE:-$HOME/.opencode/bin/opencode}"
 WT_BASE="/tmp/wt-quillmd"
-CARGO_TARGET_SHARED="$WT_BASE/.shared-cargo-target"
+# Reuse the main repo's warm cargo target so worktree gates don't rebuild
+# the entire Tauri tree from scratch (a cold 16-way build OOMs this box).
+CARGO_TARGET_SHARED="$REPO_DIR/src-tauri/target"
 RUNS_DIR="$REPO_DIR/scripts/.fp-runs"
 STATE_FILE="$REPO_DIR/scripts/.fp-pipeline-state.json"
 
@@ -187,7 +189,9 @@ log "gate: npm run build"
 (cd "$WT" && npm run build) >>"$LOGFILE" 2>&1 || gate_fail "npm run build"
 if git -C "$WT" diff origin/main..HEAD --name-only | grep -q '^src-tauri/'; then
   log "gate: cargo test (rust touched)"
-  (cd "$WT/src-tauri" && CARGO_TARGET_DIR="$CARGO_TARGET_SHARED" cargo test) >>"$LOGFILE" 2>&1 \
+  # CARGO_BUILD_JOBS=4: full-core parallel rustc OOMs this box (swap 8G);
+  # hard rule is -j 4 for local builds.
+  (cd "$WT/src-tauri" && CARGO_TARGET_DIR="$CARGO_TARGET_SHARED" CARGO_BUILD_JOBS=4 cargo test) >>"$LOGFILE" 2>&1 \
     || gate_fail "cargo test"
 fi
 if git -C "$WT" diff origin/main..HEAD --name-only | grep -q '^tests/fixtures/'; then
