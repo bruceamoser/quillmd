@@ -82,3 +82,41 @@ later with P3), templates-as-gallery UI beyond the simple list.
 5. **Info (document properties)** — `file_stat` Rust command + properties panel UI (right-side flyout or status-bar popover).
 6. **Drag & drop open** — `onDragDropEvent` handling for files and folders; status-bar feedback per dropped item.
 7. **Acceptance + tests** — vitest for dialogs.ts, interaction test for multi-open, acceptance-harness section `p0-shell`; run on Linux, manual checklist on Windows box.
+
+## 6. Manual acceptance checklist (Windows box)
+
+The headless suites (`npm test`, `tests/acceptance-test.sh p0-shell`) run
+everywhere, but native dialogs and accelerators can only be observed on a
+real desktop. After `npm run tauri build` on a Windows 10/11 machine, run
+`tests\acceptance-test.sh p0-shell` (Git Bash) and then check §4 by hand:
+
+- [ ] **AC1 — OS dialogs.** File > Open, Open Folder, Save As, Save
+      (untitled), Export ×4 (PDF/DOCX/EPUB/TXT), Import DOCX, Make a Copy
+      each open an OS dialog (not an in-window prompt). Cancelling each one
+      leaves the app state unchanged.
+- [ ] **AC2 — Ctrl+O multi-select.** Ctrl+O (and File > Open...) opens the
+      native open dialog; select 2–3 .md files at once → one tab per file in
+      the TabBar, the last picked file is the active tab. A non-markdown file
+      mixed into the selection is filtered by the dialog's Markdown filter.
+- [ ] **AC3 — New / template / first save.** Ctrl+N opens a working untitled
+      tab; File > New from Template > <any template> seeds the content. First
+      Ctrl+S on an untitled tab opens the native save dialog; after choosing
+      a path the tab title becomes the chosen file name and the file exists
+      on disk with the edited bytes.
+- [ ] **AC4 — Make a copy.** File > Make a Copy opens a save dialog seeded
+      with `<stem>-copy.md`; after saving, a second file exists on disk and
+      both tabs edit independently (type in each; save; verify both files).
+- [ ] **AC5 — Close / Close All confirm only when dirty.** Close a clean tab
+      → no dialog. Edit a tab, then File > Close → native warning dialog
+      (OK/Cancel); Cancel keeps the tab, OK closes it. Close All with mixed
+      dirty/clean tabs → one native dialog listing the dirty tabs.
+- [ ] **AC6 — Info panel.** Open a known fixture (e.g.
+      `fixtures\clean\headings.md`), File > Info → size matches
+      `dir`/Properties, word/char/line counts match, EOL shows CRLF for a
+      CRLF file, OS modified timestamp matches file properties.
+- [ ] **AC7 — Drag & drop.** Drag 2 .md files + 1 folder onto the window →
+      2 new tabs, Explorer root switches to the folder, status bar shows one
+      line per dropped item.
+- [ ] **AC8 — Regressions.** `npm test` green on the Windows box (round-trip
+      fixtures, CRLF); `tests\acceptance-test.sh core` green with the built
+      binary (`QUILLMD_BIN` or default target path).
