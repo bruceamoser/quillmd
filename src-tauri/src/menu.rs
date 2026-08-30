@@ -60,10 +60,28 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
     Ok(menu)
 }
 
+// Built-in template set (plan 01 task 1.3). The ids must stay in sync with
+// src/lib/templates.ts; the frontend resolves file-new-template-<id> to the
+// template content bundled in src/templates/<id>.md.
+pub const TEMPLATES: &[(&str, &str)] = &[
+    ("blank", "Blank"),
+    ("meeting-notes", "Meeting Notes"),
+    ("blog-post", "Blog Post"),
+    ("readme", "README"),
+    ("project-plan", "Project Plan"),
+    ("proposal-skeleton", "Proposal Skeleton"),
+];
+
 fn build_file_menu<R: Runtime>(
     app: &AppHandle<R>,
     recent: &[String],
 ) -> tauri::Result<Submenu<R>> {
+    let new_doc = MenuItem::with_id(app, "file-new", "New", true, Some("Ctrl+N"))?;
+    let mut new_template = SubmenuBuilder::new(app, "New from Template");
+    for (id, label) in TEMPLATES {
+        new_template = new_template.text(format!("file-new-template-{id}"), *label);
+    }
+    let new_template = new_template.build()?;
     let open = MenuItem::with_id(app, "file-open", "Open...", true, Some("Ctrl+O"))?;
     let open_folder =
         MenuItem::with_id(app, "file-open-folder", "Open Folder...", true, Some("Ctrl+Shift+O"))?;
@@ -96,6 +114,9 @@ fn build_file_menu<R: Runtime>(
     let import = MenuItem::with_id(app, "import-docx", "Import DOCX...", true, None::<&str>)?;
 
     let file = SubmenuBuilder::new(app, "File")
+        .item(&new_doc)
+        .item(&new_template)
+        .separator()
         .items(&[&open, &open_folder])
         .separator()
         .items(&[&save, &save_as])

@@ -1,3 +1,4 @@
+import { isUntitledPath, untitledDisplayName } from "../lib/newDoc";
 import type { ViewMode } from "./viewModes";
 
 export interface TabInfo {
@@ -19,6 +20,12 @@ function baseName(path: string): string {
   return parts[parts.length - 1] ?? path;
 }
 
+// Synthetic untitled tabs (:new:<n>) show as "Untitled <n>"; real files show
+// their base name.
+function tabName(path: string): string {
+  return isUntitledPath(path) ? untitledDisplayName(path) : baseName(path);
+}
+
 export default function TabBar({ tabs, activePath, onSelect, onClose, onNewTab }: TabBarProps) {
   return (
     <div className="quillmd-tabbar">
@@ -35,7 +42,7 @@ export default function TabBar({ tabs, activePath, onSelect, onClose, onNewTab }
           }}
           onClick={() => onSelect(tab.path)}
         >
-          <span className="quillmd-tab-name">{baseName(tab.path)}</span>
+          <span className="quillmd-tab-name">{tabName(tab.path)}</span>
           {tab.dirty && (
             <span className="quillmd-tab-dirty" title="Unsaved changes">
               {"\u2022"}

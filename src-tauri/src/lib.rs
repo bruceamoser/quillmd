@@ -154,6 +154,40 @@ pub fn stress_baseline() -> Result<(), SelfTestError> {
     Ok(())
 }
 
+/// Baseline for the built-in template set (plan 01 task 1.3): the templates
+/// are bundled with the binary through include_str! (a missing file breaks
+/// the build), and the bundled ids must exactly match the File > New from
+/// Template submenu in menu.rs.
+pub fn templates_baseline() -> Result<(), SelfTestError> {
+    const TEMPLATE_CONTENTS: &[(&str, &str)] = &[
+        ("blank", include_str!("../../src/templates/blank.md")),
+        ("meeting-notes", include_str!("../../src/templates/meeting-notes.md")),
+        ("blog-post", include_str!("../../src/templates/blog-post.md")),
+        ("readme", include_str!("../../src/templates/readme.md")),
+        ("project-plan", include_str!("../../src/templates/project-plan.md")),
+        ("proposal-skeleton", include_str!("../../src/templates/proposal-skeleton.md")),
+    ];
+    if TEMPLATE_CONTENTS.len() != menu::TEMPLATES.len() {
+        return Err(SelfTestError(
+            "template set size mismatch between bundle and menu".into(),
+        ));
+    }
+    for (id, content) in TEMPLATE_CONTENTS {
+        let in_menu = menu::TEMPLATES.iter().any(|(mid, _)| mid == id);
+        if !in_menu {
+            return Err(SelfTestError(format!("template {id} missing from the menu set")));
+        }
+        if *id == "blank" {
+            if !content.is_empty() {
+                return Err(SelfTestError("blank template must be empty".into()));
+            }
+        } else if content.trim().is_empty() {
+            return Err(SelfTestError(format!("template {id} is empty")));
+        }
+    }
+    Ok(())
+}
+
 /// Baseline for the large-file envelope: generate ~1MB of markdown in a temp
 /// file and atomically write it; the timing oracle runs in the JS layer.
 pub fn large_file_baseline() -> Result<(), SelfTestError> {

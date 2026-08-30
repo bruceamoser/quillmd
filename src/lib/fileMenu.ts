@@ -14,6 +14,7 @@ import {
 import type { DialogFilter } from "./dialogs";
 import { baseName, exportDocument, importDocument, isAbsolutePath, saveAs } from "./fileIo";
 import type { ExportFormat, OpenFileResult } from "./fileIo";
+import { isUntitledPath, untitledDefaultName } from "./newDoc";
 
 export interface FileMenuDeps {
   // Opens the file at `path` as a new tab and activates it.
@@ -38,8 +39,10 @@ export async function openPickedFiles(deps: FileMenuDeps): Promise<void> {
 }
 
 // Default Save As destination: the current document path when it is a real
-// path (Word behavior); just the file name for browser-picked files.
+// path (Word behavior); just the file name for browser-picked files; and
+// untitled-N.md for synthetic untitled paths.
 export function saveAsDefaultName(path: string): string {
+  if (isUntitledPath(path)) return untitledDefaultName(path);
   if (path === "") return "untitled.md";
   return isAbsolutePath(path) ? path : baseName(path);
 }

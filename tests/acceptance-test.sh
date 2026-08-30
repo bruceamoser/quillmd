@@ -7,6 +7,7 @@
 #   subset: core   -> §5.1-5.12 headless (CI platform gate)
 #           export -> §5.13-5.18 (requires pandoc + typst)
 #           pkg    -> §5.19 (packaging, requires built artifacts)
+#           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           all    -> everything runnable in this environment
 set -euo pipefail
 
@@ -189,6 +190,38 @@ test_large_file() {
     if [ "$out" = "OK" ]; then pass "5.20 large file envelope (1MB)"; else fail "5.20 large file envelope (1MB)"; fi
 }
 
+# --- p0-shell: File > New + New from template (issue #24) ----------------------
+# The untitled-doc lifecycle (synthetic :new:<n> paths, re-key on first save)
+# and the menu-event routing are covered by the vitest suites
+# (src/lib/__tests__/newDoc.test.ts, templates.test.ts); this section checks
+# the app-level end-to-end wiring the GUI driver cannot reach headlessly:
+# the template set is actually bundled into the binary, and the native File
+# menu carries the New (Ctrl+N) + New from Template items.
+test_shell_new_bundled() {
+    note "shell.new template set bundled in binary (self-test)"
+    if [ ! -x "$APP_BIN" ]; then
+        echo "SKIP (binary not built)"
+        return
+    fi
+    local out
+    out=$("$APP_BIN" --self-test templates 2>/dev/null || echo "MISSING")
+    if [ "$out" = "OK" ]; then pass "shell.new template set bundled in binary (self-test)"; else fail "shell.new template set bundled in binary (self-test)"; fi
+}
+test_shell_new_menu_wiring() {
+    note "shell.new File menu + Ctrl+N wiring present"
+    if grep -q 'MenuItem::with_id(app, "file-new", "New", true, Some("Ctrl+N"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'SubmenuBuilder::new(app, "New from Template")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'file-new-template-' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'from "./lib/newDoc"' "$ROOT/src/App.tsx" \
+        && grep -q 'from "./lib/templates"' "$ROOT/src/App.tsx" \
+        && [ -d "$ROOT/src/templates" ] \
+        && [ "$(ls "$ROOT/src/templates" | wc -l)" -ge 6 ]; then
+        pass "shell.new File menu + Ctrl+N wiring present"
+    else
+        fail "shell.new File menu + Ctrl+N wiring present"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -214,6 +247,10 @@ case "$SUBSET" in
         test_export_epub
         test_export_txt
         test_import_docx
+        ;;
+    shell)
+        test_shell_new_bundled
+        test_shell_new_menu_wiring
         ;;
     pkg)
         note "5.19 packaging (fresh-VM install+launch)"
@@ -241,6 +278,8 @@ case "$SUBSET" in
         test_export_epub
         test_export_txt
         test_import_docx
+        test_shell_new_bundled
+        test_shell_new_menu_wiring
         ;;
     *)
         echo "Unknown subset: $SUBSET (core|export|pkg|all)" >&2
