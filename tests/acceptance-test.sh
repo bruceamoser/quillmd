@@ -7,6 +7,9 @@
 #   subset: core   -> §5.1-5.12 headless (CI platform gate)
 #           export -> §5.13-5.18 (requires pandoc + typst)
 #           pkg    -> §5.19 (packaging, requires built artifacts)
+#           p0-shell -> all app-shell checks: File > New (#24), Make a Copy /
+#                       Close / Close All (#25), File > Info (#26), drag & drop
+#                       (#27), multi-open + dialog choke point (#28)
 #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -348,6 +351,55 @@ test_shell_dragdrop_explorer_root() {
     fi
 }
 
+# --- p0-shell: multi-open + dialog choke point (issue #28) -----------------------
+# The multi-open interaction (native multi-select dialog -> one tab per file
+# in pick order, last picked activated, a failing file never aborts the batch)
+# is covered by the vitest suites (src/lib/__tests__/multiOpen.test.ts,
+# fileMenu.test.ts, dialogs.test.ts); this section checks the app-level wiring
+# the GUI driver cannot reach headlessly: the native File menu carries Open...
+# on Ctrl+O, App.tsx routes it through the dialogs.ts choke point, and no file
+# operation in the Tauri code path falls back to window.prompt (plan 01
+# acceptance #1 + #2).
+test_shell_multiopen_menu_wiring() {
+    note "shell.multiopen Ctrl+O -> native multi-select Open (wiring)"
+    if grep -q 'MenuItem::with_id(app, "file-open", "Open...", true, Some("Ctrl+O"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'id === "file-open"' "$ROOT/src/App.tsx" \
+        && grep -q 'openPickedFiles(' "$ROOT/src/App.tsx" \
+        && grep -q 'from "./lib/fileMenu"' "$ROOT/src/App.tsx"; then
+        pass "shell.multiopen Ctrl+O -> native multi-select Open (wiring)"
+    else
+        fail "shell.multiopen Ctrl+O -> native multi-select Open (wiring)"
+    fi
+}
+test_shell_multiopen_interaction_test() {
+    note "shell.multiopen interaction test present (vitest)"
+    if [ -f "$ROOT/src/lib/__tests__/multiOpen.test.ts" ] \
+        && grep -q 'openPickedFiles' "$ROOT/src/lib/__tests__/multiOpen.test.ts" \
+        && grep -q 'openPath' "$ROOT/src/lib/__tests__/multiOpen.test.ts" \
+        && grep -q 'multiple: true' "$ROOT/src/lib/__tests__/multiOpen.test.ts"; then
+        pass "shell.multiopen interaction test present (vitest)"
+    else
+        fail "shell.multiopen interaction test present (vitest)"
+    fi
+}
+test_shell_no_fileop_prompt() {
+    note "shell.dialogs no window.prompt in Tauri file-op path (acceptance #1)"
+    # Every window.prompt( call under src/ must be a browser-dev fallback
+    # (dialogs.ts, Explorer.tsx) or an editor-content prompt (link / image /
+    # emoji in editorCommands.ts, footnote in Editor.tsx, Find in App.tsx —
+    # all P1 scope); no file operation (Open, Open Folder, Save As, Export,
+    # Import) may prompt for a path in the Tauri code path.
+    local hits unexpected
+    hits=$(grep -rn 'window\.prompt(' "$ROOT/src" --include='*.ts' --include='*.tsx' 2>/dev/null | grep -v 'src/lib/__tests__/' || true)
+    unexpected=$(printf '%s\n' "$hits" | grep -vE 'src/lib/dialogs\.ts|src/components/Explorer\.tsx|src/lib/editorCommands\.ts|src/components/Editor\.tsx|src/App\.tsx:.*window\.prompt\("Find text"\)' || true)
+    if [ -z "$unexpected" ]; then
+        pass "shell.dialogs no window.prompt in Tauri file-op path (acceptance #1)"
+    else
+        printf '%s\n' "$unexpected"
+        fail "shell.dialogs no window.prompt in Tauri file-op path (acceptance #1)"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -373,6 +425,22 @@ case "$SUBSET" in
         test_export_epub
         test_export_txt
         test_import_docx
+        ;;
+    p0-shell)
+        test_shell_new_bundled
+        test_shell_new_menu_wiring
+        test_shell_copyclose_menu_wiring
+        test_shell_copyclose_app_routing
+        test_shell_copyclose_dirty_confirm
+        test_shell_info_stat_selftest
+        test_shell_info_menu_wiring
+        test_shell_info_app_routing
+        test_shell_dragdrop_app_wiring
+        test_shell_dragdrop_handler
+        test_shell_dragdrop_explorer_root
+        test_shell_multiopen_menu_wiring
+        test_shell_multiopen_interaction_test
+        test_shell_no_fileop_prompt
         ;;
     shell)
         test_shell_new_bundled
@@ -430,9 +498,12 @@ case "$SUBSET" in
         test_shell_dragdrop_app_wiring
         test_shell_dragdrop_handler
         test_shell_dragdrop_explorer_root
+        test_shell_multiopen_menu_wiring
+        test_shell_multiopen_interaction_test
+        test_shell_no_fileop_prompt
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac
