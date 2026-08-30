@@ -7,6 +7,17 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 
 export type Eol = "lf" | "crlf";
 
+// True for POSIX and Windows absolute paths (`/...` or `C:\...`).
+export function isAbsolutePath(p: string): boolean {
+  return /^([a-zA-Z]:[\\/]|\/)/.test(p);
+}
+
+// Last path segment; tolerates both / and \ separators.
+export function baseName(path: string): string {
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? path;
+}
+
 export interface OpenFileResult {
   path: string;
   source: string;

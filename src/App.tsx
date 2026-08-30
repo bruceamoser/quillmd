@@ -2,19 +2,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { createDocument, encodeDocument, saveDocument } from "./lib/pipeline";
 import {
+  baseName,
   checkExternal,
   downloadBytes,
-  exportDocument,
   getRecentFiles,
-  importDocument,
+  isAbsolutePath,
   openFromFile,
   openPath,
   runningInTauri,
-  saveAs,
   saveFile,
   setRecentFiles as persistRecentFiles,
 } from "./lib/fileIo";
 import type { ExportFormat, OpenFileResult } from "./lib/fileIo";
+import {
+  exportDefaultName,
+  exportDocumentAs,
+  importDocx,
+  openPickedFiles,
+  saveAsDocument,
+} from "./lib/fileMenu";
 import { dispatchEditorCommand } from "./lib/editorCommands";
 import type { EditorCommandId } from "./lib/editorCommands";
 import Editor from "./components/Editor";
@@ -85,15 +91,6 @@ const SHORTCUTS_TEXT = [
   "Ctrl+Z / Ctrl+Shift+Z: undo / redo",
   "Ctrl+Shift+E: toggle explorer",
 ].join("\n");
-
-function isAbsolutePath(p: string): boolean {
-  return /^([a-zA-Z]:[\\/]|\/)/.test(p);
-}
-
-function baseName(path: string): string {
-  const parts = path.split(/[\\/]/).filter(Boolean);
-  return parts[parts.length - 1] ?? path;
-}
 
 export default function App() {
   const [docs, setDocs] = useState<Record<string, DocState>>({});
@@ -199,19 +196,26 @@ export default function App() {
 
   const handleOpenInput = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const opened = await openFromFile(file);
-      addDoc(opened);
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+      for (const file of Array.from(files)) {
+        try {
+          const opened = await openFromFile(file);
+          addDoc(opened);
+        } catch (err) {
+          setStatus(`Open failed: ${file.name} (${String(err)})`);
+        }
+      }
       if (e.target) e.target.value = "";
     },
     [addDoc],
   );
 
+  // File > Open: native multi-select dialog under Tauri (one tab per file);
+  // the hidden <input type="file"> is the browser-dev fallback.
   const doOpen = useCallback(() => {
     if (runningInTauri()) {
-      const path = window.prompt("Open file (absolute path)") ?? "";
-      if (path) void openByPath(path);
+      void openPickedFiles({ openByPath, status: setStatus });
     } else {
       fileInputRef.current?.click();
     }
@@ -270,15 +274,12 @@ export default function App() {
         ? doc.open.originalBytes
         : encodeDocument(result.text, { eol: doc.open.eol, bom: doc.open.bom });
     if (runningInTauri()) {
-      const name = window.prompt("Save as path", doc.open.path) ?? "";
-      if (!name) return;
-      await saveAs(name, bytes);
-      setStatus(`Saved as ${name}`);
+      await saveAsDocument(doc.open, bytes, { openByPath, status: setStatus });
     } else {
       downloadBytes(doc.open.path || "document.md", bytes);
       setStatus("Saved (downloaded)");
     }
-  }, [activeDoc, model]);
+  }, [activeDoc, model, openByPath]);
 
   const setMode = useCallback(
     (mode: ViewMode) => {
@@ -299,18 +300,11 @@ export default function App() {
     async (format: ExportFormat) => {
       const doc = activeDoc;
       if (!doc) return;
-      setStatus(`Exporting ${format.toUpperCase()}...`);
-      const ext = format === "txt-plain" ? "txt" : format;
-      const defaultName = doc.open.path.replace(/\.[^.]+$/, "") + "." + ext;
       if (runningInTauri()) {
-        const out = window.prompt(`Export as ${format.toUpperCase()}`, defaultName) ?? "";
-        if (!out) return;
-        try {
-          await exportDocument(doc.open.path, format, out);
-          setStatus(`Exported ${out}`);
-        } catch (err) {
-          setStatus(`Export failed: ${String(err)}`);
-        }
+        await exportDocumentAs(doc.open.path, format, {
+          openByPath,
+          status: setStatus,
+        });
       } else {
         const mime =
           format === "pdf"
@@ -320,29 +314,24 @@ export default function App() {
               : format === "epub"
                 ? "application/epub+zip"
                 : "text/plain";
+        const defaultName = exportDefaultName(doc.open.path, format);
         downloadBytes(defaultName, new TextEncoder().encode(doc.currentText), mime);
         setStatus(`Exported ${defaultName} (dev: raw markdown bytes)`);
       }
     },
-    [activeDoc],
+    [activeDoc, openByPath],
   );
 
+  // File > Import: native docx picker + save-as dialog under Tauri; the
+  // browser dev path has no Rust conversion layer, so it reports that.
   const doImport = useCallback(async () => {
     if (!activeDoc) return;
-    setStatus("Importing DOCX...");
-    const src = window.prompt("Path to .docx file") ?? "";
-    if (!src) return;
-    const out = window.prompt("Save imported markdown as (.md)") ?? "";
-    if (!out) return;
-    try {
-      await importDocument(src, out);
-      const opened = await openPath(out);
-      addDoc(opened);
-      setStatus(`Imported ${src} -> ${out}`);
-    } catch (err) {
-      setStatus(`Import failed: ${String(err)}`);
+    if (runningInTauri()) {
+      await importDocx({ openByPath, status: setStatus });
+    } else {
+      setStatus("Import DOCX is only available in the desktop app");
     }
-  }, [activeDoc, addDoc]);
+  }, [activeDoc, openByPath]);
 
   const closeDoc = useCallback(
     (path: string) => {
@@ -534,15 +523,6 @@ export default function App() {
           <button type="button" onClick={() => void doImport()}>
             Import DOCX
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              const path = window.prompt("Enter absolute file path");
-              if (path) void openByPath(path);
-            }}
-          >
-            open by path
-          </button>
         </header>
       )}
 
@@ -597,6 +577,7 @@ export default function App() {
         ref={fileInputRef}
         type="file"
         accept=".md,.markdown,.txt,text/markdown"
+        multiple
         style={{ display: "none" }}
         onChange={handleOpenInput}
       />
