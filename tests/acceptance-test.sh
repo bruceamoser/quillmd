@@ -13,7 +13,8 @@
  #           p1-editor -> plan 02 editor-core checks: underline toolbar/menu/
  #                       Ctrl+U wiring (#31), text alignment toolbar/menu/
  #                       serializer wiring (#32), indent/outdent + list
- #                       keyboard (Ctrl+]/[ + Tab) wiring (#33)
+ #                       keyboard (Ctrl+]/[ + Tab) wiring (#33), line spacing +
+ #                       word wrap + formatting marks wiring (#34)
 #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -564,6 +565,68 @@ test_editor_indent_keydown() {
     fi
 }
 
+# --- p1-editor: line spacing + word wrap + formatting marks (issue #34, plan 02 task 2.5) ---
+# Per-doc view settings (line-spacing presets, word wrap, formatting marks)
+# persist per path in localStorage (src/lib/__tests__/docSettings.test.ts) and
+# apply to the editor DOM as a CSS variable plus wrapper classes
+# (editorCommands.ts applyViewSettings / wordWrap command). This section checks
+# the app-level wiring the GUI driver cannot reach headlessly: the native View
+# menu carries the Line Spacing submenu + Show Formatting Marks + Word Wrap,
+# App.tsx routes their ids and persists the settings, and the CSS implements
+# all three.
+test_editor_views_menu_wiring() {
+    note "editor.views View menu: Line Spacing submenu + marks + wrap present"
+    if grep -q 'SubmenuBuilder::new(app, "Line Spacing")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"view-spacing-single"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"view-spacing-1.15"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"view-spacing-1.5"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"view-spacing-double"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "view-show-marks", "Show Formatting Marks"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "view-word-wrap", "Word Wrap"' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "editor.views View menu: Line Spacing submenu + marks + wrap present"
+    else
+        fail "editor.views View menu: Line Spacing submenu + marks + wrap present"
+    fi
+}
+test_editor_views_app_routing() {
+    note "editor.views App.tsx routes view-spacing-*/marks/wrap + persists settings"
+    if grep -q 'id === "view-show-marks"' "$ROOT/src/App.tsx" \
+        && grep -q 'id === "view-word-wrap"' "$ROOT/src/App.tsx" \
+        && grep -q 'id.startsWith("view-spacing-")' "$ROOT/src/App.tsx" \
+        && grep -q 'from "./lib/docSettings"' "$ROOT/src/App.tsx" \
+        && grep -q 'saveDocSettings(' "$ROOT/src/App.tsx" \
+        && grep -q 'loadDocSettings(' "$ROOT/src/App.tsx"; then
+        pass "editor.views App.tsx routes view-spacing-*/marks/wrap + persists settings"
+    else
+        fail "editor.views App.tsx routes view-spacing-*/marks/wrap + persists settings"
+    fi
+}
+test_editor_views_registry() {
+    note "editor.views registry wordWrap command + applyViewSettings present"
+    if grep -q 'id: "wordWrap"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export function applyViewSettings' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'quillmd-no-wrap' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q '"--quillmd-line-spacing"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'applyViewSettings' "$ROOT/src/components/Editor.tsx" \
+        && [ -f "$ROOT/src/lib/__tests__/docSettings.test.ts" ] \
+        && grep -q 'wordWrap' "$ROOT/src/lib/__tests__/editorCommands.test.ts"; then
+        pass "editor.views registry wordWrap command + applyViewSettings present"
+    else
+        fail "editor.views registry wordWrap command + applyViewSettings present"
+    fi
+}
+test_editor_views_css() {
+    note "editor.views CSS: line-spacing var + no-wrap + show-marks present"
+    if grep -q '\-\-quillmd-line-spacing' "$ROOT/src/App.css" \
+        && grep -q 'quillmd-no-wrap' "$ROOT/src/App.css" \
+        && grep -q 'quillmd-show-marks' "$ROOT/src/App.css" \
+        && grep -q '00B6' "$ROOT/src/App.css"; then
+        pass "editor.views CSS: line-spacing var + no-wrap + show-marks present"
+    else
+        fail "editor.views CSS: line-spacing var + no-wrap + show-marks present"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -619,6 +682,10 @@ case "$SUBSET" in
         test_editor_indent_app_routing
         test_editor_indent_toolbar
         test_editor_indent_keydown
+        test_editor_views_menu_wiring
+        test_editor_views_app_routing
+        test_editor_views_registry
+        test_editor_views_css
         ;;
     shell)
         test_shell_new_bundled
@@ -691,6 +758,10 @@ case "$SUBSET" in
         test_editor_indent_app_routing
         test_editor_indent_toolbar
         test_editor_indent_keydown
+        test_editor_views_menu_wiring
+        test_editor_views_app_routing
+        test_editor_views_registry
+        test_editor_views_css
         ;;
     *)
         echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|shell|copyclose|info|dragdrop|all)" >&2

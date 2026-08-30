@@ -35,8 +35,13 @@ import {
 import { templateById } from "./lib/templates";
 import { collectDocInfo } from "./lib/docInfo";
 import type { DocInfo } from "./lib/docInfo";
-import { dispatchEditorCommand } from "./lib/editorCommands";
-import type { EditorCommandId } from "./lib/editorCommands";
+import {
+  dispatchEditorCommand,
+  isLineSpacingValue,
+} from "./lib/editorCommands";
+import type { EditorCommandId, LineSpacingValue } from "./lib/editorCommands";
+import { loadDocSettings, saveDocSettings } from "./lib/docSettings";
+import type { DocSettings } from "./lib/docSettings";
 import { handleDroppedPaths } from "./lib/dragDrop";
 import Editor from "./components/Editor";
 import DocInfoPanel from "./components/DocInfoPanel";
@@ -55,6 +60,9 @@ interface DocState {
   open: OpenFileResult;
   currentText: string;
   viewMode: ViewMode;
+  // Per-doc view preferences (plan 02 task 2.5): line spacing, word wrap, and
+  // formatting marks. View-only — never part of the saved markdown.
+  settings: DocSettings;
 }
 
 // Native menu item id -> shared editor command. Both Insert and Format menus
@@ -169,6 +177,7 @@ export default function App() {
         open: opened,
         currentText: opened.source,
         viewMode: loadViewMode(opened.path),
+        settings: loadDocSettings(opened.path),
       },
     }));
     setActivePath(opened.path);
@@ -258,6 +267,7 @@ export default function App() {
           open: opened,
           currentText: content,
           viewMode: loadViewMode(opened.path),
+          settings: loadDocSettings(opened.path),
         },
       }));
       setActivePath(opened.path);
@@ -379,6 +389,42 @@ export default function App() {
     if (!doc || !activePath) return;
     setMode(doc.viewMode === "wysiwyg" ? "source" : "wysiwyg");
   }, [activeDoc, activePath, setMode]);
+
+  // Per-doc view settings (plan 02 task 2.5): the menu handler is the only
+  // writer. The patch is persisted per path (like the view mode) and the
+  // editor DOM is reconciled twice: the registry command mutates it for the
+  // open WYSIWYG view, and Editor re-applies the setting on mount, so the
+  // choice survives tab switches and view-mode changes.
+  const patchDocSettings = useCallback(
+    (patch: Partial<DocSettings>) => {
+      if (!activePath || !activeDoc) return;
+      const settings = { ...activeDoc.settings, ...patch };
+      updateDoc(activePath, { settings });
+      saveDocSettings(activePath, settings);
+    },
+    [activePath, activeDoc, updateDoc],
+  );
+
+  const setLineSpacing = useCallback(
+    (value: LineSpacingValue) => {
+      if (!isLineSpacingValue(value)) return;
+      patchDocSettings({ lineSpacing: value });
+      dispatchEditorCommand("lineSpacing", value);
+    },
+    [patchDocSettings],
+  );
+
+  const toggleShowMarks = useCallback(() => {
+    if (!activeDoc) return;
+    patchDocSettings({ showMarks: !activeDoc.settings.showMarks });
+    dispatchEditorCommand("showMarks");
+  }, [activeDoc, patchDocSettings]);
+
+  const toggleWordWrap = useCallback(() => {
+    if (!activeDoc) return;
+    patchDocSettings({ wordWrap: !activeDoc.settings.wordWrap });
+    dispatchEditorCommand("wordWrap");
+  }, [activeDoc, patchDocSettings]);
 
   const doExport = useCallback(
     async (format: ExportFormat) => {
@@ -543,6 +589,12 @@ export default function App() {
         setExplorerOpen((open) => !open);
       } else if (id === "view-statusbar") {
         setStatusbarVisible((visible) => !visible);
+      } else if (id === "view-show-marks") {
+        toggleShowMarks();
+      } else if (id === "view-word-wrap") {
+        toggleWordWrap();
+      } else if (id.startsWith("view-spacing-")) {
+        setLineSpacing(id.slice("view-spacing-".length) as LineSpacingValue);
       } else if (MENU_TO_COMMAND[id]) {
         dispatchEditorCommand(MENU_TO_COMMAND[id]);
       } else if (id === "help-about") {
@@ -564,6 +616,9 @@ export default function App() {
       doFind,
       setMode,
       toggleMode,
+      setLineSpacing,
+      toggleShowMarks,
+      toggleWordWrap,
       recentFiles,
       activePath,
       openByPath,
@@ -691,16 +746,34 @@ export default function App() {
   if (activeDoc) {
     switch (activeDoc.viewMode) {
       case "source":
-        editorView = <SourceView value={currentText} onChange={setActiveText} />;
+        editorView = (
+          <SourceView
+            value={currentText}
+            onChange={setActiveText}
+            wrap={activeDoc.settings.wordWrap}
+          />
+        );
         break;
       case "split":
-        editorView = <SplitView value={currentText} onChange={setActiveText} />;
+        editorView = (
+          <SplitView
+            value={currentText}
+            onChange={setActiveText}
+            settings={activeDoc.settings}
+          />
+        );
         break;
       case "preview":
         editorView = <PreviewView value={currentText} />;
         break;
       default:
-        editorView = <Editor value={currentText} onChange={setActiveText} />;
+        editorView = (
+          <Editor
+            value={currentText}
+            onChange={setActiveText}
+            settings={activeDoc.settings}
+          />
+        );
         break;
     }
   }

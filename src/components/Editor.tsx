@@ -22,8 +22,14 @@ import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import { markdownToTiptap, tiptapToMarkdown } from "../lib/pm";
-import { registerEditorCommandListener, runEditorCommand } from "../lib/editorCommands";
+import {
+  applyViewSettings,
+  registerEditorCommandListener,
+  runEditorCommand,
+} from "../lib/editorCommands";
 import type { EditorCommandId } from "../lib/editorCommands";
+import { DEFAULT_DOC_SETTINGS } from "../lib/docSettings";
+import type { DocSettings } from "../lib/docSettings";
 import Toolbar from "./Toolbar";
 
 // Strikethrough is bound to Ctrl+Shift+X per spec §2.6 (the default Mod-Shift-s
@@ -184,6 +190,9 @@ interface EditorProps {
   onChange: (text: string) => void;
   readOnly?: boolean;
   placeholder?: string;
+  // Per-doc view settings (plan 02 task 2.5): line spacing, word wrap, and
+  // formatting marks, applied to the editor DOM and persisted by the caller.
+  settings?: DocSettings;
 }
 
 interface SlashAction {
@@ -343,6 +352,7 @@ export default function Editor({
   onChange,
   readOnly = false,
   placeholder = "",
+  settings,
 }: EditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -449,6 +459,15 @@ export default function Editor({
   useEffect(() => {
     editor?.setEditable(!readOnly);
   }, [readOnly, editor]);
+
+  // Per-doc view settings (plan 02 task 2.5): restore the line spacing, word
+  // wrap, and formatting-marks state onto the editor DOM on mount and when the
+  // caller's settings change. The registry toggles mutate the same DOM state,
+  // so this re-application is idempotent and never re-serializes the doc.
+  useEffect(() => {
+    if (!editor) return;
+    applyViewSettings(editor, settings ?? DEFAULT_DOC_SETTINGS);
+  }, [editor, settings]);
 
   const runSlash = (action: SlashAction) => {
     if (!editor) return;

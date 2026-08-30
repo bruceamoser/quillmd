@@ -170,10 +170,28 @@ fn build_view_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> 
     let explorer = MenuItem::with_id(app, "view-explorer", "Toggle Explorer", true, Some("Ctrl+Shift+E"))?;
     let statusbar = MenuItem::with_id(app, "view-statusbar", "Toggle Status Bar", true, None::<&str>)?;
 
+    // View-level document preferences (plan 02 task 2.5, issue #34): line
+    // spacing presets, formatting marks, and word wrap. These are view-only —
+    // they persist per path on the frontend and never touch the markdown.
+    let mut line_spacing = SubmenuBuilder::new(app, "Line Spacing");
+    line_spacing = line_spacing.text("view-spacing-single", "Single");
+    line_spacing = line_spacing.text("view-spacing-1.15", "1.15");
+    line_spacing = line_spacing.text("view-spacing-1.5", "1.5");
+    line_spacing = line_spacing.text("view-spacing-double", "Double");
+    let line_spacing = line_spacing.build()?;
+    let show_marks =
+        MenuItem::with_id(app, "view-show-marks", "Show Formatting Marks", true, None::<&str>)?;
+    let word_wrap =
+        MenuItem::with_id(app, "view-word-wrap", "Word Wrap", true, None::<&str>)?;
+
     let view = SubmenuBuilder::new(app, "View")
         .items(&[&wysiwyg, &source, &split, &preview])
         .separator()
         .item(&toggle)
+        .separator()
+        .item(&line_spacing)
+        .item(&show_marks)
+        .item(&word_wrap)
         .separator()
         .items(&[&explorer, &statusbar])
         .build()?;

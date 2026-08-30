@@ -7,6 +7,7 @@
 import type { Editor as CoreEditor } from "@tiptap/core";
 import type { Node as PmNode } from "@tiptap/pm/model";
 import { FRONTMATTER_LANG } from "./pm";
+import type { DocSettings } from "./docSettings";
 
 export type EditorCommandId =
   | "h1"
@@ -43,6 +44,7 @@ export type EditorCommandId =
   | "outdent"
   | "lineSpacing"
   | "showMarks"
+  | "wordWrap"
   | "zoom"
   | "pasteAsText"
   | "undo"
@@ -81,8 +83,12 @@ export const LINE_SPACING_VALUES: readonly LineSpacingValue[] = [
   "double",
 ];
 
+// "single" maps to the app's base line height (1.7, see App.css) rather than
+// a literal 1.0: like Word/Docs, "Single" is this app's standard default
+// spacing, so picking it keeps a document's look unchanged, while the numeric
+// presets are explicit multipliers.
 const LINE_SPACING_CSS: Record<LineSpacingValue, string> = {
-  single: "1",
+  single: "1.7",
   "1.15": "1.15",
   "1.5": "1.5",
   double: "2",
@@ -107,6 +113,22 @@ const ZOOM_VAR = "--quillmd-zoom";
 // The formatting-marks wrapper class (plan 02 §3): pure CSS, no document
 // mutation, so it can never break the round-trip.
 const SHOW_MARKS_CLASS = "quillmd-show-marks";
+
+// The word-wrap-off class (plan 02 §2.7): present means wrap is disabled and
+// the content scrolls horizontally. Absent (the default) means wrap is on.
+const NO_WRAP_CLASS = "quillmd-no-wrap";
+
+// Applies a document's persisted view settings (plan 02 task 2.5) to the
+// editor DOM: the line-spacing CSS variable plus the formatting-marks and
+// no-wrap wrapper classes. The Editor calls this on mount and whenever the
+// settings change so a reopened tab restores its look; the toggling commands
+// mutate the same DOM state, which keeps re-application idempotent.
+export function applyViewSettings(editor: CoreEditor, settings: DocSettings): void {
+  const dom = editorDom(editor);
+  dom.style.setProperty(LINE_SPACING_VAR, LINE_SPACING_CSS[settings.lineSpacing]);
+  dom.classList.toggle(SHOW_MARKS_CLASS, settings.showMarks);
+  dom.classList.toggle(NO_WRAP_CLASS, !settings.wordWrap);
+}
 
 function headingCmd(level: 1 | 2 | 3 | 4 | 5 | 6): EditorCommand {
   return {
@@ -534,6 +556,17 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
       return true;
     },
     active: (editor) => editorDom(editor).classList.contains(SHOW_MARKS_CLASS),
+  },
+  {
+    id: "wordWrap",
+    label: "Word wrap",
+    run: (editor) => {
+      editorDom(editor).classList.toggle(NO_WRAP_CLASS);
+      return true;
+    },
+    // The command toggles; "active" reports whether wrap is on (the default),
+    // i.e. whether the no-wrap class is absent.
+    active: (editor) => !editorDom(editor).classList.contains(NO_WRAP_CLASS),
   },
   {
     id: "zoom",
