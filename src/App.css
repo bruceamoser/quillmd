@@ -918,6 +918,23 @@ body {
   border-left: 1px solid var(--border);
 }
 
+/* Block alignment (plan 02 task 2.3). The class is emitted on the block's own
+   element in the editor and on a wrapping div in the preview, so target both
+   the direct element and any descendant. */
+.quillmd-prosemirror .quillmd-align-center,
+.quillmd-prosemirror.quillmd-align-center,
+.quillmd-preview-content .quillmd-align-center,
+.quillmd-preview-content .quillmd-align-center > * {
+  text-align: center;
+}
+
+.quillmd-prosemirror .quillmd-align-right,
+.quillmd-prosemirror.quillmd-align-right,
+.quillmd-preview-content .quillmd-align-right,
+.quillmd-preview-content .quillmd-align-right > * {
+  text-align: right;
+}
+
 /* --- preview ------------------------------------------------------------- */
 
 .quillmd-preview {

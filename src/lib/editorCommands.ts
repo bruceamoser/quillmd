@@ -5,6 +5,7 @@
 // exact same functions.
 
 import type { Editor as CoreEditor } from "@tiptap/core";
+import type { Node as PmNode } from "@tiptap/pm/model";
 import { FRONTMATTER_LANG } from "./pm";
 
 export type EditorCommandId =
@@ -159,18 +160,15 @@ function setZoomPercent(editor: CoreEditor, percent: number): void {
 }
 
 // Node types that carry per-block alignment (plan 02 §2.2). The textAlign
-// node attribute itself lands with the alignment serializer (plan 02 task
-// 2.3); until then the updateAttributes calls below are no-ops and the
-// active checks read as "left".
+// node attribute is parsed/serialized by pm.ts as the quillmd-align-* HTML
+// wrapper block (plan 02 task 2.3); "left" is the default (absent attribute).
 const ALIGNABLE_NODES = ["paragraph", "heading", "blockquote", "codeBlock"] as const;
 
 type AlignValue = "left" | "center" | "right";
 
 // The alignment of the block under the cursor, or null when the cursor is
-// not in an alignable block. "left" is the default (absent attribute).
-export function textAlignOf(
-  editor: CoreEditor,
-): AlignValue | null {
+// not in an alignable block.
+export function textAlignOf(editor: CoreEditor): AlignValue | null {
   for (const name of ALIGNABLE_NODES) {
     if (editor.isActive(name)) {
       const value = editor.getAttributes(name).textAlign;
@@ -181,24 +179,55 @@ export function textAlignOf(
   return null;
 }
 
-function setAlignment(editor: CoreEditor, value: AlignValue): boolean {
-  const chain = editor.chain().focus();
-  for (const name of ALIGNABLE_NODES) {
-    chain.updateAttributes(name, { textAlign: value });
-  }
-  return chain.run();
+// The outermost alignable blocks intersecting [from, to]. A block that is
+// itself inside another alignable block (a paragraph inside an aligned
+// blockquote) is skipped: aligning the inner block would nest two wrapper
+// divs, so the selection always acts on the outermost block per range.
+function alignableTargets(
+  doc: PmNode,
+  from: number,
+  to: number,
+): Array<{ pos: number; node: PmNode }> {
+  const out: Array<{ pos: number; node: PmNode }> = [];
+  const walk = (node: PmNode, pos: number, insideAlignable: boolean): void => {
+    if (node.isText) return;
+    if (!(pos < to && pos + node.nodeSize > from)) return;
+    const isAlignable = ALIGNABLE_NODES.includes(node.type.name as (typeof ALIGNABLE_NODES)[number]);
+    if (isAlignable && !insideAlignable) {
+      out.push({ pos, node });
+      return;
+    }
+    node.forEach((child, offset) => walk(child, pos + 1 + offset, insideAlignable || isAlignable));
+  };
+  // The root doc's children are indexed from position 0 (a child at content
+  // `offset` sits at absolute `offset`), so seed the walk per child rather than
+  // treating the doc itself as a positioned node.
+  doc.forEach((child, offset) => walk(child, offset, false));
+  return out;
 }
 
-// Sets a block alignment, skipping the dispatch when the block under the
-// cursor already has it (alignLeft is the default, so re-clicking it must not
-// emit a no-op transaction). Returns true when the block is aligned to `value`
-// afterwards, false when the cursor is not in an alignable block.
-function setAlignmentIfChanged(editor: CoreEditor, value: AlignValue): boolean {
-  const current = textAlignOf(editor);
-  if (current === null) return false;
-  if (current === value) return true;
-  return setAlignment(editor, value);
+function setAlignment(editor: CoreEditor, value: AlignValue): boolean {
+  const { state } = editor;
+  const { from, to } = state.selection;
+  const targets = alignableTargets(state.doc, from, to);
+  if (targets.length === 0) return false;
+  const desired: string | null = value === "left" ? null : value;
+  const tr = state.tr;
+  for (const { pos, node } of targets) {
+    if ((node.attrs.textAlign ?? null) !== desired) {
+      tr.setNodeMarkup(pos, node.type, { ...node.attrs, textAlign: desired });
+    }
+  }
+  if (tr.docChanged) {
+    editor.view.dispatch(tr);
+  }
+  return true;
 }
+
+// setAlignment dispatches nothing when every target block already has the
+// requested value, so re-clicking the active alignment never emits a no-op
+// transaction. Returns true when the block(s) are aligned to `value`
+// afterwards, false when the selection is not in an alignable block.
 
 // The native sink/lift chain (same as the Tab key handler in Editor.tsx):
 // both the listItem and taskItem variants run, the one that does not apply
@@ -458,19 +487,19 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
   {
     id: "alignLeft",
     label: "Align left",
-    run: (editor) => setAlignmentIfChanged(editor, "left"),
+    run: (editor) => setAlignment(editor, "left"),
     active: (editor) => textAlignOf(editor) === "left",
   },
   {
     id: "alignCenter",
     label: "Align center",
-    run: (editor) => setAlignmentIfChanged(editor, "center"),
+    run: (editor) => setAlignment(editor, "center"),
     active: (editor) => textAlignOf(editor) === "center",
   },
   {
     id: "alignRight",
     label: "Align right",
-    run: (editor) => setAlignmentIfChanged(editor, "right"),
+    run: (editor) => setAlignment(editor, "right"),
     active: (editor) => textAlignOf(editor) === "right",
   },
   {

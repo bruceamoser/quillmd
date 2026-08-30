@@ -226,8 +226,16 @@ fn build_format_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
         MenuItem::with_id(app, "format-superscript", "Superscript", true, None::<&str>)?;
     let clear = MenuItem::with_id(app, "format-clear", "Clear Formatting", true, None::<&str>)?;
 
+    let mut paragraph = SubmenuBuilder::new(app, "Paragraph");
+    paragraph = paragraph.text("format-align-left", "Align Left");
+    paragraph = paragraph.text("format-align-center", "Align Center");
+    paragraph = paragraph.text("format-align-right", "Align Right");
+    let paragraph = paragraph.build()?;
+
     let format = SubmenuBuilder::new(app, "Format")
         .items(&[&bold, &italic, &underline, &strike, &code, &highlight, &subscript, &superscript])
+        .separator()
+        .item(&paragraph)
         .separator()
         .item(&clear)
         .build()?;

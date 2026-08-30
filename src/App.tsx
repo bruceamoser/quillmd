@@ -87,6 +87,9 @@ const MENU_TO_COMMAND: Record<string, EditorCommandId> = {
   "format-highlight": "highlight",
   "format-subscript": "subscript",
   "format-superscript": "superscript",
+  "format-align-left": "alignLeft",
+  "format-align-center": "alignCenter",
+  "format-align-right": "alignRight",
   "format-clear": "clearFormatting",
 };
 

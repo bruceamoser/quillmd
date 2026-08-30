@@ -28,6 +28,43 @@ import { parseFrontMatter, parseToAst, serializeAst } from "./markdown";
 // emit the raw YAML verbatim instead of a ``` fence.
 export const FRONTMATTER_LANG = "frontmatter";
 
+// Text alignment (task 2.3) is serialized as a single HTML block wrapping the
+// aligned block: <div class="quillmd-align-center|right"> ... </div>. Left
+// alignment is the default and emits no marker. The wrapper contains no blank
+// lines, so it parses as one mdast html node and keeps the block model's
+// 1:1 block correspondence intact.
+export const ALIGN_CLASSES = {
+  center: "quillmd-align-center",
+  right: "quillmd-align-right",
+} as const;
+
+export type AlignValue = "left" | "center" | "right";
+
+const ALIGN_WRAPPER_RE = /^<div class="quillmd-align-(center|right)">\r?\n([\s\S]*)\r?\n<\/div>$/;
+
+const ALIGNABLE_NODE_TYPES = new Set(["paragraph", "heading", "blockquote", "codeBlock"]);
+
+export function isAlignableNodeType(type: string | undefined): boolean {
+  return type !== undefined && ALIGNABLE_NODE_TYPES.has(type);
+}
+
+function matchAlignWrapper(value: string): { align: AlignValue; inner: string } | null {
+  const m = ALIGN_WRAPPER_RE.exec(value);
+  if (!m) return null;
+  return { align: m[1] as AlignValue, inner: m[2] };
+}
+
+function alignableToJson(node: JSONContent, align: AlignValue): JSONContent | null {
+  if (!isAlignableNodeType(node.type)) return null;
+  node.attrs = { ...(node.attrs ?? {}), textAlign: align };
+  return node;
+}
+
+function wrapAligned(flow: FlowNode, align: keyof typeof ALIGN_CLASSES): FlowNode {
+  const body = serializeAst({ type: "root", children: [flow] as RootContent[] }).replace(/\n+$/, "");
+  return { type: "html", value: `<div class="${ALIGN_CLASSES[align]}">\n${body}\n</div>` };
+}
+
 type FlowNode = BlockContent | DefinitionContent;
 
 // --- markdown -> TipTap ---------------------------------------------------
@@ -98,12 +135,24 @@ function flowToTiptap(node: FlowNode, source: string): JSONContent | null {
       return { type: "horizontalRule" };
     case "table":
       return tableToTiptap(node);
-    case "html":
+    case "html": {
+      const aligned = matchAlignWrapper(node.value);
+      if (aligned) {
+        const inner = parseToAst(aligned.inner);
+        if (inner.children.length === 1) {
+          const child = flowToTiptap(inner.children[0] as FlowNode, aligned.inner);
+          if (child) {
+            const unwrapped = alignableToJson(child, aligned.align);
+            if (unwrapped) return unwrapped;
+          }
+        }
+      }
       return {
         type: "codeBlock",
         attrs: { language: "html" },
         content: [{ type: "text", text: node.value }],
       };
+    }
     case "definition": {
       const title = node.title ? ` "${node.title}"` : "";
       return {
@@ -279,6 +328,17 @@ function isFrontmatter(node: JSONContent): boolean {
 }
 
 function tiptapToFlow(node: JSONContent): FlowNode | null {
+  const flow = tiptapToFlowPlain(node);
+  if (flow && isAlignableNodeType(node.type)) {
+    const align = typeof node.attrs?.textAlign === "string" ? node.attrs.textAlign : null;
+    if (align === "center" || align === "right") {
+      return wrapAligned(flow, align);
+    }
+  }
+  return flow;
+}
+
+function tiptapToFlowPlain(node: JSONContent): FlowNode | null {
   switch (node.type) {
     case "heading":
       return {
