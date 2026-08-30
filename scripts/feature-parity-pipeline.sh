@@ -51,7 +51,9 @@ while [ $# -gt 0 ]; do
 done
 
 mkdir -p "$REPO_DIR/scripts/.fp-runs"
-touch "$STATE_FILE"
+if [ ! -s "$STATE_FILE" ] || ! jq -e . "$STATE_FILE" >/dev/null 2>&1; then
+  echo '{}' > "$STATE_FILE"
+fi
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG"; }
 
 # plan number -> wave

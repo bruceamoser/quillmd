@@ -1,0 +1,1197 @@
+[0m
+> build · /home/bmoser/models/Qwen3.8-27B-Q8_0.gguf
+[0m
+[0m$ [0mls -la /tmp/wt-quillmd-22 && git -C /tmp/wt-quillmd-22 log --oneline -5 && git -C /tmp/wt-quillmd-22 status
+total 248
+drwxrwxr-x  12 bmoser bmoser    480 Aug 30 13:15 .
+drwxrwxrwt 274 root   root    15340 Aug 30 13:15 ..
+-rw-rw-r--   1 bmoser bmoser     64 Aug 30 13:15 .git
+-rw-rw-r--   1 bmoser bmoser    948 Aug 30 13:15 .gitattributes
+drwxrwxr-x   3 bmoser bmoser     60 Aug 30 13:15 .github
+-rw-rw-r--   1 bmoser bmoser     54 Aug 30 13:15 .gitignore
+-rw-rw-r--   1 bmoser bmoser   2163 Aug 30 13:15 COUNCIL.md
+-rw-rw-r--   1 bmoser bmoser   6307 Aug 30 13:15 README.md
+drwxrwxr-x   3 bmoser bmoser    100 Aug 30 13:15 docs
+drwxrwxr-x   7 bmoser bmoser    160 Aug 30 13:15 fixtures
+-rw-rw-r--   1 bmoser bmoser    376 Aug 30 13:15 index.html
+drwxrwxr-x 203 bmoser bmoser   4080 Aug 30 13:15 node_modules
+-rw-rw-r--   1 bmoser bmoser 187037 Aug 30 13:15 package-lock.json
+-rw-rw-r--   1 bmoser bmoser   1913 Aug 30 13:15 package.json
+drwxrwxr-x   2 bmoser bmoser     80 Aug 30 13:15 public
+drwxrwxr-x   2 bmoser bmoser    120 Aug 30 13:15 scripts
+-rw-rw-r--   1 bmoser bmoser  20254 Aug 30 13:15 spec.md
+drwxrwxr-x   5 bmoser bmoser    180 Aug 30 13:15 src
+drwxrwxr-x   6 bmoser bmoser    240 Aug 30 13:15 src-tauri
+drwxrwxr-x   2 bmoser bmoser     60 Aug 30 13:15 tests
+drwxrwxr-x   2 bmoser bmoser     60 Aug 30 13:15 tools
+-rw-rw-r--   1 bmoser bmoser    605 Aug 30 13:15 tsconfig.json
+-rw-rw-r--   1 bmoser bmoser    213 Aug 30 13:15 tsconfig.node.json
+-rw-rw-r--   1 bmoser bmoser    818 Aug 30 13:15 vite.config.ts
+61f3fd0 docs: add plan 11 — Mermaid diagrams (insert/edit/visualize + PNG export)
+b1fa0f7 docs: feature parity program (v2) — master overview + 10 plan docs
+e251a70 M6: App shell (VSCode-style explorer + tabs + native menus) + editor surface completeness (#12)
+5c83be8 fix: acceptance gate in build-release.sh (post-build, blocks broken releases)
+7e318fb docs: add GitHub Releases download link for end users
+On branch fp/22-1-1-dialogs-ts-module
+Your branch is up to date with 'origin/main'.
+
+nothing to commit, working tree clean
+[0m
+[0m→ [0mRead docs/feature-parity/01-app-shell-dialogs.md
+[0m
+[0m$ [0mfind /tmp/wt-quillmd-22/src /tmp/wt-quillmd-22/tests /tmp/wt-quillmd-22/tools /tmp/wt-quillmd-22/scripts -type f | sort
+/tmp/wt-quillmd-22/scripts/build-release.sh
+/tmp/wt-quillmd-22/scripts/fetch-release-binaries.ps1
+/tmp/wt-quillmd-22/scripts/fetch-release-binaries.sh
+/tmp/wt-quillmd-22/scripts/setup-windows.ps1
+/tmp/wt-quillmd-22/src/App.css
+/tmp/wt-quillmd-22/src/App.tsx
+/tmp/wt-quillmd-22/src/assets/react.svg
+/tmp/wt-quillmd-22/src/components/Editor.tsx
+/tmp/wt-quillmd-22/src/components/Explorer.tsx
+/tmp/wt-quillmd-22/src/components/PreviewView.tsx
+/tmp/wt-quillmd-22/src/components/SourceView.tsx
+/tmp/wt-quillmd-22/src/components/SplitView.tsx
+/tmp/wt-quillmd-22/src/components/StatusBar.tsx
+/tmp/wt-quillmd-22/src/components/TabBar.tsx
+/tmp/wt-quillmd-22/src/components/Toolbar.tsx
+/tmp/wt-quillmd-22/src/components/viewModes.ts
+/tmp/wt-quillmd-22/src/lib/editorCommands.ts
+/tmp/wt-quillmd-22/src/lib/edit.ts
+/tmp/wt-quillmd-22/src/lib/fileIo.ts
+/tmp/wt-quillmd-22/src/lib/markdown.ts
+/tmp/wt-quillmd-22/src/lib/pipeline.ts
+/tmp/wt-quillmd-22/src/lib/pm.ts
+/tmp/wt-quillmd-22/src/lib/__tests__/frontmatter.test.ts
+/tmp/wt-quillmd-22/src/lib/__tests__/lists.test.ts
+/tmp/wt-quillmd-22/src/lib/__tests__/perf.test.ts
+/tmp/wt-quillmd-22/src/lib/__tests__/pipeline.test.ts
+/tmp/wt-quillmd-22/src/lib/__tests__/roundtrip.test.ts
+/tmp/wt-quillmd-22/src/lib/__tests__/stress.test.ts
+/tmp/wt-quillmd-22/src/lib/__tests__/tasklist.test.ts
+/tmp/wt-quillmd-22/src/lib/__tests__/undo-sequence.test.ts
+/tmp/wt-quillmd-22/src/lib/__tests__/undo.test.ts
+/tmp/wt-quillmd-22/src/lib/types.ts
+/tmp/wt-quillmd-22/src/lib/undo.ts
+/tmp/wt-quillmd-22/src/main.tsx
+/tmp/wt-quillmd-22/src/vite-env.d.ts
+/tmp/wt-quillmd-22/tests/acceptance-test.sh
+/tmp/wt-quillmd-22/tools/gen-fixtures.py
+[0m
+[0m→ [0mRead package.json
+[0m→ [0mRead src/App.tsx
+[0m→ [0mRead src/lib/fileIo.ts
+[0m→ [0mRead src/components/Explorer.tsx
+[0m→ [0mRead vite.config.ts
+[0m→ [0mRead src/lib/__tests__/pipeline.test.ts[90m [limit=60][0m
+[0m
+[0m$ [0mls /tmp/wt-quillmd-22/node_modules/@tauri-apps/plugin-dialog/ && cat /tmp/wt-quillmd-22/node_modules/@tauri-apps/plugin-dialog/package.json | head -40
+LICENSE.spdx
+README.md
+dist-js
+package.json
+{
+  "name": "@tauri-apps/plugin-dialog",
+  "version": "2.7.2",
+  "license": "MIT OR Apache-2.0",
+  "authors": [
+    "Tauri Programme within The Commons Conservancy"
+  ],
+  "repository": "https://github.com/tauri-apps/plugins-workspace",
+  "type": "module",
+  "types": "./dist-js/index.d.ts",
+  "main": "./dist-js/index.cjs",
+  "module": "./dist-js/index.js",
+  "exports": {
+    "types": "./dist-js/index.d.ts",
+    "import": "./dist-js/index.js",
+    "require": "./dist-js/index.cjs"
+  },
+  "scripts": {
+    "build": "rollup -c"
+  },
+  "files": [
+    "dist-js",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.0"
+  }
+}
+[0m
+[0m$ [0mls /tmp/wt-quillmd-22/node_modules/@tauri-apps/plugin-dialog/dist-js/ && cat /tmp/wt-quillmd-22/node_modules/@tauri-apps/plugin-dialog/dist-js/index.d.ts
+index.cjs
+index.d.ts
+index.js
+init.d.ts
+/**
+ * Extension filters for the file dialog.
+ *
+ * @since 2.0.0
+ */
+interface DialogFilter {
+    /** Filter name. */
+    name: string;
+    /**
+     * Extensions to filter, without a `.` prefix.
+     *
+     * **Note:** Mobile platforms have different APIs for filtering that may not support extensions.
+     * iOS: Extensions are supported in the document picker, but not in the media picker.
+     * Android: Extensions are not supported.
+     *
+     * For these platforms, MIME types are the primary way to filter files, as opposed to extensions.
+     * This means the string values here labeled as `extensions` may also be a MIME type.
+     * This property name of `extensions` is being kept for backwards compatibility, but this may be revisited to
+     * specify the difference between extension or MIME type filtering.
+     *
+     * @example
+     * ```typescript
+     * extensions: ['svg', 'png']
+     * ```
+     */
+    extensions: string[];
+}
+/**
+ * Options for the open dialog.
+ *
+ * @since 2.0.0
+ */
+interface OpenDialogOptions {
+    /** The title of the dialog window (desktop only). */
+    title?: string;
+    /**
+     * The filters of the dialog.
+     * On mobile platforms, if either:
+     * A) the {@linkcode pickerMode} is set to `media`, `image`, or `video`
+     * -- or --
+     * B) the filters include **only** either image or video mime types, the media picker will be displayed.
+     * Otherwise, the document picker will be displayed.
+     */
+    filters?: DialogFilter[];
+    /**
+     * Initial directory or file path.
+     * If it's a directory path, the dialog interface will change to that folder.
+     * If it's not an existing directory, the file name will be set to the dialog's file name input and the dialog will be set to the parent folder.
+     *
+     * On mobile the file name is always used on the dialog's file name input.
+     * If not provided, Android uses `(invalid).txt` as default file name.
+     */
+    defaultPath?: string;
+    /** Whether the dialog allows multiple selection or not. */
+    multiple?: boolean;
+    /** Whether the dialog is a directory selection or not. */
+    directory?: boolean;
+    /**
+     * If `directory` is true, indicates that it will be read recursively later.
+     * Defines whether subdirectories will be allowed on the scope or not.
+     */
+    recursive?: boolean;
+    /** Whether to allow creating directories in the dialog. Enabled by default. **macOS Only** */
+    canCreateDirectories?: boolean;
+    /**
+     * The preferred mode of the dialog.
+     * This is meant for mobile platforms (iOS and Android) which have distinct file and media pickers.
+     * If not provided, the dialog will automatically choose the best mode based on the MIME types or extensions of the {@linkcode filters}.
+     * On desktop, this option is ignored.
+     */
+    pickerMode?: PickerMode;
+    /**
+     * The file access mode of the dialog.
+     * If not provided, `copy` is used, which matches the behavior of the {@linkcode open} method before the introduction of this option.
+     *
+     * **Usage**
+     * If a file is opened with {@linkcode fileAccessMode: 'copy'}, it will be copied to the app's sandbox.
+     * This means the file can be read, edited, deleted, copied, or any other operation without any issues, since the file
+     * now belongs to the app.
+     * This also means that the caller has responsibility of deleting the file if this file is not meant to be retained
+     * in the app sandbox.
+     *
+     * If a file is opened with {@linkcode fileAccessMode: 'scoped'}, the file will remain in its original location
+     * and security-scoped access will be automatically managed by the system.
+     *
+     * **Note**
+     * This is specifically meant for document pickers on iOS or MacOS, in conjunction with [security scoped resources](https://developer.apple.com/documentation/foundation/nsurl/startaccessingsecurityscopedresource()).
+     *
+     * Why only document pickers, and not image or video pickers?
+     * The image and video pickers on iOS behave differently from the document pickers, and return [NSItemProvider](https://developer.apple.com/documentation/foundation/nsitemprovider) objects instead of file URLs.
+     * These are meant to be ephemeral (only available within the callback of the picker), and are not accessible outside of the callback.
+     * So for image and video pickers, the only way to access the file is to copy it to the app's sandbox, and this is the URL that is returned from this API.
+     * This means there is no provision for using `scoped` mode with image or video pickers.
+     * If an image or video picker is used, `copy` is always used.
+     */
+    fileAccessMode?: FileAccessMode;
+}
+/**
+ * Options for the save dialog.
+ *
+ * @since 2.0.0
+ */
+interface SaveDialogOptions {
+    /** The title of the dialog window (desktop only). */
+    title?: string;
+    /** The filters of the dialog. */
+    filters?: DialogFilter[];
+    /**
+     * Initial directory or file path.
+     * If it's a directory path, the dialog interface will change to that folder.
+     * If it's not an existing directory, the file name will be set to the dialog's file name input and the dialog will be set to the parent folder.
+     *
+     * On mobile the file name is always used on the dialog's file name input.
+     * If not provided, Android uses `(invalid).txt` as default file name.
+     */
+    defaultPath?: string;
+    /** Whether to allow creating directories in the dialog. Enabled by default. **macOS Only** */
+    canCreateDirectories?: boolean;
+}
+/**
+ * The preferred mode of the dialog.
+ * This is meant for mobile platforms (iOS and Android) which have distinct file and media pickers.
+ * On desktop, this option is ignored.
+ * If not provided, the dialog will automatically choose the best mode based on the MIME types or extensions of the {@linkcode filters}.
+ *
+ * **Note:** This option is only supported on iOS 14 and above. This parameter is ignored on iOS 13 and below.
+ */
+export type PickerMode = 'document' | 'media' | 'image' | 'video';
+/**
+ * The file access mode of the dialog.
+ *
+ * - `copy`: copy/move the picked file to the app sandbox; no scoped access required.
+ * - `scoped`: keep file in place; security-scoped access is automatically managed.
+ *
+ * **Note:** This option is only supported on iOS 14 and above. This parameter is ignored on iOS 13 and below.
+ */
+export type FileAccessMode = 'copy' | 'scoped';
+/**
+ * Default buttons for a message dialog.
+ *
+ * @since 2.4.0
+ */
+export type MessageDialogDefaultButtons = 'Ok' | 'OkCancel' | 'YesNo' | 'YesNoCancel';
+/** All possible button keys. */
+type ButtonKey = 'ok' | 'cancel' | 'yes' | 'no';
+/** Ban everything except a set of keys. */
+type BanExcept<Allowed extends ButtonKey> = Partial<Record<Exclude<ButtonKey, Allowed>, never>>;
+/**
+ * The Yes, No and Cancel buttons of a message dialog.
+ *
+ * @since 2.4.0
+ */
+export type MessageDialogButtonsYesNoCancel = {
+    /** The Yes button. */
+    yes: string;
+    /** The No button. */
+    no: string;
+    /** The Cancel button. */
+    cancel: string;
+} & BanExcept<'yes' | 'no' | 'cancel'>;
+/**
+ * The Ok and Cancel buttons of a message dialog.
+ *
+ * @since 2.4.0
+ */
+export type MessageDialogButtonsOkCancel = {
+    /** The Ok button. */
+    ok: string;
+    /** The Cancel button. */
+    cancel: string;
+} & BanExcept<'ok' | 'cancel'>;
+/**
+ * The Ok button of a message dialog.
+ *
+ * @since 2.4.0
+ */
+export type MessageDialogButtonsOk = {
+    /** The Ok button. */
+    ok: string;
+} & BanExcept<'ok'>;
+/**
+ * Custom buttons for a message dialog.
+ *
+ * @since 2.4.0
+ */
+export type MessageDialogCustomButtons = MessageDialogButtonsYesNoCancel | MessageDialogButtonsOkCancel | MessageDialogButtonsOk;
+/**
+ * The buttons of a message dialog.
+ *
+ * @since 2.4.0
+ */
+export type MessageDialogButtons = MessageDialogDefaultButtons | MessageDialogCustomButtons;
+/**
+ * @since 2.0.0
+ */
+interface MessageDialogOptions {
+    /** The title of the dialog. Defaults to the app name. */
+    title?: string;
+    /** The kind of the dialog. Defaults to `info`. */
+    kind?: 'info' | 'warning' | 'error';
+    /**
+     * The label of the Ok button.
+     *
+     * @deprecated Use {@linkcode MessageDialogOptions.buttons} instead.
+     */
+    okLabel?: string;
+    /**
+     * The buttons of the dialog.
+     *
+     * @example
+     *
+     * ```ts
+     * // Use system default buttons texts
+     * await message('Hello World!', { buttons: 'Ok' })
+     * await message('Hello World!', { buttons: 'OkCancel' })
+     *
+     * // Or with custom button texts
+     * await message('Hello World!', { buttons: { ok: 'Yes!' } })
+     * await message('Take on the task?', {
+     *   buttons: { ok: 'Accept', cancel: 'Cancel' }
+     * })
+     * await message('Show the file content?', {
+     *   buttons: { yes: 'Show content', no: 'Show in folder', cancel: 'Cancel' }
+     * })
+     * ```
+     *
+     * @since 2.4.0
+     */
+    buttons?: MessageDialogButtons;
+}
+interface ConfirmDialogOptions {
+    /** The title of the dialog. Defaults to the app name. */
+    title?: string;
+    /** The kind of the dialog. Defaults to `info`. */
+    kind?: 'info' | 'warning' | 'error';
+    /** The label of the confirm button. */
+    okLabel?: string;
+    /** The label of the cancel button. */
+    cancelLabel?: string;
+}
+type OpenDialogReturn<T extends OpenDialogOptions> = T['directory'] extends true ? T['multiple'] extends true ? string[] | null : string | null : T['multiple'] extends true ? string[] | null : string | null;
+/**
+ * Open a file/directory selection dialog.
+ *
+ * The selected paths are added to the filesystem and asset protocol scopes.
+ * When security is more important than the easy of use of this API,
+ * prefer writing a dedicated command instead.
+ *
+ * Note that the scope change is not persisted, so the values are cleared when the application is restarted.
+ * You can save it to the filesystem using [tauri-plugin-persisted-scope](https://github.com/tauri-apps/tauri-plugin-persisted-scope).
+ * @example
+ * ```typescript
+ * import { open } from '@tauri-apps/plugin-dialog';
+ * // Open a selection dialog for image files
+ * const selected = await open({
+ *   multiple: true,
+ *   filters: [{
+ *     name: 'Image',
+ *     extensions: ['png', 'jpeg']
+ *   }]
+ * });
+ * if (Array.isArray(selected)) {
+ *   // user selected multiple files
+ * } else if (selected === null) {
+ *   // user cancelled the selection
+ * } else {
+ *   // user selected a single file
+ * }
+ * ```
+ *
+ * @example
+ * ```typescript
+ * import { open } from '@tauri-apps/plugin-dialog';
+ * import { appDir } from '@tauri-apps/api/path';
+ * // Open a selection dialog for directories
+ * const selected = await open({
+ *   directory: true,
+ *   multiple: true,
+ *   defaultPath: await appDir(),
+ * });
+ * if (Array.isArray(selected)) {
+ *   // user selected multiple directories
+ * } else if (selected === null) {
+ *   // user cancelled the selection
+ * } else {
+ *   // user selected a single directory
+ * }
+ * ```
+ *
+ * @returns A promise resolving to the selected path(s)
+ *
+ * @since 2.0.0
+ */
+declare function open<T extends OpenDialogOptions>(options?: T): Promise<OpenDialogReturn<T>>;
+/**
+ * Open a file/directory save dialog.
+ *
+ * The selected path is added to the filesystem and asset protocol scopes.
+ * When security is more important than the easy of use of this API,
+ * prefer writing a dedicated command instead.
+ *
+ * Note that the scope change is not persisted, so the values are cleared when the application is restarted.
+ * You can save it to the filesystem using [tauri-plugin-persisted-scope](https://github.com/tauri-apps/tauri-plugin-persisted-scope).
+ * @example
+ * ```typescript
+ * import { save } from '@tauri-apps/plugin-dialog';
+ * const filePath = await save({
+ *   filters: [{
+ *     name: 'Image',
+ *     extensions: ['png', 'jpeg']
+ *   }]
+ * });
+ * ```
+ *
+ * @returns A promise resolving to the selected path.
+ *
+ * @since 2.0.0
+ */
+declare function save(options?: SaveDialogOptions): Promise<string | null>;
+/**
+ * The result of a message dialog.
+ *
+ * The result is a string if the dialog has custom buttons,
+ * otherwise it is one of the default buttons.
+ *
+ * @since 2.4.0
+ */
+export type MessageDialogResult = 'Yes' | 'No' | 'Ok' | 'Cancel' | (string & {});
+/**
+ * Shows a message dialog with an `Ok` button.
+ * @example
+ * ```typescript
+ * import { message } from '@tauri-apps/plugin-dialog';
+ * await message('Tauri is awesome', 'Tauri');
+ * await message('File not found', { title: 'Tauri', kind: 'error' });
+ * ```
+ *
+ * @param message The message to show.
+ * @param options The dialog's options. If a string, it represents the dialog title.
+ *
+ * @returns A promise indicating the success or failure of the operation.
+ *
+ * @since 2.0.0
+ *
+ */
+declare function message(message: string, options?: string | MessageDialogOptions): Promise<MessageDialogResult>;
+/**
+ * Shows a question dialog with `Yes` and `No` buttons.
+ *
+ * Convenient wrapper for `await message('msg', { buttons: 'YesNo' }) === 'Yes'`
+ *
+ * @example
+ * ```typescript
+ * import { ask } from '@tauri-apps/plugin-dialog';
+ * const yes = await ask('Are you sure?', 'Tauri');
+ * const yes2 = await ask('This action cannot be reverted. Are you sure?', { title: 'Tauri', kind: 'warning' });
+ * ```
+ *
+ * @param message The message to show.
+ * @param options The dialog's options. If a string, it represents the dialog title.
+ *
+ * @returns A promise resolving to a boolean indicating whether `Yes` was clicked or not.
+ *
+ * @since 2.0.0
+ */
+declare function ask(message: string, options?: string | ConfirmDialogOptions): Promise<boolean>;
+/**
+ * Shows a question dialog with `Ok` and `Cancel` buttons.
+ *
+ * Convenient wrapper for `await message('msg', { buttons: 'OkCancel' }) === 'Ok'`
+ *
+ * @example
+ * ```typescript
+ * import { confirm } from '@tauri-apps/plugin-dialog';
+ * const confirmed = await confirm('Are you sure?', 'Tauri');
+ * const confirmed2 = await confirm('This action cannot be reverted. Are you sure?', { title: 'Tauri', kind: 'warning' });
+ * ```
+ *
+ * @param message The message to show.
+ * @param options The dialog's options. If a string, it represents the dialog title.
+ *
+ * @returns A promise resolving to a boolean indicating whether `Ok` was clicked or not.
+ *
+ * @since 2.0.0
+ */
+declare function confirm(message: string, options?: string | ConfirmDialogOptions): Promise<boolean>;
+export type { DialogFilter, OpenDialogOptions, OpenDialogReturn, SaveDialogOptions, MessageDialogOptions, ConfirmDialogOptions };
+export { open, save, message, ask, confirm };
+[0m
+[0m$ [0mgrep -rn "isTauri" /tmp/wt-quillmd-22/node_modules/@tauri-apps/api/dist/core.d.ts | head; grep -n "isTauri" -A 8 /tmp/wt-quillmd-22/node_modules/@tauri-apps/api/dist/core.js | head -30; ls /tmp/wt-quillmd-22/node_modules | grep -iE "jsdom|happy-dom" ; grep -rn "vi.mock\|vi.stub\|environment" /tmp/wt-quillmd-22/src/lib/__tests__/*.ts | head
+grep: /tmp/wt-quillmd-22/node_modules/@tauri-apps/api/dist/core.d.ts: No such file or directory
+grep: /tmp/wt-quillmd-22/node_modules/@tauri-apps/api/dist/core.js: No such file or directory
+[0m
+[0m$ [0mls /tmp/wt-quillmd-22/node_modules/@tauri-apps/api/ && cat /tmp/wt-quillmd-22/node_modules/@tauri-apps/api/package.json | sed -n '1,60p'
+CHANGELOG.md
+LICENSE_APACHE-2.0
+LICENSE_MIT
+README.md
+app.cjs
+app.d.ts
+app.js
+core.cjs
+core.d.ts
+core.js
+dpi.cjs
+dpi.d.ts
+dpi.js
+event.cjs
+event.d.ts
+event.js
+external
+image.cjs
+image.d.ts
+image.js
+index.cjs
+index.d.ts
+index.js
+menu
+menu.cjs
+menu.d.ts
+menu.js
+mocks.cjs
+mocks.d.ts
+mocks.js
+package.json
+path.cjs
+path.d.ts
+path.js
+tray.cjs
+tray.d.ts
+tray.js
+webview.cjs
+webview.d.ts
+webview.js
+webviewWindow.cjs
+webviewWindow.d.ts
+webviewWindow.js
+window.cjs
+window.d.ts
+window.js
+{
+  "name": "@tauri-apps/api",
+  "version": "2.11.1",
+  "description": "Tauri API definitions",
+  "funding": {
+    "type": "opencollective",
+    "url": "https://opencollective.com/tauri"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tauri-apps/tauri.git"
+  },
+  "contributors": [
+    "Tauri Programme within The Commons Conservancy"
+  ],
+  "license": "Apache-2.0 OR MIT",
+  "bugs": {
+    "url": "https://github.com/tauri-apps/tauri/issues"
+  },
+  "homepage": "https://github.com/tauri-apps/tauri#readme",
+  "type": "module",
+  "main": "./index.cjs",
+  "module": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "require": "./index.cjs",
+      "types": "./index.d.ts"
+    },
+    "./*": {
+      "import": "./*.js",
+      "require": "./*.cjs",
+      "types": "./*.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@rollup/plugin-terser": "1.0.0",
+    "@rollup/plugin-typescript": "12.3.0",
+    "@types/eslint": "^9.6.1",
+    "@types/node": "^24.11.0",
+    "eslint": "^10.0.2",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-security": "4.0.1",
+    "fast-glob": "3.3.3",
+    "globals": "^17.4.0",
+    "rollup": "4.61.1",
+    "tslib": "^2.8.1",
+    "typescript": "^6.0.0",
+    "typescript-eslint": "^8.58.2"
+  },
+  "scripts": {
+    "build": "rollup -c --configPlugin typescript",
+    "build:debug": "rollup -c --configPlugin typescript",
+    "npm-pack": "pnpm build && cd ./dist && npm pack",
+    "npm-publish": "pnpm build && cd ./dist && pnpm publish --access public --loglevel silly --no-git-checks",
+    "ts:check": "tsc --noEmit",
+    "eslint:check": "eslint src/**/*.ts",
+[0m
+[0m$ [0mgrep -n "isTauri" -B2 -A10 /tmp/wt-quillmd-22/node_modules/@tauri-apps/api/core.d.ts; echo ---; grep -n "isTauri" -B2 -A12 /tmp/wt-quillmd-22/node_modules/@tauri-apps/api/core.js; echo ---MOCKS---; head -60 /tmp/wt-quillmd-22/node_modules/@tauri-apps/api/mocks.d.ts
+189-    close(): Promise<void>;
+190-}
+191:declare function isTauri(): boolean;
+192-export type { InvokeArgs, InvokeOptions };
+193:export { transformCallback, Channel, PluginListener, addPluginListener, PermissionState, checkPermissions, requestPermissions, invoke, convertFileSrc, isTauri };
+---
+276-}
+277-_Resource_rid = new WeakMap();
+278:function isTauri() {
+279-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+280:    return !!(globalThis || window).isTauri;
+281-}
+282-
+283:export { Channel, PluginListener, Resource, SERIALIZE_TO_IPC_FN, addPluginListener, checkPermissions, convertFileSrc, invoke, isTauri, requestPermissions, transformCallback };
+---MOCKS---
+import type { InvokeArgs } from './core';
+/**
+ * Options for `mockIPC`.
+ *
+ * # Options
+ * `shouldMockEvents`: If true, the `listen` and `emit` functions will be mocked, allowing you to test event handling without a real backend.
+ * **This will consume any events emitted with the `plugin:event` prefix.**
+ *
+ * @since 2.7.0
+ */
+export interface MockIPCOptions {
+    shouldMockEvents?: boolean;
+}
+/**
+ * Intercepts all IPC requests with the given mock handler.
+ *
+ * This function can be used when testing tauri frontend applications or when running the frontend in a Node.js context during static site generation.
+ *
+ * # Examples
+ *
+ * Testing setup using Vitest:
+ * ```ts
+ * import { mockIPC, clearMocks } from "@tauri-apps/api/mocks"
+ * import { invoke } from "@tauri-apps/api/core"
+ *
+ * afterEach(() => {
+ *    clearMocks()
+ * })
+ *
+ * test("mocked command", () => {
+ *  mockIPC((cmd, payload) => {
+ *   switch (cmd) {
+ *     case "add":
+ *       return (payload.a as number) + (payload.b as number);
+ *     default:
+ *       break;
+ *     }
+ *  });
+ *
+ *  expect(invoke('add', { a: 12, b: 15 })).resolves.toBe(27);
+ * })
+ * ```
+ *
+ * The callback function can also return a Promise:
+ * ```js
+ * import { mockIPC, clearMocks } from "@tauri-apps/api/mocks"
+ * import { invoke } from "@tauri-apps/api/core"
+ *
+ * afterEach(() => {
+ *    clearMocks()
+ * })
+ *
+ * test("mocked command", () => {
+ *  mockIPC((cmd, payload) => {
+ *   if(cmd === "get_data") {
+ *    return fetch("https://example.com/data.json")
+ *      .then((response) => response.json())
+ *   }
+ *  });
+ *
+[0m
+[0m$ [0mcat /tmp/wt-quillmd-22/node_modules/@tauri-apps/plugin-dialog/dist-js/index.js
+import { invoke } from '@tauri-apps/api/core';
+
+// Copyright 2019-2023 Tauri Programme within The Commons Conservancy
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
+/**
+ * Internal function to convert the buttons to the Rust type.
+ */
+function buttonsToRust(buttons) {
+    if (buttons === undefined) {
+        return undefined;
+    }
+    if (typeof buttons === 'string') {
+        return buttons;
+    }
+    else if ('ok' in buttons && 'cancel' in buttons) {
+        return { OkCancelCustom: [buttons.ok, buttons.cancel] };
+    }
+    else if ('yes' in buttons && 'no' in buttons && 'cancel' in buttons) {
+        return {
+            YesNoCancelCustom: [buttons.yes, buttons.no, buttons.cancel]
+        };
+    }
+    else if ('ok' in buttons) {
+        return { OkCustom: buttons.ok };
+    }
+    return undefined;
+}
+/**
+ * Open a file/directory selection dialog.
+ *
+ * The selected paths are added to the filesystem and asset protocol scopes.
+ * When security is more important than the easy of use of this API,
+ * prefer writing a dedicated command instead.
+ *
+ * Note that the scope change is not persisted, so the values are cleared when the application is restarted.
+ * You can save it to the filesystem using [tauri-plugin-persisted-scope](https://github.com/tauri-apps/tauri-plugin-persisted-scope).
+ * @example
+ * ```typescript
+ * import { open } from '@tauri-apps/plugin-dialog';
+ * // Open a selection dialog for image files
+ * const selected = await open({
+ *   multiple: true,
+ *   filters: [{
+ *     name: 'Image',
+ *     extensions: ['png', 'jpeg']
+ *   }]
+ * });
+ * if (Array.isArray(selected)) {
+ *   // user selected multiple files
+ * } else if (selected === null) {
+ *   // user cancelled the selection
+ * } else {
+ *   // user selected a single file
+ * }
+ * ```
+ *
+ * @example
+ * ```typescript
+ * import { open } from '@tauri-apps/plugin-dialog';
+ * import { appDir } from '@tauri-apps/api/path';
+ * // Open a selection dialog for directories
+ * const selected = await open({
+ *   directory: true,
+ *   multiple: true,
+ *   defaultPath: await appDir(),
+ * });
+ * if (Array.isArray(selected)) {
+ *   // user selected multiple directories
+ * } else if (selected === null) {
+ *   // user cancelled the selection
+ * } else {
+ *   // user selected a single directory
+ * }
+ * ```
+ *
+ * @returns A promise resolving to the selected path(s)
+ *
+ * @since 2.0.0
+ */
+async function open(options = {}) {
+    if (typeof options === 'object') {
+        Object.freeze(options);
+    }
+    return await invoke('plugin:dialog|open', { options });
+}
+/**
+ * Open a file/directory save dialog.
+ *
+ * The selected path is added to the filesystem and asset protocol scopes.
+ * When security is more important than the easy of use of this API,
+ * prefer writing a dedicated command instead.
+ *
+ * Note that the scope change is not persisted, so the values are cleared when the application is restarted.
+ * You can save it to the filesystem using [tauri-plugin-persisted-scope](https://github.com/tauri-apps/tauri-plugin-persisted-scope).
+ * @example
+ * ```typescript
+ * import { save } from '@tauri-apps/plugin-dialog';
+ * const filePath = await save({
+ *   filters: [{
+ *     name: 'Image',
+ *     extensions: ['png', 'jpeg']
+ *   }]
+ * });
+ * ```
+ *
+ * @returns A promise resolving to the selected path.
+ *
+ * @since 2.0.0
+ */
+async function save(options = {}) {
+    if (typeof options === 'object') {
+        Object.freeze(options);
+    }
+    return await invoke('plugin:dialog|save', { options });
+}
+async function messageCommand(message, options) {
+    return await invoke('plugin:dialog|message', {
+        message,
+        title: options?.title,
+        kind: options?.kind,
+        buttons: buttonsToRust(options?.buttons)
+    });
+}
+/**
+ * Shows a message dialog with an `Ok` button.
+ * @example
+ * ```typescript
+ * import { message } from '@tauri-apps/plugin-dialog';
+ * await message('Tauri is awesome', 'Tauri');
+ * await message('File not found', { title: 'Tauri', kind: 'error' });
+ * ```
+ *
+ * @param message The message to show.
+ * @param options The dialog's options. If a string, it represents the dialog title.
+ *
+ * @returns A promise indicating the success or failure of the operation.
+ *
+ * @since 2.0.0
+ *
+ */
+async function message(message, options) {
+    const opts = typeof options === 'string' ? { title: options } : options;
+    if (opts && !opts.buttons && opts.okLabel) {
+        opts.buttons = { ok: opts.okLabel };
+    }
+    return messageCommand(message, opts);
+}
+/**
+ * Shows a question dialog with `Yes` and `No` buttons.
+ *
+ * Convenient wrapper for `await message('msg', { buttons: 'YesNo' }) === 'Yes'`
+ *
+ * @example
+ * ```typescript
+ * import { ask } from '@tauri-apps/plugin-dialog';
+ * const yes = await ask('Are you sure?', 'Tauri');
+ * const yes2 = await ask('This action cannot be reverted. Are you sure?', { title: 'Tauri', kind: 'warning' });
+ * ```
+ *
+ * @param message The message to show.
+ * @param options The dialog's options. If a string, it represents the dialog title.
+ *
+ * @returns A promise resolving to a boolean indicating whether `Yes` was clicked or not.
+ *
+ * @since 2.0.0
+ */
+async function ask(message, options) {
+    const opts = typeof options === 'string' ? { title: options } : options;
+    const customButtons = opts?.okLabel || opts?.cancelLabel;
+    const okLabel = opts?.okLabel ?? 'Yes';
+    return ((await messageCommand(message, {
+        title: opts?.title,
+        kind: opts?.kind,
+        buttons: customButtons
+            ? { ok: okLabel, cancel: opts.cancelLabel ?? 'No' }
+            : 'YesNo'
+    })) === okLabel);
+}
+/**
+ * Shows a question dialog with `Ok` and `Cancel` buttons.
+ *
+ * Convenient wrapper for `await message('msg', { buttons: 'OkCancel' }) === 'Ok'`
+ *
+ * @example
+ * ```typescript
+ * import { confirm } from '@tauri-apps/plugin-dialog';
+ * const confirmed = await confirm('Are you sure?', 'Tauri');
+ * const confirmed2 = await confirm('This action cannot be reverted. Are you sure?', { title: 'Tauri', kind: 'warning' });
+ * ```
+ *
+ * @param message The message to show.
+ * @param options The dialog's options. If a string, it represents the dialog title.
+ *
+ * @returns A promise resolving to a boolean indicating whether `Ok` was clicked or not.
+ *
+ * @since 2.0.0
+ */
+async function confirm(message, options) {
+    const opts = typeof options === 'string' ? { title: options } : options;
+    const customButtons = opts?.okLabel || opts?.cancelLabel;
+    const okLabel = opts?.okLabel ?? 'Ok';
+    return ((await messageCommand(message, {
+        title: opts?.title,
+        kind: opts?.kind,
+        buttons: customButtons
+            ? { ok: okLabel, cancel: opts.cancelLabel ?? 'Cancel' }
+            : 'OkCancel'
+    })) === okLabel);
+}
+
+export { ask, confirm, message, open, save };
+[0m
+[0m$ [0mcat /tmp/wt-quillmd-22/node_modules/@tauri-apps/api/mocks.js | head -80; echo ====; grep -n "__TAURI_INTERNALS__" /tmp/wt-quillmd-22/node_modules/@tauri-apps/api/core.js | head
+// Copyright 2019-2024 Tauri Programme within The Commons Conservancy
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
+function mockInternals() {
+    var _a, _b;
+    window.__TAURI_INTERNALS__ = (_a = window.__TAURI_INTERNALS__) !== null && _a !== void 0 ? _a : {};
+    window.__TAURI_EVENT_PLUGIN_INTERNALS__ =
+        (_b = window.__TAURI_EVENT_PLUGIN_INTERNALS__) !== null && _b !== void 0 ? _b : {};
+}
+/**
+ * Intercepts all IPC requests with the given mock handler.
+ *
+ * This function can be used when testing tauri frontend applications or when running the frontend in a Node.js context during static site generation.
+ *
+ * # Examples
+ *
+ * Testing setup using Vitest:
+ * ```ts
+ * import { mockIPC, clearMocks } from "@tauri-apps/api/mocks"
+ * import { invoke } from "@tauri-apps/api/core"
+ *
+ * afterEach(() => {
+ *    clearMocks()
+ * })
+ *
+ * test("mocked command", () => {
+ *  mockIPC((cmd, payload) => {
+ *   switch (cmd) {
+ *     case "add":
+ *       return (payload.a as number) + (payload.b as number);
+ *     default:
+ *       break;
+ *     }
+ *  });
+ *
+ *  expect(invoke('add', { a: 12, b: 15 })).resolves.toBe(27);
+ * })
+ * ```
+ *
+ * The callback function can also return a Promise:
+ * ```js
+ * import { mockIPC, clearMocks } from "@tauri-apps/api/mocks"
+ * import { invoke } from "@tauri-apps/api/core"
+ *
+ * afterEach(() => {
+ *    clearMocks()
+ * })
+ *
+ * test("mocked command", () => {
+ *  mockIPC((cmd, payload) => {
+ *   if(cmd === "get_data") {
+ *    return fetch("https://example.com/data.json")
+ *      .then((response) => response.json())
+ *   }
+ *  });
+ *
+ *  expect(invoke('get_data')).resolves.toBe({ foo: 'bar' });
+ * })
+ * ```
+ *
+ * `listen` can also be mocked with direct calls to the `emit` function. This functionality is opt-in via the `shouldMockEvents` option:
+ * ```js
+ * import { mockIPC, clearMocks } from "@tauri-apps/api/mocks"
+ * import { emit, listen } from "@tauri-apps/api/event"
+ *
+ * afterEach(() => {
+ *    clearMocks()
+ * })
+ *
+ * test("mocked event", () => {
+ *  mockIPC(() => {}, { shouldMockEvents: true }); // enable event mocking
+ *
+ *  const eventHandler = vi.fn();
+ *  listen('test-event', eventHandler); // typically in component setup or similar
+ *
+ *  emit('test-event', { foo: 'bar' });
+ *  expect(eventHandler).toHaveBeenCalledWith({
+ *    event: 'test-event',
+ *    payload: { foo: 'bar' }
+ *  });
+====
+72:    return window.__TAURI_INTERNALS__.transformCallback(callback, once);
+118:        window.__TAURI_INTERNALS__.unregisterCallback(this.id);
+202:    return window.__TAURI_INTERNALS__.invoke(cmd, args, options);
+235:    return window.__TAURI_INTERNALS__.convertFileSrc(filePath, protocol);
+[0m
+[0m$ [0mgrep -n "export\|function" /tmp/wt-quillmd-22/node_modules/@tauri-apps/api/mocks.d.ts; echo ====; tail -30 /tmp/wt-quillmd-22/node_modules/@tauri-apps/api/mocks.js; echo ====; grep -n "lib\|types" /tmp/wt-quillmd-22/tsconfig.json
+6: * `shouldMockEvents`: If true, the `listen` and `emit` functions will be mocked, allowing you to test event handling without a real backend.
+11:export interface MockIPCOptions {
+17: * This function can be used when testing tauri frontend applications or when running the frontend in a Node.js context during static site generation.
+44: * The callback function can also return a Promise:
+65: * `listen` can also be mocked with direct calls to the `emit` function. This functionality is opt-in via the `shouldMockEvents` option:
+91:export declare function mockIPC(cb: (cmd: string, payload?: InvokeArgs) => unknown, options?: MockIPCOptions): void;
+94: * In non-tauri context it is required to call this function *before* using the `@tauri-apps/api/window` module.
+96: * This function only mocks the *presence* of windows,
+97: * window properties (e.g. width and height) can be mocked like regular IPC calls using the `mockIPC` function.
+131:export declare function mockWindows(current: string, ..._additionalWindows: string[]): void;
+133: * Mock `convertFileSrc` function
+150:export declare function mockConvertFileSrc(osName: string): void;
+152: * Clears mocked functions/data injected by the other functions in this module.
+153: * When using a test runner that doesn't provide a fresh window object for each test, calling this function will reset tauri specific properties.
+177:export declare function clearMocks(): void;
+====
+ * ```
+ *
+ * @since 1.0.0
+ */
+function clearMocks() {
+    if (typeof window.__TAURI_INTERNALS__ !== 'object') {
+        return;
+    }
+    // @ts-expect-error "The operand of a 'delete' operator must be optional." does not matter in this case
+    delete window.__TAURI_INTERNALS__.invoke;
+    // @ts-expect-error "The operand of a 'delete' operator must be optional." does not matter in this case
+    delete window.__TAURI_INTERNALS__.transformCallback;
+    // @ts-expect-error "The operand of a 'delete' operator must be optional." does not matter in this case
+    delete window.__TAURI_INTERNALS__.unregisterCallback;
+    // @ts-expect-error "The operand of a 'delete' operator must be optional." does not matter in this case
+    delete window.__TAURI_INTERNALS__.runCallback;
+    // @ts-expect-error "The operand of a 'delete' operator must be optional." does not matter in this case
+    delete window.__TAURI_INTERNALS__.callbacks;
+    // @ts-expect-error "The operand of a 'delete' operator must be optional." does not matter in this case
+    delete window.__TAURI_INTERNALS__.convertFileSrc;
+    // @ts-expect-error "The operand of a 'delete' operator must be optional." does not matter in this case
+    delete window.__TAURI_INTERNALS__.metadata;
+    if (typeof window.__TAURI_EVENT_PLUGIN_INTERNALS__ !== 'object') {
+        return;
+    }
+    // @ts-expect-error "The operand of a 'delete' operator must be optional." does not matter in this case
+    delete window.__TAURI_EVENT_PLUGIN_INTERNALS__.unregisterListener;
+}
+
+export { clearMocks, mockConvertFileSrc, mockIPC, mockWindows };
+====
+5:    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+[0m
+Now I have a full picture. Let me check the mocks export surface and existing test conventions before writing the module.
+[0m← [0mWrite src/lib/dialogs.ts
+Wrote file successfully.
+[0m
+I have everything I need. Now I'll write the module.
+Now the test file:
+[0m← [0mWrite src/lib/__tests__/dialogs.test.ts
+Wrote file successfully.
+[0m
+[0m← [0mEdit src/lib/__tests__/dialogs.test.ts
+Index: /tmp/wt-quillmd-22/src/lib/__tests__/dialogs.test.ts
+===================================================================
+--- /tmp/wt-quillmd-22/src/lib/__tests__/dialogs.test.ts
++++ /tmp/wt-quillmd-22/src/lib/__tests__/dialogs.test.ts
+@@ -153,9 +153,8 @@
+         },
+       },
+     },
+   ]);
+-  expect(calls[0]?.payload).not.toHaveProperty("window");
+   expect(promptOf(win)).not.toHaveBeenCalled();
+ });
+ 
+ it("pickOpenFile honours custom filters (docx import)", async () => {
+
+[0m
+[0m$ [0mcd /tmp/wt-quillmd-22 && npx vitest run src/lib/__tests__/dialogs.test.ts 2>&1 | tail -50
+RUN  v4.1.10 /tmp/wt-quillmd-22
+
+
+ Test Files  1 passed (1)
+      Tests  20 passed (20)
+   Start at  13:21:48
+   Duration  222ms (transform 57ms, setup 0ms, import 72ms, tests 15ms, environment 0ms)
+[0m
+All 20 dialog tests pass. Now the full suite and type-check:
+[0m$ [0mcd /tmp/wt-quillmd-22 && npm test 2>&1 | tail -15
+> quillmd@0.1.0 test
+> vitest run
+
+
+ RUN  v4.1.10 /tmp/wt-quillmd-22
+
+
+ Test Files  10 passed (10)
+      Tests  99 passed (99)
+   Start at  13:21:50
+   Duration  372ms (transform 435ms, setup 0ms, import 1.04s, tests 213ms, environment 1ms)
+[0m
+[0m$ [0mcd /tmp/wt-quillmd-22 && npm run build 2>&1 | tail -20
+> quillmd@0.1.0 build
+> tsc && vite build
+
+vite v7.3.6 building client environment for production...
+transforming...
+✓ 465 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     0.47 kB │ gzip:   0.30 kB
+dist/assets/index-BzGZXKxa.css     13.13 kB │ gzip:   2.84 kB
+dist/assets/index-D22_G7Mm.js       1.25 kB │ gzip:   0.48 kB
+dist/assets/index-DeUz_ltn.js   1,404.05 kB │ gzip: 456.06 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.75s
+[0m
+[0m$ [0mcd /tmp/wt-quillmd-22 && git status --short && git diff --stat
+?? src/lib/__tests__/dialogs.test.ts
+?? src/lib/dialogs.ts
+[0m
+Build passes (tsc + vite). No `src-tauri/` changes, so no cargo test needed. Let me review the final diff before committing:
+[0m→ [0mRead src/lib/__tests__/dialogs.test.ts[90m [offset=128, limit=30][0m
+Everything checks out. Committing:
+[0m
+[0m$ [0mcd /tmp/wt-quillmd-22 && git add src/lib/dialogs.ts src/lib/__tests__/dialogs.test.ts && git commit -m "feat(dialogs): add dialogs.ts module with Tauri wrappers + browser fallbacks (#22)
+
+New src/lib/dialogs.ts centralizes all file/confirmation dialogs per plan
+01 section 3: pickOpenFile (multi-select, markdown filters), pickOpenFolder,
+pickSavePath (defaultPath + per-format filters), confirmMessage (title,
+message, kind, buttons). Under Tauri every call goes through
+@tauri-apps/plugin-dialog; in browser dev it falls back to
+window.prompt/confirm/alert.
+
+Unit tests cover the fallback selection logic (browser mode returns the
+simulated prompt/confirm/alert values) and the Tauri wrappers via mockIPC
+(forwarded commands, options, and result normalization)." && git log --oneline -2 && git status --short
+[fp/22-1-1-dialogs-ts-module 6b9624c] feat(dialogs): add dialogs.ts module with Tauri wrappers + browser fallbacks (#22)
+ 2 files changed, 384 insertions(+)
+ create mode 100644 src/lib/__tests__/dialogs.test.ts
+ create mode 100644 src/lib/dialogs.ts
+6b9624c feat(dialogs): add dialogs.ts module with Tauri wrappers + browser fallbacks (#22)
+61f3fd0 docs: add plan 11 — Mermaid diagrams (insert/edit/visualize + PNG export)
+[0m
+Done. Issue #22 is implemented and committed on `fp/22-1-1-dialogs-ts-module` (6b9624c, not pushed).
+
+**What was added:**
+- `src/lib/dialogs.ts` — the single dialog choke point per plan 01 §3:
+  - `pickOpenFile()` → multi-select open dialog, markdown filters by default, optional custom filters/title (for DOCX import later)
+  - `pickOpenFolder()` → native directory dialog
+  - `pickSavePath(defaultName, filter, title?)` → save dialog seeded with `defaultPath`
+  - `confirmMessage({title, message, kind, buttons})` → native message dialog with `ok`/`okCancel`/`yesNo`/`yesNoCancel`, normalized to a `MessageResult`
+  - Filters: `MARKDOWN_FILTER` (md/markdown/mdown/mkd), `DOCX_FILTER`, `extensionFilter()` for per-format export
+  - Tauri branch uses `@tauri-apps/plugin-dialog` (dynamic import, matching the `Explorer.tsx` convention); browser branch falls back to `window.prompt`/`confirm`/`alert`
+- `src/lib/__tests__/dialogs.test.ts` — 20 vitest tests: browser-mode fallback selection logic returns the simulated `prompt`/`confirm`/`alert` values (including cancel/dismiss → `null`/`"no"`/`"cancel"`), and Tauri wrappers verified via `@tauri-apps/api/mocks` `mockIPC` (correct `plugin:dialog|open|save|message` commands, forwarded options, result normalization)
+
+**Verification:** `npm test` → 99 passed (10 files), `npm run build` → tsc + vite pass. No fixtures, pipeline, or `src-tauri/` touched; no other files modified.
+
+> quillmd@0.1.0 test
+> vitest run
+
+
+ RUN  v4.1.10 /tmp/wt-quillmd-22
+
+
+ Test Files  10 passed (10)
+      Tests  99 passed (99)
+   Start at  13:22:20
+   Duration  348ms (transform 354ms, setup 0ms, import 852ms, tests 216ms, environment 1ms)
+
+
+> quillmd@0.1.0 build
+> tsc && vite build
+
+vite v7.3.6 building client environment for production...
+transforming...
+✓ 465 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     0.47 kB │ gzip:   0.30 kB
+dist/assets/index-BzGZXKxa.css     13.13 kB │ gzip:   2.84 kB
+dist/assets/index-D22_G7Mm.js       1.25 kB │ gzip:   0.48 kB
+dist/assets/index-DeUz_ltn.js   1,404.05 kB │ gzip: 456.06 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.74s

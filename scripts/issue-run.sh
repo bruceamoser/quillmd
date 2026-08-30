@@ -226,11 +226,17 @@ PR_URL="$(gh pr create --repo "$REPO" --base main --head "$BRANCH" \
 PR_NUM="$(basename "$PR_URL")"
 log "PR opened: $PR_URL"
 
-# --- 6. bookkeeping -----------------------------------------------------------
+# --- bookkeeping -----------------------------------------------------------
 git -C "$REPO_DIR" worktree remove --force "$WT" >/dev/null 2>&1 || true
-touch "$STATE_FILE"
+if [ ! -s "$STATE_FILE" ] || ! jq -e . "$STATE_FILE" >/dev/null 2>&1; then
+  echo '{}' > "$STATE_FILE"
+fi
 TMP_STATE="$(mktemp)"
-jq --argjson n "$ISSUE" --arg pr "$PR_NUM" --arg br "$BRANCH" \
-  '.[$n|tostring] = {pr: ($pr|tonumber), branch: $br}' "$STATE_FILE" >"$TMP_STATE" \
-  && mv "$TMP_STATE" "$STATE_FILE"
+if jq --argjson n "$ISSUE" --arg pr "$PR_NUM" --arg br "$BRANCH" \
+  '.[$n|tostring] = {pr: ($pr|tonumber), branch: $br}' "$STATE_FILE" >"$TMP_STATE"; then
+  mv "$TMP_STATE" "$STATE_FILE"
+else
+  rm -f "$TMP_STATE"
+  echo "warning: state update failed (PR still opened: $PR_URL)" >&2
+fi
 log "DONE issue #$ISSUE -> PR #$PR_NUM"
