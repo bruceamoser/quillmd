@@ -76,7 +76,7 @@ if [ "$FORCE" -eq 0 ]; then
   if [ -n "$STATE_PR" ]; then
     PR_STATE="$(gh pr view "$STATE_PR" --repo "$REPO" --json state --jq .state 2>/dev/null)"
     case "$PR_STATE" in
-      open|merged) log "issue #$ISSUE already has PR #$STATE_PR ($PR_STATE) — skipping (use --force to redo)"; exit 0 ;;
+      OPEN|open|MERGED|merged) log "issue #$ISSUE already has PR #$STATE_PR ($PR_STATE) — skipping (use --force to redo)"; exit 0 ;;
     esac
   fi
 fi

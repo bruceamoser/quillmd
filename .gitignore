@@ -3,3 +3,7 @@ dist/
 target/
 src-tauri/target/
 *.local
+
+# feature-parity pipeline runtime artifacts (state file is tracked; logs are not)
+scripts/.fp-runs/*.log
+scripts/.fp-pipeline.log

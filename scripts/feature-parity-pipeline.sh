@@ -100,7 +100,7 @@ has_pr() { # $1 = issue number -> 0 if open/merged PR exists
   pr="$(jq -r --argjson n "$n" '.[$n|tostring].pr // empty' "$STATE_FILE" 2>/dev/null)"
   if [ -n "$pr" ]; then
     state="$(gh pr view "$pr" --repo "$REPO" --json state --jq .state 2>/dev/null)"
-    [ "$state" = "open" ] || [ "$state" = "merged" ] && return 0
+    case "$state" in open|OPEN|merged|MERGED) return 0 ;; esac
   fi
   return 1
 }
