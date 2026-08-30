@@ -451,6 +451,28 @@ body {
   color: var(--accent);
 }
 
+/* Zoom readout (plan 02 task 2.6, issue #35): styled like the mode buttons;
+   a button in the app (click resets to 100%), a plain label when the
+   component is embedded without a reset handler. */
+.quillmd-status-zoom {
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-radius: 3px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+button.quillmd-status-zoom {
+  cursor: pointer;
+}
+
+button.quillmd-status-zoom:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
 .quillmd-status-toast {
   position: fixed;
   bottom: 32px;
@@ -580,6 +602,10 @@ body {
      --quillmd-line-spacing CSS variable; the fallback is the "single"
      default so an unset variable keeps the base look. */
   line-height: var(--quillmd-line-spacing, 1.7);
+  /* Zoom (plan 02 task 2.6, issue #35): the per-doc percent is applied as
+     the --quillmd-zoom CSS variable on this content container; the 100
+     fallback keeps an unset variable at the default size. */
+  zoom: calc(var(--quillmd-zoom, 100) / 100);
   max-width: 860px;
   margin: 0 auto;
 }

@@ -8,8 +8,13 @@ interface StatusBarProps {
   charCount: number;
   eol: "lf" | "crlf";
   dirty: boolean;
+  // Content zoom percent (plan 02 task 2.6, issue #35); 100 is the default.
+  zoom: number;
   fileName: string | null;
   onModeChange?: (mode: ViewMode) => void;
+  // When provided, the zoom readout is a button that resets to 100% (Word
+  // behavior). Absent (tests, embedded) it renders as a plain label.
+  onZoomReset?: () => void;
 }
 
 export default function StatusBar({
@@ -18,8 +23,10 @@ export default function StatusBar({
   charCount,
   eol,
   dirty,
+  zoom,
   fileName,
   onModeChange,
+  onZoomReset,
 }: StatusBarProps) {
   return (
     <div className="quillmd-statusbar">
@@ -44,6 +51,19 @@ export default function StatusBar({
       {dirty && <span className="quillmd-status-dirty">*</span>}
       <span className="quillmd-status-spacer" />
       <span>EOL: {eol.toUpperCase()}</span>
+      <span className="quillmd-status-sep">|</span>
+      {onZoomReset ? (
+        <button
+          type="button"
+          className="quillmd-status-zoom"
+          title="Zoom — click to reset to 100% (Ctrl+0)"
+          onClick={onZoomReset}
+        >
+          {zoom}%
+        </button>
+      ) : (
+        <span className="quillmd-status-zoom">{zoom}%</span>
+      )}
       <span className="quillmd-status-sep">|</span>
       <span>{wordCount} words</span>
       <span className="quillmd-status-sep">|</span>

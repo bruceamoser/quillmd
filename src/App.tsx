@@ -36,6 +36,9 @@ import { templateById } from "./lib/templates";
 import { collectDocInfo } from "./lib/docInfo";
 import type { DocInfo } from "./lib/docInfo";
 import {
+  ZOOM_DEFAULT,
+  ZOOM_STEP,
+  clampZoom,
   dispatchEditorCommand,
   isLineSpacingValue,
 } from "./lib/editorCommands";
@@ -60,8 +63,9 @@ interface DocState {
   open: OpenFileResult;
   currentText: string;
   viewMode: ViewMode;
-  // Per-doc view preferences (plan 02 task 2.5): line spacing, word wrap, and
-  // formatting marks. View-only — never part of the saved markdown.
+  // Per-doc view preferences (plan 02 task 2.5, zoom per task 2.6): line
+  // spacing, word wrap, formatting marks, and zoom. View-only — never part of
+  // the saved markdown.
   settings: DocSettings;
 }
 
@@ -116,6 +120,7 @@ const SHORTCUTS_TEXT = [
   "Ctrl+K: link",
   "Ctrl+] / Ctrl+[: indent / outdent (list item or quote level)",
   "Tab / Shift+Tab: nest / un-nest list item or quote",
+  "Ctrl+= / Ctrl+- / Ctrl+0: zoom in / zoom out / reset (Ctrl+wheel)",
   "Ctrl+Shift+X: strikethrough",
   "Ctrl+E: inline code",
   "Ctrl+/: toggle WYSIWYG / Source",
@@ -139,6 +144,7 @@ export default function App() {
   const [status, setStatus] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const explorerRef = useRef<ExplorerHandle | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const activeDoc = activePath ? docs[activePath] : undefined;
   const currentText = activeDoc?.currentText ?? "";
@@ -390,11 +396,12 @@ export default function App() {
     setMode(doc.viewMode === "wysiwyg" ? "source" : "wysiwyg");
   }, [activeDoc, activePath, setMode]);
 
-  // Per-doc view settings (plan 02 task 2.5): the menu handler is the only
-  // writer. The patch is persisted per path (like the view mode) and the
-  // editor DOM is reconciled twice: the registry command mutates it for the
-  // open WYSIWYG view, and Editor re-applies the setting on mount, so the
-  // choice survives tab switches and view-mode changes.
+  // Per-doc view settings (plan 02 task 2.5, zoom per task 2.6): the View
+  // menu handlers and changeZoom are the writers. The patch is persisted per
+  // path (like the view mode) and the editor DOM is reconciled twice: the
+  // registry command mutates it for the open WYSIWYG view, and Editor
+  // re-applies the setting on mount, so the choice survives tab switches and
+  // view-mode changes.
   const patchDocSettings = useCallback(
     (patch: Partial<DocSettings>) => {
       if (!activePath || !activeDoc) return;
@@ -425,6 +432,29 @@ export default function App() {
     patchDocSettings({ wordWrap: !activeDoc.settings.wordWrap });
     dispatchEditorCommand("wordWrap");
   }, [activeDoc, patchDocSettings]);
+
+  // Zoom (plan 02 task 2.6, issue #35): the per-doc settings record is the
+  // single source of truth for the percent. Every surface (View > Zoom
+  // submenu, Ctrl+=/Ctrl+-/Ctrl+0, Ctrl-wheel, status-bar reset) funnels
+  // through here: the clamped percent is persisted per path and then applied
+  // to the open WYSIWYG DOM through the registry command (a no-op outside
+  // WYSIWYG, where the next mount re-applies it via applyViewSettings).
+  const changeZoom = useCallback(
+    (percent: number) => {
+      if (!activeDoc) return;
+      const next = clampZoom(percent);
+      patchDocSettings({ zoom: next });
+      dispatchEditorCommand("zoom", next);
+    },
+    [activeDoc, patchDocSettings],
+  );
+
+  const stepZoom = useCallback(
+    (delta: number) => {
+      changeZoom((activeDoc?.settings.zoom ?? ZOOM_DEFAULT) + delta);
+    },
+    [activeDoc, changeZoom],
+  );
 
   const doExport = useCallback(
     async (format: ExportFormat) => {
@@ -595,6 +625,12 @@ export default function App() {
         toggleWordWrap();
       } else if (id.startsWith("view-spacing-")) {
         setLineSpacing(id.slice("view-spacing-".length) as LineSpacingValue);
+      } else if (id === "view-zoom-in") {
+        stepZoom(ZOOM_STEP);
+      } else if (id === "view-zoom-out") {
+        stepZoom(-ZOOM_STEP);
+      } else if (id === "view-zoom-reset") {
+        changeZoom(ZOOM_DEFAULT);
       } else if (MENU_TO_COMMAND[id]) {
         dispatchEditorCommand(MENU_TO_COMMAND[id]);
       } else if (id === "help-about") {
@@ -619,6 +655,8 @@ export default function App() {
       setLineSpacing,
       toggleShowMarks,
       toggleWordWrap,
+      stepZoom,
+      changeZoom,
       recentFiles,
       activePath,
       openByPath,
@@ -730,11 +768,37 @@ export default function App() {
       } else if (key === "w") {
         e.preventDefault();
         if (activePath) void closeDoc(activePath);
+      } else if (key === "=" || key === "+") {
+        // Zoom in (plan 02 task 2.6): Ctrl+= on the main row, Ctrl+Shift+=
+        // (which reports "+") on layouts where + sits behind Shift.
+        e.preventDefault();
+        stepZoom(ZOOM_STEP);
+      } else if (key === "-") {
+        e.preventDefault();
+        stepZoom(-ZOOM_STEP);
+      } else if (key === "0") {
+        e.preventDefault();
+        changeZoom(ZOOM_DEFAULT);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [toggleMode, doSave, doSaveAs, doNew, closeDoc, activePath]);
+  }, [toggleMode, doSave, doSaveAs, doNew, closeDoc, activePath, stepZoom, changeZoom]);
+
+  // Ctrl+mouse-wheel zoom (plan 02 task 2.6, Word behavior): a wheel event
+  // with Ctrl held steps the active doc's zoom. The listener is non-passive so
+  // preventDefault can stop the webview's own page zoom from also firing.
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      stepZoom(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [stepZoom]);
 
   const tabs = Object.entries(docs).map(([path, d]) => ({
     path,
@@ -844,7 +908,11 @@ export default function App() {
             onNewTab={doOpen}
           />
           <div className="quillmd-body">
-            <div className="quillmd-content" key={activePath ?? "welcome"}>
+            <div
+              className="quillmd-content"
+              key={activePath ?? "welcome"}
+              ref={contentRef}
+            >
               {activeDoc ? (
                 editorView
               ) : (
@@ -875,12 +943,14 @@ export default function App() {
               charCount={charCount}
               eol={activeDoc?.open.eol ?? "lf"}
               dirty={dirty}
+              zoom={activeDoc?.settings.zoom ?? ZOOM_DEFAULT}
               fileName={
                 activePath && isUntitledPath(activePath)
                   ? untitledDisplayName(activePath)
                   : activePath
               }
               onModeChange={setMode}
+              onZoomReset={() => changeZoom(ZOOM_DEFAULT)}
             />
           )}
         </div>

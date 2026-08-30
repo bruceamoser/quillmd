@@ -4,7 +4,7 @@
 // like the view mode (viewModes.ts) and never touch the save pipeline or the
 // round-trip contract.
 
-import { isLineSpacingValue } from "./editorCommands";
+import { ZOOM_DEFAULT, ZOOM_MAX, ZOOM_MIN, isLineSpacingValue } from "./editorCommands";
 import type { LineSpacingValue } from "./editorCommands";
 
 export interface DocSettings {
@@ -16,12 +16,16 @@ export interface DocSettings {
   wordWrap: boolean;
   // Render pilcrows/hidden whitespace (pure CSS, no document mutation).
   showMarks: boolean;
+  // Content zoom percent, 50-200 (plan 02 §2.6, issue #35); 100 is the
+  // default. View-only — rendered as the --quillmd-zoom CSS variable.
+  zoom: number;
 }
 
 export const DEFAULT_DOC_SETTINGS: DocSettings = {
   lineSpacing: "single",
   wordWrap: true,
   showMarks: false,
+  zoom: ZOOM_DEFAULT,
 };
 
 const SETTINGS_KEY = "quillmd.docSettings";
@@ -36,6 +40,9 @@ function normalize(raw: unknown): DocSettings {
   if (isLineSpacingValue(record.lineSpacing)) out.lineSpacing = record.lineSpacing;
   if (typeof record.wordWrap === "boolean") out.wordWrap = record.wordWrap;
   if (typeof record.showMarks === "boolean") out.showMarks = record.showMarks;
+  if (typeof record.zoom === "number" && Number.isFinite(record.zoom)) {
+    out.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(record.zoom)));
+  }
   return out;
 }
 
