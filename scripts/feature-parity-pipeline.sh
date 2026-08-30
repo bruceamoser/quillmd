@@ -142,6 +142,13 @@ for entry in "${WORK_SORTED[@]}"; do
   IFS=$'\t' read -r wave plan task num <<<"$entry"
   if [ "$WAVE_ONLY" -ne 0 ] && [ "$wave" != "$WAVE_ONLY" ]; then continue; fi
   if [ "$wave" != "$cur_wave" ]; then
+    # wave boundary: pause for human review if requested (and not the first wave)
+    if [ "$PAUSE" -eq 1 ] && [ "$cur_wave" -ne 0 ]; then
+      log "wave checkpoint (end of wave $cur_wave) — open PRs for review:"
+      gh pr list --repo "$REPO" --state open --json number,title --jq '.[] | "  #\(.number) \(.title)"'
+      log "re-run the pipeline to continue (or merge PRs first)."
+      exit 0
+    fi
     cur_wave="$wave"
     log "----- WAVE $wave -----"
   fi
@@ -162,11 +169,10 @@ for entry in "${WORK_SORTED[@]}"; do
   fi
 done
 
-# --- wave pause (human review point) ------------------------------------------
-if [ "$FAIL" -eq 0 ] && [ "$PAUSE" -eq 1 ]; then
-  log "wave checkpoint — open PRs for review:"
+# --- final checkpoint (pause mode) --------------------------------------------
+if [ "$FAIL" -eq 0 ] && [ "$PAUSE" -eq 1 ] && [ "$cur_wave" -ne 0 ]; then
+  log "all waves complete — open PRs for final review:"
   gh pr list --repo "$REPO" --state open --json number,title --jq '.[] | "  #\(.number) \(.title)"'
-  log "re-run the pipeline to continue (or merge PRs first)."
 fi
 
 if [ "$FAIL" -eq 0 ]; then
