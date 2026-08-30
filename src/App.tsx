@@ -81,6 +81,7 @@ const MENU_TO_COMMAND: Record<string, EditorCommandId> = {
   "insert-emoji": "emoji",
   "format-bold": "bold",
   "format-italic": "italic",
+  "format-underline": "underline",
   "format-strike": "strike",
   "format-code": "code",
   "format-highlight": "highlight",
@@ -98,7 +99,7 @@ const EXPORT_FORMATS: Record<string, ExportFormat> = {
 
 const SHORTCUTS_TEXT = [
   "Ctrl+N: new document",
-  "Ctrl+B / Ctrl+I: bold / italic",
+  "Ctrl+B / Ctrl+I / Ctrl+U: bold / italic / underline",
   "Ctrl+K: link",
   "Ctrl+Shift+X: strikethrough",
   "Ctrl+E: inline code",

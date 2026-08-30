@@ -215,6 +215,8 @@ fn build_insert_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
 fn build_format_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> {
     let bold = MenuItem::with_id(app, "format-bold", "Bold", true, Some("Ctrl+B"))?;
     let italic = MenuItem::with_id(app, "format-italic", "Italic", true, Some("Ctrl+I"))?;
+    let underline =
+        MenuItem::with_id(app, "format-underline", "Underline", true, Some("Ctrl+U"))?;
     let strike =
         MenuItem::with_id(app, "format-strike", "Strikethrough", true, Some("Ctrl+Shift+X"))?;
     let code = MenuItem::with_id(app, "format-code", "Inline Code", true, Some("Ctrl+E"))?;
@@ -225,7 +227,7 @@ fn build_format_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
     let clear = MenuItem::with_id(app, "format-clear", "Clear Formatting", true, None::<&str>)?;
 
     let format = SubmenuBuilder::new(app, "Format")
-        .items(&[&bold, &italic, &strike, &code, &highlight, &subscript, &superscript])
+        .items(&[&bold, &italic, &underline, &strike, &code, &highlight, &subscript, &superscript])
         .separator()
         .item(&clear)
         .build()?;
