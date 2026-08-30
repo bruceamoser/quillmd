@@ -21,6 +21,16 @@ import {
   openPickedFiles,
   saveAsDocument,
 } from "./lib/fileMenu";
+import {
+  isUntitledPath,
+  makeUntitledDoc,
+  nextUntitledPath,
+  rekeyDocRecord,
+  saveNewDocument,
+  untitledDefaultName,
+  untitledDisplayName,
+} from "./lib/newDoc";
+import { templateById } from "./lib/templates";
 import { dispatchEditorCommand } from "./lib/editorCommands";
 import type { EditorCommandId } from "./lib/editorCommands";
 import Editor from "./components/Editor";
@@ -81,6 +91,7 @@ const EXPORT_FORMATS: Record<string, ExportFormat> = {
 };
 
 const SHORTCUTS_TEXT = [
+  "Ctrl+N: new document",
   "Ctrl+B / Ctrl+I: bold / italic",
   "Ctrl+K: link",
   "Ctrl+Shift+X: strikethrough",
@@ -211,6 +222,45 @@ export default function App() {
     [addDoc],
   );
 
+  // File > New / New from template: creates an untitled tab keyed by a
+  // synthetic :new:<n> path (plan 01 §3). Template content is seeded from
+  // the bundled src/templates set; without a template the doc starts blank.
+  const doNew = useCallback(
+    (templateId?: string) => {
+      if (templateId !== undefined && !templateById(templateId)) {
+        setStatus(`Unknown template: ${templateId}`);
+        return;
+      }
+      const template = templateId ? templateById(templateId) : undefined;
+      const content = template?.content ?? "";
+      const opened = makeUntitledDoc(nextUntitledPath(Object.keys(docs)), content);
+      setDocs((prev) => ({
+        ...prev,
+        [opened.path]: {
+          open: opened,
+          currentText: content,
+          viewMode: loadViewMode(opened.path),
+        },
+      }));
+      setActivePath(opened.path);
+      setStatus(template ? `New from template: ${template.label}` : "New untitled document");
+    },
+    [docs],
+  );
+
+  // Re-keys an untitled tab from its synthetic :new:<n> path to a real path
+  // after the first save. The document content and view mode carry over; the
+  // open state is replaced with the saved file's source, bytes, and hash so
+  // the external-change guard works from the second save on.
+  const rekeyDoc = useCallback(
+    (fromPath: string, toPath: string, source: string, bytes: Uint8Array, hash: string) => {
+      setDocs((prev) => rekeyDocRecord(prev, fromPath, toPath, source, bytes, hash));
+      setActivePath((cur) => (cur === fromPath ? toPath : cur));
+      void addRecent(toPath);
+    },
+    [addRecent],
+  );
+
   // File > Open: native multi-select dialog under Tauri (one tab per file);
   // the hidden <input type="file"> is the browser-dev fallback.
   const doOpen = useCallback(() => {
@@ -230,6 +280,16 @@ export default function App() {
       bytes = doc.open.originalBytes;
     } else {
       bytes = encodeDocument(result.text, { eol: doc.open.eol, bom: doc.open.bom });
+    }
+
+    // First save of an untitled doc: native save dialog, then re-key the tab
+    // from the synthetic path to the chosen one (plan 01 acceptance #3).
+    if (runningInTauri() && isUntitledPath(doc.open.path)) {
+      await saveNewDocument(doc.open.path, bytes, {
+        status: setStatus,
+        onSaved: (out, hash) => rekeyDoc(doc.open.path, out, result.text, bytes, hash),
+      });
+      return;
     }
 
     if (runningInTauri() && isAbsolutePath(doc.open.path)) {
@@ -257,13 +317,16 @@ export default function App() {
       return;
     }
 
-    downloadBytes(doc.open.path || "document.md", bytes);
+    const downloadName = isUntitledPath(doc.open.path)
+      ? untitledDefaultName(doc.open.path)
+      : doc.open.path || "document.md";
+    downloadBytes(downloadName, bytes);
     updateDoc(doc.open.path, {
       open: { ...doc.open, source: result.text, originalBytes: bytes },
       currentText: result.text,
     });
     setStatus("Saved (downloaded)");
-  }, [activeDoc, model, updateDoc]);
+  }, [activeDoc, model, updateDoc, rekeyDoc]);
 
   const doSaveAs = useCallback(async () => {
     const doc = activeDoc;
@@ -276,7 +339,10 @@ export default function App() {
     if (runningInTauri()) {
       await saveAsDocument(doc.open, bytes, { openByPath, status: setStatus });
     } else {
-      downloadBytes(doc.open.path || "document.md", bytes);
+      const downloadName = isUntitledPath(doc.open.path)
+        ? untitledDefaultName(doc.open.path)
+        : doc.open.path || "document.md";
+      downloadBytes(downloadName, bytes);
       setStatus("Saved (downloaded)");
     }
   }, [activeDoc, model, openByPath]);
@@ -362,7 +428,11 @@ export default function App() {
 
   const handleMenuEvent = useCallback(
     (id: string) => {
-      if (id === "file-open") {
+      if (id === "file-new") {
+        doNew();
+      } else if (id.startsWith("file-new-template-")) {
+        doNew(id.slice("file-new-template-".length));
+      } else if (id === "file-open") {
         doOpen();
       } else if (id === "file-open-folder") {
         explorerRef.current?.openFolder();
@@ -415,7 +485,7 @@ export default function App() {
         window.alert(SHORTCUTS_TEXT);
       }
     },
-    [doOpen, doSave, doSaveAs, doExport, doImport, doFind, setMode, toggleMode, recentFiles, openByPath, clearRecent],
+    [doNew, doOpen, doSave, doSaveAs, doExport, doImport, doFind, setMode, toggleMode, recentFiles, openByPath, clearRecent],
   );
 
   // Native menu events (Tauri only). In browser dev this listener never fires.
@@ -452,7 +522,10 @@ export default function App() {
       const mod = e.ctrlKey || e.metaKey;
       if (!mod) return;
       const key = e.key.toLowerCase();
-      if (key === "e" && e.shiftKey) {
+      if (key === "n" && !e.shiftKey) {
+        e.preventDefault();
+        doNew();
+      } else if (key === "e" && e.shiftKey) {
         e.preventDefault();
         setExplorerOpen((open) => !open);
       } else if (key === "/") {
@@ -468,7 +541,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [toggleMode, doSave, doSaveAs]);
+  }, [toggleMode, doSave, doSaveAs, doNew]);
 
   const tabs = Object.entries(docs).map(([path, d]) => ({
     path,
@@ -498,6 +571,9 @@ export default function App() {
     <main className="quillmd-app">
       {!runningInTauri() && (
         <header className="quillmd-header">
+          <button type="button" onClick={() => doNew()}>
+            New
+          </button>
           <button type="button" onClick={doOpen}>
             Open
           </button>
@@ -554,6 +630,9 @@ export default function App() {
                 <button type="button" onClick={doOpen}>
                   Open file
                 </button>
+                <button type="button" onClick={() => doNew()}>
+                  New document
+                </button>
               </div>
             )}
           </div>
@@ -564,7 +643,11 @@ export default function App() {
               charCount={charCount}
               eol={activeDoc?.open.eol ?? "lf"}
               dirty={dirty}
-              fileName={activePath}
+              fileName={
+                activePath && isUntitledPath(activePath)
+                  ? untitledDisplayName(activePath)
+                  : activePath
+              }
               onModeChange={setMode}
             />
           )}
