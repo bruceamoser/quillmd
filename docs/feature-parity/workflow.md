@@ -101,6 +101,13 @@ and closes the worktree, leaving the branch pushed for inspection):
 - **Stop-on-fail (default):** first failed gate halts the wave; the failed
   issue is left with its branch pushed and a `FAILED <issue#> <gate>` line
   in the log. Fix manually (or re-run the pipeline after the agent fixes).
+- **`--merge`:** squash-merge each PR the moment it passes the gates.
+  Without it, PRs in a wave all branch from the same `main`, and because
+  tasks in a wave share files (App.tsx, menu.rs, editorCommands.ts), the
+  queue will conflict after a few land. With it, every issue builds on the
+  freshly updated `main`, so a full 74-issue run stays conflict-free.
+  Everything is still fully reviewable (PR diffs + squash commits); revert
+  with `git revert <squash-sha>` if needed.
 - **`--force <issue#>`:** re-run a specific issue even if it has a PR
   (the old PR is closed first).
 - **Tier pauses (default OFF, flag `--pause`):** after each wave, the
@@ -114,8 +121,8 @@ and closes the worktree, leaving the branch pushed for inspection):
 ```bash
 cd ~/repos/quillmd
 
-# Full run (all remaining sub-issues, wave order):
-bash scripts/feature-parity-pipeline.sh
+# Full run (all remaining sub-issues, wave order, auto-merge each PR):
+bash scripts/feature-parity-pipeline.sh --merge
 
 # With human review checkpoints after each wave:
 bash scripts/feature-parity-pipeline.sh --pause

@@ -9,6 +9,8 @@
 #   --dry-run          print the execution order; do nothing else
 #   --pause            stop at the end of each wave for human review
 #   --wave <n>         run only wave <n> (1-5)
+#   --merge            squash-merge each PR as it passes the gates, so every
+#                      issue builds on an up-to-date main (conflict-free run)
 #   --force <n>        re-run issue <n> even if it already has a PR
 #                      (closes the old PR first)
 #   --stop-on-fail     default; fail the wave on the first failed issue
@@ -35,6 +37,7 @@ LOG="$REPO_DIR/scripts/.fp-pipeline.log"
 DRY=0
 PAUSE=0
 WAVE_ONLY=0
+MERGE=0
 FORCE_ISSUE=""
 FAIL=0
 
@@ -42,6 +45,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY=1 ;;
     --pause) PAUSE=1 ;;
+    --merge) MERGE=1 ;;
     --wave) shift; WAVE_ONLY="${1:?--wave needs a number}" ;;
     --force) shift; FORCE_ISSUE="${1:?--force needs an issue number}" ;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -158,7 +162,7 @@ for entry in "${WORK_SORTED[@]}"; do
     continue
   fi
   log "RUN issue #$num (plan $plan.$task)"
-  if bash "$ISSUE_RUN" "$num" 2>&1 | tee -a "$LOG"; then
+  if bash "$ISSUE_RUN" "$num" ${MERGE:+--merge} 2>&1 | tee -a "$LOG"; then
     TOTAL_RUN=$((TOTAL_RUN + 1))
   else
     rc=${PIPESTATUS[0]}

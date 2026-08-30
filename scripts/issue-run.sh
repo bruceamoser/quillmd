@@ -2,7 +2,10 @@
 # issue-run.sh — implement one QuillMD feature-parity sub-issue via OpenCode.
 #
 # Usage:
-#   bash scripts/issue-run.sh <issue-number> [--force]
+#   bash scripts/issue-run.sh <issue-number> [--force] [--merge]
+#
+#   --force  re-run even if the issue already has an open/merged PR
+#   --merge  squash-merge the PR right after it opens (gates must pass)
 #
 # What it does (see docs/feature-parity/workflow.md for the full contract):
 #   1. Fetches the issue (must be a sub-issue: title matches "[PN] X.Y ...").
@@ -28,9 +31,11 @@ STATE_FILE="$REPO_DIR/scripts/.fp-pipeline-state.json"
 
 ISSUE=""
 FORCE=0
+MERGE=0
 for arg in "$@"; do
   case "$arg" in
     --force) FORCE=1 ;;
+    --merge) MERGE=1 ;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     [0-9]*) ISSUE="$arg" ;;
     *) echo "unknown arg: $arg" >&2; exit 1 ;;
@@ -225,6 +230,14 @@ PR_URL="$(gh pr create --repo "$REPO" --base main --head "$BRANCH" \
   || gate_fail "gh pr create"
 PR_NUM="$(basename "$PR_URL")"
 log "PR opened: $PR_URL"
+
+if [ "$MERGE" -eq 1 ]; then
+  if gh pr merge "$PR_NUM" --repo "$REPO" --squash --delete-branch >/dev/null 2>&1; then
+    log "PR #$PR_NUM merged (squash)"
+  else
+    log "warning: merge of PR #$PR_NUM failed (conflict?); PR left open for manual merge"
+  fi
+fi
 
 # --- bookkeeping -----------------------------------------------------------
 git -C "$REPO_DIR" worktree remove --force "$WT" >/dev/null 2>&1 || true
