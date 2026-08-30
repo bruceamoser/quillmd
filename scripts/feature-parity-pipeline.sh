@@ -166,10 +166,25 @@ for entry in "${WORK_SORTED[@]}"; do
     TOTAL_RUN=$((TOTAL_RUN + 1))
   else
     rc=${PIPESTATUS[0]}
-    log "STOP: issue #$num failed (rc=$rc). Wave $wave halted."
-    log "Inspect scripts/.fp-runs/$num.log, fix, then re-run this script (resume-safe)."
-    FAIL=1
-    break
+    if [ "$rc" -eq 2 ]; then
+      # rc=2 = agent exited without committing (usually ran out of turns
+      # mid-plan). Transient: retry once from scratch.
+      log "issue #$num: agent made no commits — one automatic retry"
+      if bash "$ISSUE_RUN" "$num" ${MERGE:+--merge} 2>&1 | tee -a "$LOG"; then
+        TOTAL_RUN=$((TOTAL_RUN + 1))
+      else
+        rc=${PIPESTATUS[0]}
+        log "STOP: issue #$num failed on retry (rc=$rc). Wave $wave halted."
+        log "Inspect scripts/.fp-runs/$num.log, fix, then re-run this script (resume-safe)."
+        FAIL=1
+        break
+      fi
+    else
+      log "STOP: issue #$num failed (rc=$rc). Wave $wave halted."
+      log "Inspect scripts/.fp-runs/$num.log, fix, then re-run this script (resume-safe)."
+      FAIL=1
+      break
+    fi
   fi
 done
 

@@ -98,9 +98,11 @@ and closes the worktree, leaving the branch pushed for inspection):
 - **Resume-safe:** the pipeline keeps state in
   `scripts/.fp-pipeline-state.json` (`{issue: pr_number}`). On re-run it
   skips issues that already have an open or merged PR, and continues.
-- **Stop-on-fail (default):** first failed gate halts the wave; the failed
-  issue is left with its branch pushed and a `FAILED <issue#> <gate>` line
-  in the log. Fix manually (or re-run the pipeline after the agent fixes).
+- **Stop-on-fail (default):** a failed *gate* (rc=3) halts the wave; the
+  failed issue is left with its branch pushed and a `FAILED <issue#> <gate>`
+  line in the log. Fix manually (or re-run the pipeline after the agent fixes).
+  An agent that exits **without committing** (rc=2, usually ran out of turns
+  mid-plan) is retried **once automatically** before the wave halts.
 - **`--merge`:** squash-merge each PR the moment it passes the gates.
   Without it, PRs in a wave all branch from the same `main`, and because
   tasks in a wave share files (App.tsx, menu.rs, editorCommands.ts), the
@@ -113,8 +115,9 @@ and closes the worktree, leaving the branch pushed for inspection):
 - **Tier pauses (default OFF, flag `--pause`):** after each wave, the
   pipeline stops and prints the wave's PRs for human review before
   continuing. Recommended for wave 1 and 3 (highest blast radius).
-- **Never auto-merges.** Merging PRs is a human action (or a separate
-  explicit command). The pipeline's job ends at a green PR.
+- **Merging is opt-in (`--merge`).** Default runs stop at a green PR and
+  leave merging to a human. With `--merge` (the mode for the full
+  74-issue run), each passing PR is squash-merged immediately.
 
 ## 6. Usage
 
