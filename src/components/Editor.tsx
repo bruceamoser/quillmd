@@ -250,11 +250,7 @@ export default function Editor({
           const parent = $from.parent.type.name;
           if (parent === "listItem" || parent === "taskItem") {
             event.preventDefault();
-            if (event.shiftKey) {
-              active.chain().focus().liftListItem("listItem").liftListItem("taskItem").run();
-            } else {
-              active.chain().focus().sinkListItem("listItem").sinkListItem("taskItem").run();
-            }
+            runEditorCommand(active, event.shiftKey ? "outdent" : "indent");
             return true;
           }
         }
@@ -350,7 +346,7 @@ export default function Editor({
 
   useEffect(() => {
     if (!editor) return;
-    return registerEditorCommandListener((id) => runEditorCommand(editor, id));
+    return registerEditorCommandListener((id, param) => runEditorCommand(editor, id, param));
   }, [editor]);
 
   useEffect(() => {

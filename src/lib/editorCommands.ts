@@ -34,17 +34,78 @@ export type EditorCommandId =
   | "frontmatter"
   | "emoji"
   | "definitionList"
+  | "underline"
+  | "alignLeft"
+  | "alignCenter"
+  | "alignRight"
+  | "indent"
+  | "outdent"
+  | "lineSpacing"
+  | "showMarks"
+  | "zoom"
+  | "pasteAsText"
   | "undo"
   | "redo"
   | "clearFormatting";
+
+// Parameters for the view-level commands that take one. `lineSpacing` takes a
+// spacing preset, `zoom` takes a step (or an explicit percent), and
+// `pasteAsText` takes the plain-text payload (the clipboard read is owned by
+// the caller: menu events, paste key handlers, tests).
+export type EditorCommandParam =
+  | LineSpacingValue
+  | ZoomParam
+  | string
+  | number;
 
 export interface EditorCommand {
   id: EditorCommandId;
   label: string;
   shortcut?: string;
-  run: (editor: CoreEditor) => boolean;
-  active?: (editor: CoreEditor) => boolean;
+  run: (editor: CoreEditor, param?: EditorCommandParam) => boolean;
+  active?: (editor: CoreEditor, param?: EditorCommandParam) => boolean;
 }
+
+// --- view-level command parameters -----------------------------------------
+
+// Word/Docs line-spacing presets (plan 02 §2.4). Rendered as the
+// --quillmd-line-spacing CSS variable on the editor content; no markdown
+// representation (view preference).
+export type LineSpacingValue = "single" | "1.15" | "1.5" | "double";
+
+export const LINE_SPACING_VALUES: readonly LineSpacingValue[] = [
+  "single",
+  "1.15",
+  "1.5",
+  "double",
+];
+
+const LINE_SPACING_CSS: Record<LineSpacingValue, string> = {
+  single: "1",
+  "1.15": "1.15",
+  "1.5": "1.5",
+  double: "2",
+};
+
+const LINE_SPACING_VAR = "--quillmd-line-spacing";
+
+export function isLineSpacingValue(value: unknown): value is LineSpacingValue {
+  return typeof value === "string" && (LINE_SPACING_VALUES as readonly string[]).includes(value);
+}
+
+// Word/Docs zoom range (plan 02 §2.6): 50-200% in 10% steps, reset to 100%.
+export type ZoomParam = "in" | "out" | "reset";
+
+export const ZOOM_MIN = 50;
+export const ZOOM_MAX = 200;
+export const ZOOM_STEP = 10;
+export const ZOOM_DEFAULT = 100;
+
+const ZOOM_VAR = "--quillmd-zoom";
+
+// The formatting-marks wrapper class (plan 02 §3): pure CSS, no document
+// mutation, so it can never break the round-trip.
+const SHOW_MARKS_CLASS = "quillmd-show-marks";
 
 function headingCmd(level: 1 | 2 | 3 | 4 | 5 | 6): EditorCommand {
   return {
@@ -67,6 +128,151 @@ export function nextFootnoteLabel(editor: CoreEditor): string {
     }
   });
   return String(max + 1);
+}
+
+// --- helpers for the view-level commands ------------------------------------
+
+function editorDom(editor: CoreEditor): HTMLElement {
+  return editor.view.dom as HTMLElement;
+}
+
+// The line-spacing preset currently applied to the editor. Unset (or a
+// value this build does not recognize) reads as the "single" default.
+export function lineSpacingOf(editor: CoreEditor): LineSpacingValue {
+  const raw = editorDom(editor).style.getPropertyValue(LINE_SPACING_VAR).trim();
+  for (const value of LINE_SPACING_VALUES) {
+    if (LINE_SPACING_CSS[value] === raw) return value;
+  }
+  return "single";
+}
+
+// The zoom percent currently applied to the editor (50-200, plan 02 §2.6).
+export function zoomPercentOf(editor: CoreEditor): number {
+  const raw = parseFloat(editorDom(editor).style.getPropertyValue(ZOOM_VAR));
+  if (!Number.isFinite(raw)) return ZOOM_DEFAULT;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(raw)));
+}
+
+function setZoomPercent(editor: CoreEditor, percent: number): void {
+  const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(percent)));
+  editorDom(editor).style.setProperty(ZOOM_VAR, String(clamped));
+}
+
+// Node types that carry per-block alignment (plan 02 §2.2). The textAlign
+// node attribute itself lands with the alignment serializer (plan 02 task
+// 2.3); until then the updateAttributes calls below are no-ops and the
+// active checks read as "left".
+const ALIGNABLE_NODES = ["paragraph", "heading", "blockquote", "codeBlock"] as const;
+
+type AlignValue = "left" | "center" | "right";
+
+// The alignment of the block under the cursor, or null when the cursor is
+// not in an alignable block. "left" is the default (absent attribute).
+export function textAlignOf(
+  editor: CoreEditor,
+): AlignValue | null {
+  for (const name of ALIGNABLE_NODES) {
+    if (editor.isActive(name)) {
+      const value = editor.getAttributes(name).textAlign;
+      if (value === "center" || value === "right") return value;
+      return "left";
+    }
+  }
+  return null;
+}
+
+function setAlignment(editor: CoreEditor, value: AlignValue): boolean {
+  const chain = editor.chain().focus();
+  for (const name of ALIGNABLE_NODES) {
+    chain.updateAttributes(name, { textAlign: value });
+  }
+  return chain.run();
+}
+
+// Sets a block alignment, skipping the dispatch when the block under the
+// cursor already has it (alignLeft is the default, so re-clicking it must not
+// emit a no-op transaction). Returns true when the block is aligned to `value`
+// afterwards, false when the cursor is not in an alignable block.
+function setAlignmentIfChanged(editor: CoreEditor, value: AlignValue): boolean {
+  const current = textAlignOf(editor);
+  if (current === null) return false;
+  if (current === value) return true;
+  return setAlignment(editor, value);
+}
+
+// The native sink/lift chain (same as the Tab key handler in Editor.tsx):
+// both the listItem and taskItem variants run, the one that does not apply
+// is a no-op. Two quirks are worked around here:
+//   - chain().run() ANDs the per-command results, so the non-matching variant
+//     reports false even though the other one already changed the document.
+//     The document comparison is the true result.
+//   - The converter currently emits task lists as bullet lists of task items,
+//     a structure the native sink rejects with an error. Report the failure
+//     instead of letting it escape into the dispatching surface.
+function runListSinkOrLift(editor: CoreEditor, sink: boolean): boolean {
+  const before = editor.state.doc;
+  try {
+    const chain = editor.chain().focus();
+    if (sink) {
+      chain.sinkListItem("listItem").sinkListItem("taskItem");
+    } else {
+      chain.liftListItem("listItem").liftListItem("taskItem");
+    }
+    chain.run();
+  } catch {
+    // Fall through to the document comparison.
+  }
+  return !before.eq(editor.state.doc);
+}
+
+// Indent (plan 02 §2.5): list items nest via the native sink commands; any
+// other block is pushed one quote level deeper (wrap). Word parity: Ctrl+].
+function indentRun(editor: CoreEditor): boolean {
+  if (inList(editor)) {
+    return runListSinkOrLift(editor, true);
+  }
+  if (editor.can().wrapIn("blockquote")) {
+    return editor.chain().focus().wrapIn("blockquote").run();
+  }
+  return false;
+}
+
+// Indent is applicable when the block under the cursor can be pushed in:
+// list items the native sink can nest, quoted blocks (nest one level), or any
+// other wrappable block (the first wrap creates the quote level).
+function indentActive(editor: CoreEditor): boolean {
+  if (inList(editor)) {
+    return editor.can().sinkListItem("listItem") || editor.can().sinkListItem("taskItem");
+  }
+  if (editor.isActive("blockquote")) return true;
+  return editor.can().wrapIn("blockquote");
+}
+
+// Outdent (plan 02 §2.5): list items un-nest via the native lift commands;
+// quoted blocks are pulled one quote level shallower (lift). Word parity:
+// Ctrl+['.
+function outdentRun(editor: CoreEditor): boolean {
+  if (inList(editor)) {
+    return runListSinkOrLift(editor, false);
+  }
+  if (editor.isActive("blockquote")) {
+    return editor.chain().focus().lift("blockquote").run();
+  }
+  return false;
+}
+
+// Outdent is applicable when the block under the cursor can be pulled out:
+// list items the native lift can raise (top-level items lift out of the list)
+// or quoted blocks (lift removes one quote level).
+function outdentActive(editor: CoreEditor): boolean {
+  if (inList(editor)) {
+    return editor.can().liftListItem("listItem") || editor.can().liftListItem("taskItem");
+  }
+  return editor.isActive("blockquote");
+}
+
+function inList(editor: CoreEditor): boolean {
+  return editor.isActive("listItem") || editor.isActive("taskItem");
 }
 
 export const EDITOR_COMMANDS: EditorCommand[] = [
@@ -243,6 +449,115 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
         .run(),
   },
   {
+    id: "underline",
+    label: "Underline",
+    shortcut: "Ctrl+U",
+    run: (editor) => editor.chain().focus().toggleUnderline().run(),
+    active: (editor) => editor.isActive("underline"),
+  },
+  {
+    id: "alignLeft",
+    label: "Align left",
+    run: (editor) => setAlignmentIfChanged(editor, "left"),
+    active: (editor) => textAlignOf(editor) === "left",
+  },
+  {
+    id: "alignCenter",
+    label: "Align center",
+    run: (editor) => setAlignmentIfChanged(editor, "center"),
+    active: (editor) => textAlignOf(editor) === "center",
+  },
+  {
+    id: "alignRight",
+    label: "Align right",
+    run: (editor) => setAlignmentIfChanged(editor, "right"),
+    active: (editor) => textAlignOf(editor) === "right",
+  },
+  {
+    id: "indent",
+    label: "Indent",
+    shortcut: "Ctrl+]",
+    run: indentRun,
+    active: indentActive,
+  },
+  {
+    id: "outdent",
+    label: "Outdent",
+    shortcut: "Ctrl+[",
+    run: outdentRun,
+    active: outdentActive,
+  },
+  {
+    id: "lineSpacing",
+    label: "Line spacing",
+    run: (editor, param) => {
+      if (!isLineSpacingValue(param)) return false;
+      editorDom(editor).style.setProperty(LINE_SPACING_VAR, LINE_SPACING_CSS[param]);
+      return true;
+    },
+    active: (editor, param) => isLineSpacingValue(param) && lineSpacingOf(editor) === param,
+  },
+  {
+    id: "showMarks",
+    label: "Show formatting marks",
+    run: (editor) => {
+      editorDom(editor).classList.toggle(SHOW_MARKS_CLASS);
+      return true;
+    },
+    active: (editor) => editorDom(editor).classList.contains(SHOW_MARKS_CLASS),
+  },
+  {
+    id: "zoom",
+    label: "Zoom",
+    run: (editor, param) => {
+      const current = zoomPercentOf(editor);
+      if (param === "in") {
+        setZoomPercent(editor, current + ZOOM_STEP);
+        return true;
+      }
+      if (param === "out") {
+        setZoomPercent(editor, current - ZOOM_STEP);
+        return true;
+      }
+      if (param === "reset") {
+        setZoomPercent(editor, ZOOM_DEFAULT);
+        return true;
+      }
+      if (typeof param === "number" && Number.isFinite(param)) {
+        setZoomPercent(editor, param);
+        return true;
+      }
+      return false;
+    },
+    active: (editor, param) =>
+      typeof param === "number" && Number.isFinite(param) && zoomPercentOf(editor) === param,
+  },
+  {
+    id: "pasteAsText",
+    label: "Paste as plain text",
+    shortcut: "Ctrl+Shift+V",
+    run: (editor, param) => {
+      if (typeof param !== "string" || param.length === 0) return false;
+      const lines = param.split(/\r\n|\r|\n/);
+      // A single trailing newline on the clipboard does not imply an extra
+      // empty paragraph.
+      if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+      // Plain-text paste strips the payload's own formatting but inherits the
+      // marks at the destination (Word parity). Marks are serialized to plain
+      // objects because insertContent expects JSONContent.
+      const marks = editor.state.selection
+        .$from.marks()
+        .map((mark) => ({ type: mark.type.name, attrs: { ...mark.attrs } }));
+      const content = lines.map(
+        (line) =>
+          line.length > 0
+            ? { type: "paragraph", content: [{ type: "text", text: line, marks }] }
+            : { type: "paragraph" },
+      );
+      return editor.chain().focus().insertContent(content).run();
+    },
+  },
+  {
     id: "undo",
     label: "Undo",
     shortcut: "Ctrl+Z",
@@ -267,23 +582,31 @@ const BY_ID = new Map<EditorCommandId, EditorCommand>(
   EDITOR_COMMANDS.map((cmd) => [cmd.id, cmd]),
 );
 
-export function runEditorCommand(editor: CoreEditor, id: EditorCommandId): boolean {
+export function runEditorCommand(
+  editor: CoreEditor,
+  id: EditorCommandId,
+  param?: EditorCommandParam,
+): boolean {
   const cmd = BY_ID.get(id);
   if (!cmd) return false;
-  return cmd.run(editor);
+  return cmd.run(editor, param);
 }
 
-export function editorCommandActive(editor: CoreEditor, id: EditorCommandId): boolean {
+export function editorCommandActive(
+  editor: CoreEditor,
+  id: EditorCommandId,
+  param?: EditorCommandParam,
+): boolean {
   const cmd = BY_ID.get(id);
   if (!cmd || !cmd.active) return false;
-  return cmd.active(editor);
+  return cmd.active(editor, param);
 }
 
 // A single active-editor listener so App.tsx (native menu events) can reach
 // the TipTap instance that owns the cursor. The WYSIWYG Editor registers on
 // mount and unregisters on unmount; outside WYSIWYG the listener is null and
 // dispatch is a no-op.
-type CommandListener = (id: EditorCommandId) => void;
+type CommandListener = (id: EditorCommandId, param?: EditorCommandParam) => void;
 let commandListener: CommandListener | null = null;
 
 export function registerEditorCommandListener(fn: CommandListener): () => void {
@@ -293,8 +616,8 @@ export function registerEditorCommandListener(fn: CommandListener): () => void {
   };
 }
 
-export function dispatchEditorCommand(id: EditorCommandId): boolean {
+export function dispatchEditorCommand(id: EditorCommandId, param?: EditorCommandParam): boolean {
   if (!commandListener) return false;
-  commandListener(id);
+  commandListener(id, param);
   return true;
 }
