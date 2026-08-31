@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useEditorState } from "@tiptap/react";
 import type { Editor as CoreEditor } from "@tiptap/core";
+import ColorPalette from "./ColorPalette";
 import {
   EDITOR_COMMANDS,
   editorCommandActive,
+  fontColorOf,
+  highlightColorOf,
   runEditorCommand,
 } from "../lib/editorCommands";
 import type { EditorCommandId } from "../lib/editorCommands";
@@ -12,14 +15,16 @@ interface ToolbarProps {
   editor: CoreEditor | null;
 }
 
-// Inline marks rendered as toggle buttons, in display order.
+// Inline marks rendered as toggle buttons, in display order. Highlight is no
+// longer a plain toggle button: the toolbar exposes it through the shared
+// color palette (plan 04 task 4.2, issue #48); the colorless ==text==
+// highlight stays reachable from the Format menu ("highlight" command).
 const INLINE_CMDS: EditorCommandId[] = [
   "bold",
   "italic",
   "underline",
   "strike",
   "code",
-  "highlight",
   "subscript",
   "superscript",
 ];
@@ -53,7 +58,6 @@ const GLYPHS: Partial<Record<EditorCommandId, string>> = {
   underline: "U",
   strike: "S",
   code: "</>",
-  highlight: "A",
   subscript: "x\u2082",
   superscript: "x\u00B2",
   link: "Link",
@@ -204,6 +208,24 @@ export default function Toolbar({ editor }: ToolbarProps) {
 
       <span className="quillmd-toolbar-sep" />
       {INLINE_CMDS.map(renderButton)}
+
+      <span className="quillmd-toolbar-sep" />
+      {/* Font + highlight color pickers (plan 04 task 4.2, issue #48): both
+          render the shared ColorPalette (the colors.ts swatches); each
+          dispatches its registry command with the picked color — a hex
+          string, or null for "Auto". */}
+      <ColorPalette
+        title="Font color"
+        trigger="A"
+        current={fontColorOf(editor)}
+        onPick={(color) => runEditorCommand(editor, "fontColor", color)}
+      />
+      <ColorPalette
+        title="Highlight color"
+        trigger={"\u270E"}
+        current={highlightColorOf(editor)}
+        onPick={(color) => runEditorCommand(editor, "highlightColor", color)}
+      />
 
       <span className="quillmd-toolbar-sep" />
       {BLOCK_CMDS.map((id) => (id === "image" ? renderImageSplit() : renderButton(id)))}
