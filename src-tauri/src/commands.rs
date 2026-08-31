@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
+use tauri::Manager;
 
 use crate::fs::assets;
 use crate::fs::encoding::{self, Eol};
@@ -212,6 +213,59 @@ pub fn set_recent_files(app: tauri::AppHandle, recent: Vec<String>) -> Result<()
     crate::menu::save_recent(&app, &capped);
     crate::menu::refresh(&app, &capped).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// User style overrides (plan 05 task 5.4, issue #57): the Word-style
+/// "Modify Style" look of built-in styles, stored as JSON in the app config
+/// dir (~/.config/quillmd/style-overrides.json) — machine-local by design,
+/// never part of a document. The path-based helpers keep the logic
+/// testable; the #[tauri::command] wrappers resolve the config dir.
+
+fn overrides_file<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Option<PathBuf> {
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|d| d.join("style-overrides.json"))
+}
+
+/// Reads the overrides file as raw JSON text; missing or unreadable files
+/// read as an empty object so a first run (or a hand-deleted file) is a
+/// clean state, not an error.
+pub fn read_overrides_file(path: &std::path::Path) -> String {
+    match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(_) => "{}".to_string(),
+    }
+}
+
+/// Writes the overrides payload after validating it is a JSON object. The
+/// frontend owns the schema (and normalizes it); the Rust side only guards
+/// the file shape so a stray payload can never turn the config file into
+/// something the frontend cannot parse back.
+pub fn write_overrides_file(path: &std::path::Path, json: &str) -> Result<(), String> {
+    let value: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| err("invalid_json", e))?;
+    if !value.is_object() {
+        return Err(err("invalid_json", "overrides payload must be a JSON object"));
+    }
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|e| err("io", format!("create {}: {e}", dir.display())))?;
+    }
+    fs::write(path, json).map_err(|e| err("io", format!("write {}: {e}", path.display())))
+}
+
+#[tauri::command]
+pub fn read_style_overrides(app: tauri::AppHandle) -> String {
+    overrides_file(&app)
+        .map(|p| read_overrides_file(&p))
+        .unwrap_or_else(|| "{}".to_string())
+}
+
+#[tauri::command]
+pub fn write_style_overrides(app: tauri::AppHandle, json: String) -> Result<(), String> {
+    let path =
+        overrides_file(&app).ok_or_else(|| err("config_dir", "app config dir unavailable"))?;
+    write_overrides_file(&path, &json)
 }
 
 #[cfg(test)]
@@ -475,5 +529,49 @@ mod tests {
         ]);
         assert_eq!(out, vec![true, false, false]);
         assert_eq!(file_exists(vec![]), Vec::<bool>::new());
+    }
+
+    // --- style overrides (plan 05 task 5.4, issue #57) ----------------------
+
+    #[test]
+    fn overrides_read_missing_file_is_empty_object() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("style-overrides.json");
+        assert_eq!(read_overrides_file(&path), "{}");
+    }
+
+    #[test]
+    fn overrides_write_roundtrips() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("style-overrides.json");
+        let payload = r#"{"h2": {"fontFamily": "Georgia", "fontSize": "18pt"}}"#;
+
+        write_overrides_file(&path, payload).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), payload);
+        assert_eq!(read_overrides_file(&path), payload);
+    }
+
+    #[test]
+    fn overrides_write_creates_parent_dirs() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("nested").join("deep").join("style-overrides.json");
+
+        write_overrides_file(&path, "{}").unwrap();
+        assert!(path.is_file());
+    }
+
+    #[test]
+    fn overrides_write_rejects_non_object_payloads() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("style-overrides.json");
+
+        for payload in [r#"[1, 2]"#, r#""h2""#, "not json", "42"] {
+            let res = write_overrides_file(&path, payload);
+            assert!(res.is_err(), "{payload} must be rejected");
+            let msg = res.unwrap_err();
+            assert!(msg.starts_with("invalid_json:"), "got {msg}");
+        }
+        // Nothing was written.
+        assert!(!path.exists());
     }
 }

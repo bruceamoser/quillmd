@@ -108,6 +108,16 @@ import {
 import type { SourceMatch } from "./lib/sourceFind";
 import { getSearchQuery, setSearchQuery, type SearchQuery } from "@codemirror/search";
 import { styleMenuCommand } from "./lib/styles";
+import { activeStyles } from "./lib/styles";
+import {
+  MODIFY_STYLE_MENU_ID,
+  loadStyleOverrides,
+  overridesToCss,
+  saveStyleOverrides,
+  styleKeyForStyleId,
+} from "./lib/styleOverrides";
+import type { OverrideKey, StyleOverride, StyleOverrides } from "./lib/styleOverrides";
+import ModifyStyleDialog from "./components/ModifyStyleDialog";
 import Editor from "./components/Editor";
 import DocInfoPanel from "./components/DocInfoPanel";
 import SourceView from "./components/SourceView";
@@ -292,6 +302,12 @@ export default function App() {
   // present, otherwise this app-wide default. Cosmetic only — the document
   // bytes are never touched.
   const [appTheme, setAppTheme] = useState<ThemeId>(() => loadThemeDefault());
+  // User style overrides (plan 05 task 5.4, issue #57): the Modify Style
+  // look of built-in styles, stored in the app config dir (Rust commands)
+  // and rendered as CSS on the content container only — the document bytes
+  // never change. Loaded once on mount; the Modify Style dialog edits them.
+  const [styleOverrides, setStyleOverrides] = useState<StyleOverrides>({});
+  const [modifyStyleKey, setModifyStyleKey] = useState<OverrideKey | null>(null);
   const [findState, setFindState] = useState<SearchState | null>(null);
   const findStateRef = useRef<SearchState | null>(null);
   const findQueryRef = useRef("");
@@ -328,6 +344,19 @@ export default function App() {
   // default. View-only — it drives the data-theme attribute and the scoped
   // CSS variable sheets, never the document bytes.
   const activeTheme = activeDoc ? resolveTheme(appTheme, activeDoc.settings.theme) : appTheme;
+
+  // The CSS the stored style overrides render as (plan 05 task 5.4,
+  // issue #57): scoped to the WYSIWYG and preview content containers, so
+  // the modified styles restyle the rendered document without ever reaching
+  // the save pipeline (plan 05 AC6).
+  const overridesCss = useMemo(
+    () =>
+      overridesToCss(styleOverrides, [
+        ".quillmd-prosemirror",
+        ".quillmd-preview-content",
+      ]),
+    [styleOverrides],
+  );
 
   // Which engine the open find panel acts on (plan 07 task 7.4, issue #72):
   // the WYSIWYG doc in wysiwyg mode, the CodeMirror source doc whenever the
@@ -694,6 +723,50 @@ export default function App() {
   const changeAppTheme = useCallback((theme: ThemeId) => {
     setAppTheme(theme);
     saveThemeDefault(theme);
+  }, []);
+
+  // Modify Style (plan 05 task 5.4, issue #57): Format > Styles > "Modify…"
+  // opens the in-app dialog. Word preselects the style under the cursor, so
+  // the first built-in style active at the selection wins, else Normal. The
+  // override is app-wide (all documents), not per-doc.
+  const openModifyStyle = useCallback(() => {
+    const editor = currentFindEditor();
+    let key: OverrideKey = "paragraph";
+    if (editor) {
+      for (const style of activeStyles(editor)) {
+        const k = styleKeyForStyleId(style.id);
+        if (k) {
+          key = k;
+          break;
+        }
+      }
+    }
+    setModifyStyleKey(key);
+  }, []);
+
+  // OK in the dialog: persist the edited style's override (an empty override
+  // deletes the style's record — the reset flow) and close.
+  const applyModifyStyle = useCallback(
+    (key: OverrideKey, override: StyleOverride) => {
+      const next: StyleOverrides = { ...styleOverrides };
+      if (Object.keys(override).length === 0) delete next[key];
+      else next[key] = override;
+      setStyleOverrides(next);
+      void saveStyleOverrides(next).catch(() => setStatus("Could not save style overrides"));
+      setModifyStyleKey(null);
+    },
+    [styleOverrides],
+  );
+
+  // "Reset all": clears every style's override (the global reset flow).
+  const resetAllStyleOverrides = useCallback(() => {
+    if (!window.confirm("Reset every style to its theme default? This clears all style overrides.")) {
+      return;
+    }
+    setStyleOverrides({});
+    void saveStyleOverrides({}).catch(() => setStatus("Could not save style overrides"));
+    setModifyStyleKey(null);
+    setStatus("Style overrides reset");
   }, []);
 
   const doExport = useCallback(
@@ -1492,6 +1565,12 @@ export default function App() {
         // the identical commands the toolbar font cluster does.
         const action = fontMenuCommand(id);
         if (action) dispatchEditorCommand(action.command, action.param);
+      } else if (id === MODIFY_STYLE_MENU_ID) {
+        // Format > Styles > "Modify…" (plan 05 task 5.4, issue #57): opens
+        // the in-app Modify Style dialog, preselecting the style under the
+        // cursor. The override is view-only CSS in the app config dir — the
+        // document bytes are never touched.
+        openModifyStyle();
       } else if (id.startsWith("format-style-")) {
         // Format > Styles submenu (plan 05 task 5.2, issue #55): every
         // built-in style is its own menu id; styleMenuCommand resolves it
@@ -1537,6 +1616,7 @@ export default function App() {
       changeEditorFont,
       changeDocTheme,
       changeAppTheme,
+      openModifyStyle,
       recentFiles,
       activePath,
       openByPath,
@@ -1561,6 +1641,19 @@ export default function App() {
       unlisten?.();
     };
   }, [handleMenuEvent]);
+
+  // Style overrides (plan 05 task 5.4, issue #57): load the stored overrides
+  // once on mount (Rust app config dir under Tauri, localStorage in browser
+  // dev). A missing or corrupt file normalizes to an empty set.
+  useEffect(() => {
+    let disposed = false;
+    void loadStyleOverrides().then((overrides) => {
+      if (!disposed) setStyleOverrides(overrides);
+    });
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   // OS dark-mode default (plan 05 task 5.3, issue #56, AC5): while the user
   // has not saved an explicit app-wide theme, follow the OS preference live —
@@ -1790,6 +1883,9 @@ export default function App() {
 
   return (
     <main className="quillmd-app">
+      {/* View-only style overrides (plan 05 task 5.4, issue #57): restyles
+          the WYSIWYG/preview content without touching the document bytes. */}
+      <style>{overridesCss}</style>
       {!runningInTauri() && (
         <header className="quillmd-header">
           <button type="button" onClick={() => doNew()}>
@@ -1913,6 +2009,15 @@ export default function App() {
                   prefill={imageEditDialog.prefill}
                   onApply={applyImageEditDialog}
                   onClose={closeImageEditDialog}
+                />
+              )}
+              {modifyStyleKey !== null && (
+                <ModifyStyleDialog
+                  initialKey={modifyStyleKey}
+                  overrides={styleOverrides}
+                  onApply={applyModifyStyle}
+                  onResetAll={resetAllStyleOverrides}
+                  onClose={() => setModifyStyleKey(null)}
                 />
               )}
             </div>

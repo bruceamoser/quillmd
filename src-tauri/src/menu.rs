@@ -502,7 +502,14 @@ fn build_format_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
     for (id, label) in STYLES {
         styles = styles.text(format!("format-style-{id}"), *label);
     }
-    let styles = styles.build()?;
+    // Modify Style (plan 05 task 5.4, issue #57): opens the in-app style
+    // editor (fields + live preview). The native menu carries no parameters,
+    // so the single id opens the dialog with the style under the cursor
+    // preselected; the overrides persist in the app config dir, never in the
+    // document.
+    let modify_style =
+        MenuItem::with_id(app, "format-style-modify", "Modify...", true, None::<&str>)?;
+    let styles = styles.separator().item(&modify_style).build()?;
 
     let format = SubmenuBuilder::new(app, "Format")
         .items(&[&bold, &italic, &underline, &strike, &code, &highlight, &subscript, &superscript])

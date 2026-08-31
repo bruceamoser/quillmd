@@ -262,7 +262,9 @@ pub fn run() {
             commands::copy_asset,
             commands::file_exists,
             commands::get_recent_files,
-            commands::set_recent_files
+            commands::set_recent_files,
+            commands::read_style_overrides,
+            commands::write_style_overrides
         ])
         .setup(|app| {
             let recent = menu::load_recent(app.handle());
