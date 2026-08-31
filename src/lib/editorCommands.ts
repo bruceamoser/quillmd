@@ -9,6 +9,14 @@ import type { Node as PmNode } from "@tiptap/pm/model";
 import { FRONTMATTER_LANG } from "./pm";
 import type { DocSettings } from "./docSettings";
 import { normalizeColor } from "./colors";
+import {
+  DEFAULT_EDITOR_FONT,
+  EDITOR_FONT_FAMILIES,
+  EDITOR_FONT_FAMILY_CSS,
+  isEditorFontFamily,
+  isEditorFontSize,
+  type EditorFontSettings,
+} from "./editorFont";
 
 export type EditorCommandId =
   | "h1"
@@ -57,7 +65,8 @@ export type EditorCommandId =
   | "highlightColor"
   | "undo"
   | "redo"
-  | "clearFormatting";
+  | "clearFormatting"
+  | "editorFont";
 
 // Parameters for the view-level commands that take one. `lineSpacing` takes a
 // spacing preset, `zoom` takes a step (or an explicit percent), `pasteAsText`
@@ -65,12 +74,14 @@ export type EditorCommandId =
 // menu events, paste key handlers, tests), the font attribute commands
 // (`fontFamily` / `fontSize`) take the picked value (a family name, or a
 // point size as a number or "Npt" string) or `null` for "Normal" (the
-// document default), and the color commands (`fontColor` / `highlightColor`)
+// document default), the color commands (`fontColor` / `highlightColor`)
 // take the picked color — a hex string for a swatch or custom color, or
-// `null` for "auto" (inherit / no color).
+// `null` for "auto" (inherit / no color) — and `editorFont` takes the full
+// per-app editor-chrome font settings object.
 export type EditorCommandParam =
   | LineSpacingValue
   | ZoomParam
+  | EditorFontSettings
   | string
   | number
   | null;
@@ -137,6 +148,12 @@ const NO_WRAP_CLASS = "quillmd-no-wrap";
 // command only toggles the attribute on the editor DOM.
 const SPELLCHECK_ATTR = "spellcheck";
 
+// The editor-chrome font (plan 04 task 4.5, issue #51): the per-app font the
+// WYSIWYG content renders in. Rendered as CSS variables on the editor DOM —
+// cosmetic, like line spacing and zoom, with no markdown representation.
+const EDITOR_FONT_FAMILY_VAR = "--quillmd-editor-font";
+const EDITOR_FONT_SIZE_VAR = "--quillmd-editor-font-size";
+
 // Applies a document's persisted view settings (plan 02 task 2.5, zoom per
 // task 2.6) to the editor DOM: the line-spacing and zoom CSS variables plus
 // the formatting-marks and no-wrap wrapper classes and the spellcheck
@@ -150,6 +167,17 @@ export function applyViewSettings(editor: CoreEditor, settings: DocSettings): vo
   dom.classList.toggle(SHOW_MARKS_CLASS, settings.showMarks);
   dom.classList.toggle(NO_WRAP_CLASS, !settings.wordWrap);
   dom.setAttribute(SPELLCHECK_ATTR, settings.spellcheck ? "true" : "false");
+}
+
+// Applies the per-app editor-chrome font (plan 04 task 4.5, issue #51) to the
+// editor DOM. The Editor calls this on mount with the persisted setting so
+// every newly mounted WYSIWYG view renders in the app-wide font; the
+// editorFont registry command mutates the same DOM state for live picks,
+// which keeps re-application idempotent.
+export function applyEditorFont(editor: CoreEditor, settings: EditorFontSettings): void {
+  const dom = editorDom(editor);
+  dom.style.setProperty(EDITOR_FONT_FAMILY_VAR, EDITOR_FONT_FAMILY_CSS[settings.family]);
+  dom.style.setProperty(EDITOR_FONT_SIZE_VAR, `${settings.size}px`);
 }
 
 function headingCmd(level: 1 | 2 | 3 | 4 | 5 | 6): EditorCommand {
@@ -196,6 +224,26 @@ export function zoomPercentOf(editor: CoreEditor): number {
   const raw = parseFloat(editorDom(editor).style.getPropertyValue(ZOOM_VAR));
   if (!Number.isFinite(raw)) return ZOOM_DEFAULT;
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(raw)));
+}
+
+// The editor-chrome font currently applied to the editor (plan 04 task 4.5,
+// issue #51). Unset variables (or values this build does not recognize) read
+// as the defaults, matching the CSS fallbacks in App.css.
+export function editorFontOf(editor: CoreEditor): EditorFontSettings {
+  const dom = editorDom(editor);
+  const familyRaw = dom.style.getPropertyValue(EDITOR_FONT_FAMILY_VAR).trim();
+  let family: EditorFontSettings["family"] = DEFAULT_EDITOR_FONT.family;
+  for (const candidate of EDITOR_FONT_FAMILIES) {
+    if (EDITOR_FONT_FAMILY_CSS[candidate] === familyRaw) {
+      family = candidate;
+      break;
+    }
+  }
+  const sizeRaw = parseInt(dom.style.getPropertyValue(EDITOR_FONT_SIZE_VAR), 10);
+  return {
+    family,
+    size: Number.isFinite(sizeRaw) ? sizeRaw : DEFAULT_EDITOR_FONT.size,
+  };
 }
 
 // Clamps an arbitrary percent into the 50-200 zoom range, rounding to a whole
@@ -871,6 +919,22 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
     active: (editor) => spellcheckOf(editor),
   },
   {
+    id: "editorFont",
+    label: "Editor font",
+    run: (editor, param) => {
+      if (typeof param !== "object" || param === null) return false;
+      if (!isEditorFontFamily(param.family) || !isEditorFontSize(param.size)) return false;
+      applyEditorFont(editor, param);
+      return true;
+    },
+    active: (editor, param) => {
+      if (typeof param !== "object" || param === null) return false;
+      if (!isEditorFontFamily(param.family) || !isEditorFontSize(param.size)) return false;
+      const current = editorFontOf(editor);
+      return current.family === param.family && current.size === param.size;
+    },
+  },
+  {
     id: "pasteAsText",
     label: "Paste as plain text",
     shortcut: "Ctrl+Shift+V",
@@ -912,7 +976,20 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
   {
     id: "clearFormatting",
     label: "Clear formatting",
-    run: (editor) => editor.chain().focus().clearNodes().unsetAllMarks().run(),
+    run: (editor) => {
+      // Word behavior (plan 04 task 4.5, issue #51, AC4): clearing formatting
+      // strips every character mark — the font family/size/color marks among
+      // them — while keeping bold and italic. The mark set is derived from the
+      // schema so future marks are cleared by default too. clearNodes()
+      // unwraps block-level formatting (headings, lists, ...) as before.
+      const chain = editor.chain().focus().clearNodes();
+      for (const mark of Object.values(editor.state.schema.marks)) {
+        if (mark.name !== "bold" && mark.name !== "italic") {
+          chain.unsetMark(mark.name);
+        }
+      }
+      return chain.run();
+    },
   },
 ];
 

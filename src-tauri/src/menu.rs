@@ -106,6 +106,14 @@ pub const FONT_FAMILIES: &[&str] = &[
     "Verdana",
 ];
 pub const FONT_SIZES: &[u8] = &[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48];
+// Editor-chrome font lists (plan 04 task 4.5, issue #51). These mirror the
+// frontend constants — src/lib/editorFont.ts EDITOR_FONT_FAMILIES /
+// EDITOR_FONT_SIZES — so the View > Editor font submenu offers exactly the
+// picks the frontend applies; the vitest suite
+// (src/lib/__tests__/editorfont.test.tsx) asserts the two stay in sync, the
+// same contract as the document font lists above.
+pub const EDITOR_FONT_FAMILIES: &[&str] = &["sans-serif", "serif", "monospace"];
+pub const EDITOR_FONT_SIZES: &[u8] = &[12, 13, 14, 15, 16, 18, 20, 24];
 pub const FONT_COLORS: &[&str] = &[
     "000000", "7f0000", "9c5700", "7f6000", "375623", "1f4e79",
     "595959", "c00000", "ed7d31", "ffc000", "70ad47", "4472c4",
@@ -256,6 +264,27 @@ fn build_view_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> 
     // frontend. The source view (CodeMirror) is always off.
     let spellcheck = MenuItem::with_id(app, "view-spellcheck", "Spellcheck", true, None::<&str>)?;
 
+    // Editor font (plan 04 task 4.5, issue #51): the editor's own chrome
+    // font/size — the font the WYSIWYG content renders in. Per-app (not
+    // per-doc), persisted on the frontend; purely cosmetic, never touches
+    // the document.
+    let mut editor_font = SubmenuBuilder::new(app, "Editor font");
+    for family in EDITOR_FONT_FAMILIES {
+        let mut label = String::from(*family);
+        if let Some(first) = label.get_mut(0..1) {
+            first.make_ascii_uppercase();
+        }
+        editor_font = editor_font.text(format!("view-editor-font-{family}"), label);
+    }
+    editor_font = editor_font.separator();
+    for size in EDITOR_FONT_SIZES {
+        editor_font = editor_font.text(
+            format!("view-editor-font-size-{size}"),
+            format!("{size} px"),
+        );
+    }
+    let editor_font = editor_font.build()?;
+
     // Zoom (plan 02 task 2.6, issue #35): 50-200% in 10% steps, per-doc
     // persisted on the frontend. The accelerators are the Word parity ones:
     // Ctrl+= zooms in, Ctrl+- out, Ctrl+0 resets.
@@ -276,6 +305,7 @@ fn build_view_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> 
         .item(&show_marks)
         .item(&word_wrap)
         .item(&spellcheck)
+        .item(&editor_font)
         .separator()
         .items(&[&explorer, &statusbar])
         .build()?;
@@ -461,5 +491,22 @@ mod tests {
         assert_eq!(family_slug("Comic Sans MS"), "comic-sans-ms");
         assert_eq!(family_slug("Arial Black"), "arial-black");
         assert_eq!(family_slug("Georgia"), "georgia");
+    }
+
+    // Editor-chrome font lists (plan 04 task 4.5, issue #51); the frontend
+    // mirrors them (editorfont.test.tsx asserts the sync). A duplicate entry
+    // would produce a duplicate menu id.
+    #[test]
+    fn editor_font_lists_are_nonempty_and_unique() {
+        assert!(!EDITOR_FONT_FAMILIES.is_empty());
+        let mut families = EDITOR_FONT_FAMILIES.to_vec();
+        families.sort_unstable();
+        families.dedup();
+        assert_eq!(families.len(), EDITOR_FONT_FAMILIES.len());
+        assert!(!EDITOR_FONT_SIZES.is_empty());
+        let mut sizes = EDITOR_FONT_SIZES.to_vec();
+        sizes.sort_unstable();
+        sizes.dedup();
+        assert_eq!(sizes.len(), EDITOR_FONT_SIZES.len());
     }
 }

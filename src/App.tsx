@@ -62,6 +62,8 @@ import type { LinkPayload, LinkPrefill } from "./lib/links";
 import type { Editor as CoreEditor } from "@tiptap/core";
 import { loadDocSettings, saveDocSettings } from "./lib/docSettings";
 import type { DocSettings } from "./lib/docSettings";
+import { isEditorFontFamily, isEditorFontSize, loadEditorFont, saveEditorFont } from "./lib/editorFont";
+import type { EditorFontSettings } from "./lib/editorFont";
 import { readClipboardText } from "./lib/clipboard";
 import { handleDroppedPaths } from "./lib/dragDrop";
 import {
@@ -267,6 +269,11 @@ export default function App() {
   const [findPanelPos, setFindPanelPos] = useState<FindPanelPosition>(() =>
     loadFindPanelPosition(),
   );
+  // Per-app editor-chrome font (plan 04 task 4.5, issue #51): the font the
+  // WYSIWYG content renders in, persisted app-wide (editorFont.ts) and
+  // applied through the editorFont registry command + the Editor's mount
+  // re-application. Cosmetic — never part of any document.
+  const [editorFont, setEditorFont] = useState<EditorFontSettings>(() => loadEditorFont());
   const [findState, setFindState] = useState<SearchState | null>(null);
   const findStateRef = useRef<SearchState | null>(null);
   const findQueryRef = useRef("");
@@ -632,6 +639,20 @@ export default function App() {
       changeZoom((activeDoc?.settings.zoom ?? ZOOM_DEFAULT) + delta);
     },
     [activeDoc, changeZoom],
+  );
+
+  // Editor-chrome font (plan 04 task 4.5, issue #51): per-app, so the patch
+  // lands in the app-wide record (not per path) and the registry command
+  // applies it to the open WYSIWYG DOM (a no-op outside WYSIWYG, where the
+  // next mount re-applies the persisted setting).
+  const changeEditorFont = useCallback(
+    (patch: Partial<EditorFontSettings>) => {
+      const next: EditorFontSettings = { ...editorFont, ...patch };
+      setEditorFont(next);
+      saveEditorFont(next);
+      dispatchEditorCommand("editorFont", next);
+    },
+    [editorFont],
   );
 
   const doExport = useCallback(
@@ -1394,6 +1415,14 @@ export default function App() {
         stepZoom(-ZOOM_STEP);
       } else if (id === "view-zoom-reset") {
         changeZoom(ZOOM_DEFAULT);
+      } else if (id.startsWith("view-editor-font-size-")) {
+        // View > Editor font (plan 04 task 4.5, issue #51): the size picks
+        // parse to a px value; unknown sizes are dropped.
+        const size = parseInt(id.slice("view-editor-font-size-".length), 10);
+        if (isEditorFontSize(size)) changeEditorFont({ size });
+      } else if (id.startsWith("view-editor-font-")) {
+        const family = id.slice("view-editor-font-".length);
+        if (isEditorFontFamily(family)) changeEditorFont({ family });
       } else if (id === "format-font-family-custom") {
         // Free-text family (plan 04 §2.1): the native menu has no input
         // field, so the pick prompts and then dispatches the same fontFamily
@@ -1437,6 +1466,7 @@ export default function App() {
       doPasteAsText,
       stepZoom,
       changeZoom,
+      changeEditorFont,
       recentFiles,
       activePath,
       openByPath,

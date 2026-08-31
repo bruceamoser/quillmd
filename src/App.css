@@ -816,8 +816,13 @@ button.quillmd-status-spellcheck:hover {
   min-height: 100%;
   padding: 16px 24px 45vh;
   color: var(--text);
-  font-family: var(--font-text);
-  font-size: 15px;
+  /* Editor-chrome font (plan 04 task 4.5, issue #51): the per-app family and
+     size are applied as --quillmd-editor-font / --quillmd-editor-font-size
+     CSS variables on this content container; the fallbacks are the app's
+     base text stack at 15px, so an unset variable keeps the default look.
+     Cosmetic only — the document's own font spans still override it. */
+  font-family: var(--quillmd-editor-font, var(--font-text));
+  font-size: var(--quillmd-editor-font-size, 15px);
   /* Line spacing (plan 02 task 2.5): the per-doc preset is applied as the
      --quillmd-line-spacing CSS variable; the fallback is the "single"
      default so an unset variable keeps the base look. */

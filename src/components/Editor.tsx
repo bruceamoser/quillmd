@@ -25,12 +25,14 @@ import { markdownToTiptap, tiptapToMarkdown } from "../lib/pm";
 import { baseName } from "../lib/fileIo";
 import { openLinkUrl } from "../lib/links";
 import {
+  applyEditorFont,
   applyViewSettings,
   registerEditorCommandListener,
   requestImageEditDialog,
   runEditorCommand,
 } from "../lib/editorCommands";
 import type { EditorCommandId } from "../lib/editorCommands";
+import { loadEditorFont } from "../lib/editorFont";
 import { DEFAULT_DOC_SETTINGS } from "../lib/docSettings";
 import type { DocSettings } from "../lib/docSettings";
 import { matchDecorations, registerFindEditor, registerFindStateListener } from "../lib/find";
@@ -825,6 +827,15 @@ export default function Editor({
     if (!editor) return;
     applyViewSettings(editor, settings ?? DEFAULT_DOC_SETTINGS);
   }, [editor, settings]);
+
+  // Per-app editor-chrome font (plan 04 task 4.5, issue #51): restore the
+  // app-wide font/size onto the editor DOM on mount. Live picks go through
+  // the editorFont registry command (the same DOM state), so this is
+  // idempotent; the setting never touches the document.
+  useEffect(() => {
+    if (!editor) return;
+    applyEditorFont(editor, loadEditorFont());
+  }, [editor]);
 
   const runSlash = (action: SlashAction) => {
     if (!editor) return;
