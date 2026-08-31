@@ -130,18 +130,28 @@
     #                       through the shared registry (incl. the Custom…
     #                       prompt), and the fontmenu.test.tsx AC6 suite presence
     #                       (menu path vs toolbar path document text)
-    #           p2-styles -> plan 05 task 5.1 acceptance gate (issue #54): the
-    #                       style registry (styles.ts: the QuillStyle data
-    #                       model, the built-in style set of >=12 styles each
-    #                       aliasing an existing registry command, the
-    #                       apply/active helpers), the paragraph registry
-    #                       command (Word "Normal": lift list/quote +
-    #                       setParagraph), the StyleGallery popover component
-    #                       (top-6 preview swatches, More styles list grouped
-    #                       by kind with the markdown mapping, active-state
-    #                       highlight), the gallery CSS, and the
-    #                       styles.test.tsx suite presence (Heading 2 -> h2,
-    #                       selection state follows the cursor)
+    #           p2-styles -> plan 05 full acceptance gate (issues #54-#59):
+    #                       task 5.1 style registry + gallery popover (issue
+    #                       #54: the QuillStyle data model, the built-in style
+    #                       set of >=12 styles each aliasing an existing
+    #                       registry command, the paragraph registry command,
+    #                       the StyleGallery popover + gallery CSS), task 5.2
+    #                       Format > Styles submenu + toolbar gallery button
+    #                       (issue #55), task 5.3 the five built-in themes as
+    #                       CSS variable sheets + View > Theme menus +
+    #                       per-doc/per-app persistence (issue #56), task 5.4
+    #                       Modify Style + overrides storage (issue #57),
+    #                       task 5.5 the status-bar block-type indicator
+    #                       (issue #58), and task 5.6 (issue #59): the plan
+    #                       05 §4 acceptance criteria AC1-AC6 vitest-suite +
+    #                       fixture coverage (gallery + Heading 2 -> h2 +
+    #                       selection state, theme switch zero bytes in
+    #                       currentText, Modify H2 Georgia/18pt live restyle
+    #                       + bytes untouched + restart persistence, the
+    #                       committed screenshot baselines of the standard
+    #                       fixture under all 5 themes, the OS-dark default,
+    #                       and the round-trip regression that no style/theme
+    #                       markup is ever written to disk)
     #           p2-themes -> plan 05 task 5.3 acceptance gate (issue #56): the
 #                       five built-in themes as CSS variable sheets scoped to
 #                       the document content container (theme.ts registry +
@@ -2541,6 +2551,84 @@ test_styleinspector_suites_present() {
     fi
 }
 
+# --- p2-styles: plan 05 §4 acceptance criteria (plan 05 task 5.6, issue #59) ---
+# Each plan 05 §4 acceptance criterion is covered by the vitest suites
+# (styles.test.tsx, theme.test.tsx, styleOverrides.test.tsx,
+# themescreenshots.test.tsx, stylesacceptance.test.tsx, roundtrip.test.ts)
+# that `npm test` runs; the task 5.1-5.5 wiring checks above already gate the
+# app-level surface (registry + gallery, Format > Styles, themes, Modify
+# Style, style inspector). This block asserts each criterion's test is
+# present, the standard fixture doc + committed screenshot baselines exist,
+# and the round-trip regression is wired (AC6). AC4's baselines are the
+# headless visual fingerprints of the standard fixture under each theme
+# (tests/theme-baselines/<id>.txt): a theme look change moves exactly one
+# baseline, so the diff is CI-reviewable without a GUI driver.
+test_styles_ac1_gallery_and_h2() {
+    note "styles.AC1 gallery >=12 styles; Heading 2 -> h2; selection follows cursor"
+    if grep -q 'offers at least 12 built-in styles with unique ids' "$ROOT/src/lib/__tests__/styles.test.tsx" \
+        && grep -q 'on a paragraph sets H2 (registry command h2)' "$ROOT/src/lib/__tests__/styles.test.tsx" \
+        && grep -q 'highlights the active style as the cursor moves' "$ROOT/src/lib/__tests__/styles.test.tsx" \
+        && grep -q 'command: "h2"' "$ROOT/src/lib/styles.ts"; then
+        pass "styles.AC1 gallery >=12 styles; Heading 2 -> h2; selection follows cursor"
+    else
+        fail "styles.AC1 gallery >=12 styles; Heading 2 -> h2; selection follows cursor"
+    fi
+}
+test_styles_ac2_theme_zero_bytes() {
+    note "styles.AC2 a theme switch changes the look with zero bytes in currentText"
+    if grep -q 'renders the %s sheet without touching the bytes' "$ROOT/src/lib/__tests__/theme.test.tsx" \
+        && grep -q 'the persisted per-doc override and app default survive a remount' "$ROOT/src/lib/__tests__/theme.test.tsx" \
+        && grep -q 'data-theme={activeTheme}' "$ROOT/src/App.tsx"; then
+        pass "styles.AC2 a theme switch changes the look with zero bytes in currentText"
+    else
+        fail "styles.AC2 a theme switch changes the look with zero bytes in currentText"
+    fi
+}
+test_styles_ac3_modify_h2() {
+    note "styles.AC3 Modify H2 (Georgia 18pt) restyles live; disk unchanged; restart persists"
+    if grep -q 'Modify Style on H2 (Georgia, 18pt) restyles every H2 live' "$ROOT/src/lib/__tests__/styleOverrides.test.tsx" \
+        && grep -q 'Reset all clears every override (the global reset flow)' "$ROOT/src/lib/__tests__/styleOverrides.test.tsx" \
+        && grep -q 'overridesToCss(styleOverrides' "$ROOT/src/App.tsx"; then
+        pass "styles.AC3 Modify H2 (Georgia 18pt) restyles live; disk unchanged; restart persists"
+    else
+        fail "styles.AC3 Modify H2 (Georgia 18pt) restyles live; disk unchanged; restart persists"
+    fi
+}
+test_styles_ac4_screenshot_baselines() {
+    note "styles.AC4 all 5 themes pass the screenshot diff on the standard fixture"
+    if [ -f "$ROOT/src/lib/__tests__/themescreenshots.test.tsx" ] \
+        && grep -q 'the %s theme screenshot matches the committed baseline' "$ROOT/src/lib/__tests__/themescreenshots.test.tsx" \
+        && grep -q 'the five themes render visually distinct screenshots (pairwise diff)' "$ROOT/src/lib/__tests__/themescreenshots.test.tsx" \
+        && [ -f "$FIXTURES/clean/theme-standard.md" ] \
+        && ls "$ROOT"/tests/theme-baselines/*.txt >/dev/null 2>&1 \
+        && [ "$(ls "$ROOT"/tests/theme-baselines/*.txt | wc -l)" -eq 5 ]; then
+        pass "styles.AC4 all 5 themes pass the screenshot diff on the standard fixture"
+    else
+        fail "styles.AC4 all 5 themes pass the screenshot diff on the standard fixture"
+    fi
+}
+test_styles_ac5_os_dark_default() {
+    note "styles.AC5 dark theme is the default for new docs when the OS reports dark"
+    if grep -q 'defaults to Dark when there is no saved choice and the OS is dark' "$ROOT/src/lib/__tests__/theme.test.tsx" \
+        && grep -q 'a new install with no saved choice follows the OS dark-mode preference' "$ROOT/src/lib/__tests__/theme.test.tsx" \
+        && grep -q 'osPrefersDark' "$ROOT/src/lib/theme.ts"; then
+        pass "styles.AC5 dark theme is the default for new docs when the OS reports dark"
+    else
+        fail "styles.AC5 dark theme is the default for new docs when the OS reports dark"
+    fi
+}
+test_styles_ac6_roundtrip_no_markup() {
+    note "styles.AC6 round-trip green; no style/theme markup ever written to disk"
+    if [ -f "$ROOT/src/lib/__tests__/stylesacceptance.test.tsx" ] \
+        && grep -q 'style/theme markup is never written to disk' "$ROOT/src/lib/__tests__/stylesacceptance.test.tsx" \
+        && grep -q 'every clean fixture writes to disk without gaining a style/theme markup token' "$ROOT/src/lib/__tests__/stylesacceptance.test.tsx" \
+        && grep -q 'expect(result.kind).toBe("verbatim")' "$ROOT/src/lib/__tests__/roundtrip.test.ts"; then
+        pass "styles.AC6 round-trip green; no style/theme markup ever written to disk"
+    else
+        fail "styles.AC6 round-trip green; no style/theme markup ever written to disk"
+    fi
+}
+
 # --- p2-font-toolbar: toolbar font family / size selects (issue #49, plan 04 task 4.3) ---
 # The select behavior (family/size apply + Normal clear, "Npt" canonicalization,
 # non-point-count rejection, the Custom… prompt flow, off-list values as dynamic
@@ -3160,6 +3248,42 @@ case "$SUBSET" in
         test_styles_gallery_component
         test_styles_gallery_css
         test_styles_suites_present
+        # Task 5.2 (issue #55): Format > Styles submenu + toolbar gallery button
+        test_stylemenu_submenu_wiring
+        test_stylemenu_resolver
+        test_stylemenu_app_routing
+        test_stylemenu_toolbar_wiring
+        test_stylemenu_suites_present
+        # Task 5.3 (issue #56): built-in theme system
+        test_theme_module
+        test_theme_css_sheets
+        test_theme_menu_wiring
+        test_theme_app_routing
+        test_theme_suites_present
+        # Task 5.4 (issue #57): Modify Style + overrides storage
+        test_stylemodify_module
+        test_stylemodify_dialog_component
+        test_stylemodify_rust_commands
+        test_stylemodify_menu_wiring
+        test_stylemodify_app_routing
+        test_stylemodify_css
+        test_stylemodify_suites_present
+        # Task 5.5 (issue #58): status-bar block-type indicator + jump-to-style
+        test_styleinspector_currentblockstyle
+        test_styleinspector_bridge
+        test_styleinspector_editor_publish
+        test_styleinspector_statusbar
+        test_styleinspector_gallery_open
+        test_styleinspector_app_wiring
+        test_styleinspector_css
+        test_styleinspector_suites_present
+        # Task 5.6 (issue #59): plan 05 §4 acceptance criteria
+        test_styles_ac1_gallery_and_h2
+        test_styles_ac2_theme_zero_bytes
+        test_styles_ac3_modify_h2
+        test_styles_ac4_screenshot_baselines
+        test_styles_ac5_os_dark_default
+        test_styles_ac6_roundtrip_no_markup
         ;;
     p2-styles-menu)
         # Task 5.2 (issue #55): Format > Styles submenu + toolbar gallery button
@@ -3371,6 +3495,43 @@ case "$SUBSET" in
         test_fonts_ac7_pdf_export_styled
         test_fonts_ac7_docx_export_styled
         test_fonts_windows_crlf
+        test_styles_registry_module
+        test_styles_builtin_set
+        test_styles_paragraph_command
+        test_styles_gallery_component
+        test_styles_gallery_css
+        test_styles_suites_present
+        test_stylemenu_submenu_wiring
+        test_stylemenu_resolver
+        test_stylemenu_app_routing
+        test_stylemenu_toolbar_wiring
+        test_stylemenu_suites_present
+        test_theme_module
+        test_theme_css_sheets
+        test_theme_menu_wiring
+        test_theme_app_routing
+        test_theme_suites_present
+        test_stylemodify_module
+        test_stylemodify_dialog_component
+        test_stylemodify_rust_commands
+        test_stylemodify_menu_wiring
+        test_stylemodify_app_routing
+        test_stylemodify_css
+        test_stylemodify_suites_present
+        test_styleinspector_currentblockstyle
+        test_styleinspector_bridge
+        test_styleinspector_editor_publish
+        test_styleinspector_statusbar
+        test_styleinspector_gallery_open
+        test_styleinspector_app_wiring
+        test_styleinspector_css
+        test_styleinspector_suites_present
+        test_styles_ac1_gallery_and_h2
+        test_styles_ac2_theme_zero_bytes
+        test_styles_ac3_modify_h2
+        test_styles_ac4_screenshot_baselines
+        test_styles_ac5_os_dark_default
+        test_styles_ac6_roundtrip_no_markup
         ;;
     *)
         echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|p2-style-inspector|shell|copyclose|info|dragdrop|all)" >&2

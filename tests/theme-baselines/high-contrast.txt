@@ -1,0 +1,85 @@
+# QuillMD theme screenshot baseline (headless visual fingerprint)
+# theme: high-contrast
+# label: High Contrast
+# fixture: fixtures/clean/theme-standard.md
+# fixture-sha256: 13a9ad607830073a98daca0220ea9018aa80e8a2bf0b7145bce3775d061f4f4f
+# surface: .quillmd-prosemirror (WYSIWYG); default view settings (no editor
+# font, no line-spacing preset, no zoom) — unset variables fall through to
+# the theme's own sheet values
+# regenerate: QUILLMD_UPDATE_BASELINES=1 npm test -- src/lib/__tests__/themescreenshots.test.tsx
+#
+# --- theme variables (src/themes/high-contrast.css) ---
+--accent: #ffd400
+--accent-hover: #ffe033
+--accent-soft: rgba(255, 212, 0, 0.22)
+--bg: #000000
+--bg-active: #1f1f1f
+--bg-elevated: #0a0a0a
+--bg-hover: #161616
+--bg-panel: #111111
+--border: #ffffff
+--font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace
+--font-text: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif
+--font-ui: "Segoe UI", -apple-system, BlinkMacSystemFont, "Inter", sans-serif
+--quillmd-base-size: 17px
+--quillmd-code-bg: rgba(255, 212, 0, 0.18)
+--quillmd-code-text: #ffd400
+--quillmd-h1: 2.2em
+--quillmd-h2: 1.8em
+--quillmd-h3: 1.4em
+--quillmd-h4: 1.15em
+--quillmd-h5: 1em
+--quillmd-h6: 0.95em
+--quillmd-heading-weight: 700
+--quillmd-line-height: 1.8
+--quillmd-link: #ffd400
+--text: #ffffff
+--text-bright: #ffffff
+--text-faint: #bfbfbf
+--text-muted: #e6e6e6
+#
+# --- element inventory (rendered through the app document pipeline) ---
+a x1: "link"
+blockquote x1: "A quoted line spanning two lines."
+code x1: "inline code"
+col x2: ""
+colgroup x1: ""
+em x1: "emphasis"
+h1 x1: "Theme Standard"
+h2 x1: "Section One"
+h3 x1: "Section Two"
+h4 x1: "Section Three"
+h5 x1: "Section Four"
+h6 x1: "Section Five"
+li x5: "first item"
+ol x1: "first itemsecond item"
+p x11: "A paragraph with emphasis, strong, struck, inline code, and "
+pre x1: "const standard = true;"
+pre>code x1: "const standard = true;"
+s x1: "struck"
+strong x1: "strong"
+table x1: "AlphaBetaonetwo"
+tbody x1: "AlphaBetaonetwo"
+td x2: "one"
+th x2: "Alpha"
+tr x2: "AlphaBeta"
+ul x2: "bullet onebullet twonested bullet"
+#
+# --- resolved visual style per element (App.css consumption) ---
+h1: border-bottom=1px solid #ffffff color=#ffffff font-size=37.4px font-weight=700 line-height=1.25
+h2: border-bottom=1px solid #ffffff color=#ffffff font-size=30.6px font-weight=700 line-height=1.25
+h3: color=#ffffff font-size=23.8px font-weight=700 line-height=1.25
+h4: color=#ffffff font-size=19.55px font-weight=700 line-height=1.25
+h5: color=#ffffff font-size=17px font-weight=700 line-height=1.25
+h6: color=#e6e6e6 font-size=16.15px font-weight=700 line-height=1.25
+p: color=#ffffff font-family=-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif font-size=17px line-height=1.8
+strong: color=#ffffff
+s: color=#e6e6e6
+a: color=#ffd400
+code: background=rgba(255, 212, 0, 0.18) color=#ffd400 font-family="SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace font-size=15.3px
+pre: background=#0a0a0a border=1px solid #ffffff font-family="SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace font-size=13px
+pre>code: background=none color=#ffffff font-size=inherit
+blockquote: border-left=3px solid #ffd400 color=#e6e6e6
+table: border=1px solid #ffffff
+th: border=1px solid #ffffff
+td: border=1px solid #ffffff
