@@ -20,13 +20,20 @@
 #                       Edit menu + Ctrl+Shift+V wiring (#36), Ctrl+1..6
 #                       heading shortcuts + Help > Shortcuts dialog + plan 02
 #                       test-suite presence (#37)
-#           p1-find -> plan 07 task 7.5 menu + shortcuts: Edit menu Find /
-#                       Find and Replace / Find Next / Find Previous +
-#                       accelerators (#73), App.tsx menu-id + window
-#                       F3/Shift+F3/Ctrl+F/H/Esc routing, per-doc search-term
-#                       memory + global panel-position persistence
-#                       (findMemory.ts), panel top/bottom toggle + CSS, and the
-#                       plan 07 task 7.5 vitest-suite presence
+#           p1-find -> plan 07 acceptance gate: task 7.5 menu + shortcuts
+#                       (Edit menu Find / Find and Replace / Find Next /
+#                       Find Previous + accelerators, App.tsx menu-id +
+#                       window F3/Shift+F3/Ctrl+F/H/Esc routing, per-doc
+#                       search-term memory + global panel-position
+#                       persistence (findMemory.ts), panel top/bottom
+#                       toggle + CSS), the plan 07 §4 acceptance criteria
+#                       AC1-AC7 vitest-suite presence (open/highlight/
+#                       counter/F3/Esc, case/word/regex incl. capture
+#                       groups, single + replace-all single undo,
+#                       source/WYSIWYG parity, cross-block refusal +
+#                       tooltip, dirty save + byte-identical re-save, no
+#                       window.prompt in the find path), and the large-doc
+#                       perf test (100k-char recompute < 100ms, issue #74)
 #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -931,6 +938,127 @@ test_find_suites_present() {
     fi
 }
 
+# --- p1-find: plan 07 §4 acceptance criteria (plan 07 task 7.6, issue #74) -----
+# Each plan 07 §4 acceptance criterion is covered by the vitest suites
+# (find.test.ts, findPanel.test.tsx, findReplace.test.tsx,
+# sourceFind.test.tsx, findWiring.test.tsx) that `npm test` runs; the
+# task 7.5 checks above already gate the app-level surface (menu, routing,
+# memory, position). This block asserts each criterion's test is present so
+# the p1-find subset is the feature's full acceptance gate.
+test_find_ac1_open_counter_navigate() {
+    note "find.AC1 Ctrl+F opens, typing highlights, n of m, F3/Shift+F3, Esc"
+    if [ -f "$ROOT/src/lib/__tests__/findWiring.test.tsx" ] \
+        && grep -q 'Ctrl+F opens the panel in find mode, Ctrl+H in replace mode, Esc closes' "$ROOT/src/lib/__tests__/findWiring.test.tsx" \
+        && grep -q "F3 / Shift+F3 move through the active doc's matches (wrapping)" "$ROOT/src/lib/__tests__/findWiring.test.tsx" \
+        && grep -q '"1 of 3"' "$ROOT/src/lib/__tests__/findWiring.test.tsx" \
+        && [ -f "$ROOT/src/lib/__tests__/findPanel.test.tsx" ] \
+        && grep -q 'shows the 1-based active index over the total (n of m)' "$ROOT/src/lib/__tests__/findPanel.test.tsx" \
+        && grep -q 'publishing a SearchState renders every match and marks the active one' "$ROOT/src/lib/__tests__/findReplace.test.tsx" \
+        && [ -f "$ROOT/src/lib/__tests__/find.test.ts" ] \
+        && grep -q 'decorates every match, marking the active one' "$ROOT/src/lib/__tests__/find.test.ts" \
+        && grep -q 'is a no-op without matches' "$ROOT/src/lib/__tests__/find.test.ts"; then
+        pass "find.AC1 Ctrl+F opens, typing highlights, n of m, F3/Shift+F3, Esc"
+    else
+        fail "find.AC1 Ctrl+F opens, typing highlights, n of m, F3/Shift+F3, Esc"
+    fi
+}
+test_find_ac2_options() {
+    note "find.AC2 match case / whole word / regex (incl. capture groups)"
+    if [ -f "$ROOT/src/lib/__tests__/find.test.ts" ] \
+        && grep -q 'matchCase restricts to exact casing' "$ROOT/src/lib/__tests__/find.test.ts" \
+        && grep -q 'whole word keeps only boundary matches' "$ROOT/src/lib/__tests__/find.test.ts" \
+        && grep -q 'regex mode matches patterns with capture groups' "$ROOT/src/lib/__tests__/find.test.ts" \
+        && grep -q 'plain mode treats the term as a literal' "$ROOT/src/lib/__tests__/find.test.ts" \
+        && grep -q 'invalid regex reports an error and yields no matches' "$ROOT/src/lib/__tests__/find.test.ts"; then
+        pass "find.AC2 match case / whole word / regex (incl. capture groups)"
+    else
+        fail "find.AC2 match case / whole word / regex (incl. capture groups)"
+    fi
+}
+test_find_ac3_replace_single_undo() {
+    note "find.AC3 WYSIWYG replace single + replace-all as one undo"
+    if [ -f "$ROOT/src/lib/__tests__/findReplace.test.tsx" ] \
+        && grep -q 'replaces the active match and selects the replacement' "$ROOT/src/lib/__tests__/findReplace.test.tsx" \
+        && grep -q 'replaces every match in one transaction (single undo)' "$ROOT/src/lib/__tests__/findReplace.test.tsx" \
+        && grep -q 'One undo restores the pre-replace doc exactly' "$ROOT/src/lib/__tests__/findReplace.test.tsx" \
+        && grep -q 'applies regex capture substitution to every match' "$ROOT/src/lib/__tests__/findReplace.test.tsx"; then
+        pass "find.AC3 WYSIWYG replace single + replace-all as one undo"
+    else
+        fail "find.AC3 WYSIWYG replace single + replace-all as one undo"
+    fi
+}
+test_find_ac4_source_parity() {
+    note "find.AC4 source/WYSIWYG match-count parity on the shared fixture"
+    if [ -f "$ROOT/src/lib/__tests__/sourceFind.test.tsx" ] \
+        && grep -q 'WYSIWYG / source parity (plan 07 task 7.4, AC4)' "$ROOT/src/lib/__tests__/sourceFind.test.tsx" \
+        && grep -q 'the same term/options produce the same match count in both engines' "$ROOT/src/lib/__tests__/sourceFind.test.tsx" \
+        && grep -q 'long-document.md' "$ROOT/src/lib/__tests__/sourceFind.test.tsx" \
+        && [ -f "$FIXTURES/clean/long-document.md" ]; then
+        pass "find.AC4 source/WYSIWYG match-count parity on the shared fixture"
+    else
+        fail "find.AC4 source/WYSIWYG match-count parity on the shared fixture"
+    fi
+}
+test_find_ac5_crossblock() {
+    note "find.AC5 cross-block match highlighted; Replace disabled + tooltip"
+    if [ -f "$ROOT/src/lib/__tests__/findPanel.test.tsx" ] \
+        && grep -q 'Replace is disabled with a tooltip while the active match spans blocks' "$ROOT/src/lib/__tests__/findPanel.test.tsx" \
+        && grep -q 'spans multiple blocks' "$ROOT/src/lib/__tests__/findPanel.test.tsx" \
+        && grep -q 'highlights cross-block matches too' "$ROOT/src/lib/__tests__/find.test.ts" \
+        && grep -q 'refuses cross-block matches and leaves the doc untouched' "$ROOT/src/lib/__tests__/findReplace.test.tsx" \
+        && grep -q 'skips cross-block matches and reports the number replaced' "$ROOT/src/lib/__tests__/findReplace.test.tsx"; then
+        pass "find.AC5 cross-block match highlighted; Replace disabled + tooltip"
+    else
+        fail "find.AC5 cross-block match highlighted; Replace disabled + tooltip"
+    fi
+}
+test_find_ac6_dirty_roundtrip() {
+    note "find.AC6 replace dirties the doc; re-save byte-identical, CRLF kept"
+    if [ -f "$ROOT/src/lib/__tests__/findReplace.test.tsx" ] \
+        && grep -q 'dirty state + save pipeline (plan 07 §4 AC6' "$ROOT/src/lib/__tests__/findReplace.test.tsx" \
+        && grep -q 'a replace marks the doc dirty and the save splices only dirty blocks' "$ROOT/src/lib/__tests__/findReplace.test.tsx" \
+        && grep -q 're-saving a replaced doc is byte-identical' "$ROOT/src/lib/__tests__/findReplace.test.tsx" \
+        && grep -q 'a single replace keeps the CRLF encoding on save' "$ROOT/src/lib/__tests__/findReplace.test.tsx"; then
+        pass "find.AC6 replace dirties the doc; re-save byte-identical, CRLF kept"
+    else
+        fail "find.AC6 replace dirties the doc; re-save byte-identical, CRLF kept"
+    fi
+}
+test_find_ac7_no_prompt() {
+    note "find.AC7 no window.prompt in the find & replace path"
+    # The find feature (engine, memory, source bridge, panel, and the App
+    # handlers that drive them) must never fall back to window.prompt; the
+    # menu + F3 dispatch itself is gated by test_find_menu_wiring /
+    # test_find_app_routing above.
+    local hits
+    hits=$(grep -n 'window\.prompt(' "$ROOT/src/lib/find.ts" \
+        "$ROOT/src/lib/findMemory.ts" "$ROOT/src/lib/sourceFind.ts" \
+        "$ROOT/src/components/FindReplacePanel.tsx" "$ROOT/src/App.tsx" 2>/dev/null || true)
+    if [ -z "$hits" ]; then
+        pass "find.AC7 no window.prompt in the find & replace path"
+    else
+        printf '%s\n' "$hits"
+        fail "find.AC7 no window.prompt in the find & replace path"
+    fi
+}
+test_find_perf_large_doc() {
+    note "find.perf 100k-char recompute < 100ms vitest perf test present"
+    # The measurement itself runs under `npm test` (vitest); this asserts the
+    # perf test exists with the plan 07 §5.6 envelope: a >=100k-char document
+    # and the 100ms recompute budget, timed with performance.now() around
+    # searchDoc.
+    if [ -f "$ROOT/src/lib/__tests__/findPerf.test.ts" ] \
+        && grep -q 'TARGET_CHARS = 100_000' "$ROOT/src/lib/__tests__/findPerf.test.ts" \
+        && grep -q 'RECOMPUTE_BUDGET_MS = 100' "$ROOT/src/lib/__tests__/findPerf.test.ts" \
+        && grep -q 'toBeLessThan(RECOMPUTE_BUDGET_MS)' "$ROOT/src/lib/__tests__/findPerf.test.ts" \
+        && grep -q 'searchDoc(doc, q.options)' "$ROOT/src/lib/__tests__/findPerf.test.ts" \
+        && grep -q 'performance.now()' "$ROOT/src/lib/__tests__/findPerf.test.ts"; then
+        pass "find.perf 100k-char recompute < 100ms vitest perf test present"
+    else
+        fail "find.perf 100k-char recompute < 100ms vitest perf test present"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -1010,6 +1138,14 @@ case "$SUBSET" in
         test_find_memory_module
         test_find_panel_position
         test_find_suites_present
+        test_find_ac1_open_counter_navigate
+        test_find_ac2_options
+        test_find_ac3_replace_single_undo
+        test_find_ac4_source_parity
+        test_find_ac5_crossblock
+        test_find_ac6_dirty_roundtrip
+        test_find_ac7_no_prompt
+        test_find_perf_large_doc
         ;;
     shell)
         test_shell_new_bundled
@@ -1104,6 +1240,14 @@ case "$SUBSET" in
         test_find_memory_module
         test_find_panel_position
         test_find_suites_present
+        test_find_ac1_open_counter_navigate
+        test_find_ac2_options
+        test_find_ac3_replace_single_undo
+        test_find_ac4_source_parity
+        test_find_ac5_crossblock
+        test_find_ac6_dirty_roundtrip
+        test_find_ac7_no_prompt
+        test_find_perf_large_doc
         ;;
     *)
         echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|shell|copyclose|info|dragdrop|all)" >&2
