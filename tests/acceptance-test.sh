@@ -142,6 +142,17 @@
     #                       highlight), the gallery CSS, and the
     #                       styles.test.tsx suite presence (Heading 2 -> h2,
     #                       selection state follows the cursor)
+    #           p2-styles-menu -> plan 05 task 5.2 acceptance gate (issue #55):
+    #                       the Format > Styles submenu in menu.rs (the STYLES
+    #                       (id, label) list mirroring BUILT_IN_STYLES, one
+    #                       menu id per style), the styleMenuCommand id ->
+    #                       (registry command, with) resolver in styles.ts,
+    #                       App.tsx routing the ids through the shared
+    #                       registry, the Toolbar mounting the StyleGallery
+    #                       as its first control (the Word-style gallery
+    #                       button), and the stylemenu.test.tsx suite
+    #                       presence (menu path vs gallery path document
+    #                       text parity + menu-event e2e)
     #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -1982,6 +1993,84 @@ test_styles_suites_present() {
     fi
 }
 
+# --- p2-styles-menu: Format > Styles submenu + toolbar gallery button (issue #55, plan 05 task 5.2) ---
+# The pick behavior (id -> (registry command, with) resolution, the menu path
+# vs gallery path document text parity, the toolbar gallery swatch pick, and
+# the menu-event e2e through the full App) is covered by the vitest suite
+# (src/lib/__tests__/stylemenu.test.tsx); this section checks the wiring the
+# GUI driver cannot reach headlessly: the Format > Styles submenu in menu.rs
+# (the STYLES (id, label) list mirroring BUILT_IN_STYLES + per-style menu
+# ids), the styleMenuCommand resolver in styles.ts, the App.tsx routing of
+# the ids through the shared registry, and the Toolbar mounting the
+# StyleGallery as its first control (the Word-style gallery button).
+test_stylemenu_submenu_wiring() {
+    note "styles-menu Format > Styles submenu in menu.rs (STYLES + per-style ids)"
+    if grep -q 'pub const STYLES: &\[(&str, &str)\]' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '("normal", "Normal")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '("title", "Title")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '("heading1", "Heading 1")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '("quote", "Quote")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '("intense-quote", "Intense Quote")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '("list-paragraph", "List Paragraph")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '("no-spacing", "No Spacing")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '("source-code", "Source Code")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '("emphasis", "Emphasis")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '("strong", "Strong")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'SubmenuBuilder::new(app, "Styles")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'format!("format-style-{id}")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '.item(&styles)' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'fn style_menu_ids_are_nonempty_and_unique' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "styles-menu Format > Styles submenu in menu.rs (STYLES + per-style ids)"
+    else
+        fail "styles-menu Format > Styles submenu in menu.rs (STYLES + per-style ids)"
+    fi
+}
+test_stylemenu_resolver() {
+    note "styles-menu styleMenuCommand resolver in styles.ts"
+    if grep -q 'export const STYLE_MENU_ID_PREFIX = "format-style-"' "$ROOT/src/lib/styles.ts" \
+        && grep -q 'export function styleMenuCommand' "$ROOT/src/lib/styles.ts" \
+        && grep -q 'id.startsWith(STYLE_MENU_ID_PREFIX)' "$ROOT/src/lib/styles.ts" \
+        && grep -q 'styleById(id.slice(STYLE_MENU_ID_PREFIX.length))' "$ROOT/src/lib/styles.ts"; then
+        pass "styles-menu styleMenuCommand resolver in styles.ts"
+    else
+        fail "styles-menu styleMenuCommand resolver in styles.ts"
+    fi
+}
+test_stylemenu_app_routing() {
+    note "styles-menu App.tsx routes the Styles submenu ids through the shared registry"
+    if grep -q 'import { styleMenuCommand } from "./lib/styles"' "$ROOT/src/App.tsx" \
+        && grep -q 'id.startsWith("format-style-")' "$ROOT/src/App.tsx" \
+        && grep -q 'const action = styleMenuCommand(id);' "$ROOT/src/App.tsx" \
+        && grep -q 'dispatchEditorCommand(action.command, action.param)' "$ROOT/src/App.tsx" \
+        && grep -q 'if (action.with) dispatchEditorCommand(action.with);' "$ROOT/src/App.tsx"; then
+        pass "styles-menu App.tsx routes the Styles submenu ids through the shared registry"
+    else
+        fail "styles-menu App.tsx routes the Styles submenu ids through the shared registry"
+    fi
+}
+test_stylemenu_toolbar_wiring() {
+    note "styles-menu Toolbar mounts the StyleGallery as its first control"
+    if grep -q 'import StyleGallery from "./StyleGallery"' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q '<StyleGallery editor={editor} />' "$ROOT/src/components/Toolbar.tsx"; then
+        pass "styles-menu Toolbar mounts the StyleGallery as its first control"
+    else
+        fail "styles-menu Toolbar mounts the StyleGallery as its first control"
+    fi
+}
+test_stylemenu_suites_present() {
+    note "styles-menu vitest suite: id resolution + Rust/TS sync + parity + e2e"
+    if [ -f "$ROOT/src/lib/__tests__/stylemenu.test.tsx" ] \
+        && grep -q 'mirrors the frontend built-in style set (menu offers the same styles)' "$ROOT/src/lib/__tests__/stylemenu.test.tsx" \
+        && grep -q 'every style menu id dispatches the same commands the gallery does' "$ROOT/src/lib/__tests__/stylemenu.test.tsx" \
+        && grep -q 'the menu path writes the markdown the style mapping documents' "$ROOT/src/lib/__tests__/stylemenu.test.tsx" \
+        && grep -q 'renders the Styles trigger as the first toolbar control, before the heading select' "$ROOT/src/lib/__tests__/stylemenu.test.tsx" \
+        && grep -q 'a Heading 2 menu pick sets H2 on the live editor' "$ROOT/src/lib/__tests__/stylemenu.test.tsx"; then
+        pass "styles-menu vitest suite: id resolution + Rust/TS sync + parity + e2e"
+    else
+        fail "styles-menu vitest suite: id resolution + Rust/TS sync + parity + e2e"
+    fi
+}
+
 # --- p2-font-toolbar: toolbar font family / size selects (issue #49, plan 04 task 4.3) ---
 # The select behavior (family/size apply + Normal clear, "Npt" canonicalization,
 # non-point-count rejection, the Custom… prompt flow, off-list values as dynamic
@@ -2602,6 +2691,14 @@ case "$SUBSET" in
         test_styles_gallery_css
         test_styles_suites_present
         ;;
+    p2-styles-menu)
+        # Task 5.2 (issue #55): Format > Styles submenu + toolbar gallery button
+        test_stylemenu_submenu_wiring
+        test_stylemenu_resolver
+        test_stylemenu_app_routing
+        test_stylemenu_toolbar_wiring
+        test_stylemenu_suites_present
+        ;;
     shell)
         test_shell_new_bundled
         test_shell_new_menu_wiring
@@ -2777,7 +2874,7 @@ case "$SUBSET" in
         test_fonts_windows_crlf
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac

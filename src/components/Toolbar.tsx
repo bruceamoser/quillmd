@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useEditorState } from "@tiptap/react";
 import type { Editor as CoreEditor } from "@tiptap/core";
 import ColorPalette from "./ColorPalette";
+import StyleGallery from "./StyleGallery";
 import {
   EDITOR_COMMANDS,
   FONT_FAMILY_CUSTOM,
@@ -250,6 +251,12 @@ export default function Toolbar({ editor }: ToolbarProps) {
 
   return (
     <div className="quillmd-toolbar">
+      {/* Style gallery (plan 05 task 5.2, issue #55): the Word-style
+          dropdown over the built-in style registry. Picking a style runs its
+          registry command — the same path the Format > Styles menu and the
+          keyboard shortcuts dispatch. */}
+      <StyleGallery editor={editor} />
+      <span className="quillmd-toolbar-sep" />
       <select
         className="quillmd-heading-select"
         title="Paragraph / heading level"

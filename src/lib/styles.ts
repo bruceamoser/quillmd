@@ -241,6 +241,23 @@ export function activeStyles(editor: CoreEditor): QuillStyle[] {
   return BUILT_IN_STYLES.filter((style) => styleActive(style, editor));
 }
 
+// The Format > Styles submenu id prefix (plan 05 task 5.2, issue #55). The
+// native menu carries no parameters, so every built-in style is its own menu
+// id (built in src-tauri/src/menu.rs from the same registry rows, mirrored in
+// its STYLES list); this maps an id back to the style's registry command —
+// plus its `with` follow-up command — so the menu dispatches the identical
+// commands the toolbar's style gallery applies.
+export const STYLE_MENU_ID_PREFIX = "format-style-";
+
+export function styleMenuCommand(
+  id: string,
+): { command: EditorCommandId; param?: EditorCommandParam; with?: EditorCommandId } | null {
+  if (!id.startsWith(STYLE_MENU_ID_PREFIX)) return null;
+  const style = styleById(id.slice(STYLE_MENU_ID_PREFIX.length));
+  if (!style) return null;
+  return { command: style.command, param: style.param, with: style.with };
+}
+
 // Applies a style: runs its registry command (and its `with` command when
 // the first succeeds, so Intense Quote quotes and then bolds). Returns the
 // primary command's result — with the registry's toggle semantics, picking

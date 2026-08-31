@@ -96,6 +96,7 @@ import {
 } from "./lib/sourceFind";
 import type { SourceMatch } from "./lib/sourceFind";
 import { getSearchQuery, setSearchQuery, type SearchQuery } from "@codemirror/search";
+import { styleMenuCommand } from "./lib/styles";
 import Editor from "./components/Editor";
 import DocInfoPanel from "./components/DocInfoPanel";
 import SourceView from "./components/SourceView";
@@ -1436,6 +1437,18 @@ export default function App() {
         // the identical commands the toolbar font cluster does.
         const action = fontMenuCommand(id);
         if (action) dispatchEditorCommand(action.command, action.param);
+      } else if (id.startsWith("format-style-")) {
+        // Format > Styles submenu (plan 05 task 5.2, issue #55): every
+        // built-in style is its own menu id; styleMenuCommand resolves it
+        // back to the style's registry command (and its `with` follow-up —
+        // Intense Quote's blockquote + bold) so the menu applies the
+        // identical styles the toolbar's style gallery does. Unknown ids
+        // resolve to null and are a no-op.
+        const action = styleMenuCommand(id);
+        if (action) {
+          dispatchEditorCommand(action.command, action.param);
+          if (action.with) dispatchEditorCommand(action.with);
+        }
       } else if (MENU_TO_COMMAND[id]) {
         dispatchEditorCommand(MENU_TO_COMMAND[id]);
       } else if (id === "help-about") {
