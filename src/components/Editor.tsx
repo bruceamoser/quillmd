@@ -480,7 +480,7 @@ const SLASH_ACTIONS: SlashAction[] = [
     hint: "Section heading (H2)",
     run: (editor) => editor.chain().focus().toggleHeading({ level: 2 }).run(),
   },
-  commandAction("table", "table", "Table", "Insert a 3x3 GFM table"),
+  commandAction("table", "table", "Table", "Pick a table size (or Insert table…)"),
   commandAction("code", "codeBlock", "Code block", "Fenced code block"),
   commandAction("image", "image", "Image", "Embed an image"),
   commandAction("link", "link", "Link", "Insert a hyperlink"),

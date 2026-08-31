@@ -46,7 +46,9 @@ import {
   registerImageEditDialogListener,
   registerImageInsertListener,
   registerLinkDialogListener,
+  registerTableDialogListener,
   requestStylesGallery,
+  runEditorCommand,
 } from "./lib/editorCommands";
 import { IMAGE_FILTER, pickOpenFile } from "./lib/dialogs";
 import { applyImageEdit, insertImage, readImagePrefill } from "./lib/images";
@@ -134,6 +136,8 @@ import type { FindPanelMode, FindPanelOption, FindPanelResult } from "./componen
 import LinkDialog from "./components/LinkDialog";
 import ImageDialog from "./components/ImageDialog";
 import ImageEditDialog from "./components/ImageEditDialog";
+import InsertTableDialog from "./components/InsertTableDialog";
+import type { TableInsertSpec } from "./lib/tables";
 import { loadViewMode, saveViewMode } from "./components/viewModes";
 import type { ViewMode } from "./components/viewModes";
 import "./themes/index.css";
@@ -196,7 +200,10 @@ const MENU_TO_COMMAND: Record<string, EditorCommandId> = {
   "insert-image": "image",
   "insert-image-from-file": "imageFromFile",
   "insert-image-from-url": "image",
-  "insert-table": "table",
+  // Plan 06 task 6.3 (issue #63): Insert > Table opens the "Insert table…"
+  // dialog (precise sizes, header choice) — the native menu cannot host the
+  // hover size-picker popover, which the toolbar's Table button carries.
+  "insert-table": "tableDialog",
   "insert-codeblock": "codeBlock",
   "insert-hr": "hr",
   "insert-footnote": "footnote",
@@ -285,6 +292,13 @@ export default function App() {
   const [imageEditDialog, setImageEditDialog] = useState<{
     editor: CoreEditor;
     prefill: ImageEditPrefill;
+  } | null>(null);
+  // Insert-table dialog (plan 06 task 6.3, issue #63): the registry
+  // "tableDialog" command (toolbar Table dropdown, Insert > Table) requests
+  // the dialog; the editor the request came from is kept so the pick inserts
+  // into the same instance (same shape as the link dialog).
+  const [tableDialog, setTableDialog] = useState<{
+    editor: CoreEditor;
   } | null>(null);
   // Broken-image detection (plan 08 task 8.5, issue #80, AC6): the srcs of
   // the active doc whose local file no longer exists on disk (drives the
@@ -1123,6 +1137,39 @@ export default function App() {
       setMissingRefresh((n) => n + 1);
     },
     [imageEditDialog],
+  );
+
+  // --- insert-table dialog (plan 06 task 6.3, issue #63) ---------------------
+  //
+  // The registry "tableDialog" command requests the dialog; this listener is
+  // the single renderer. The dialog's pick dispatches the tableInsert
+  // registry command on the requesting editor, so every surface (toolbar
+  // dropdown, native menu) inserts the identical table.
+
+  useEffect(() => {
+    return registerTableDialogListener((editor) => {
+      setTableDialog({ editor });
+    });
+  }, []);
+
+  // The dialog edits a specific TipTap instance, which unmounts on a tab
+  // switch or a view-mode change — close it so it never talks to a dead
+  // editor (same rule as the link dialog).
+  useEffect(() => {
+    setTableDialog(null);
+  }, [activePath, viewMode]);
+
+  const closeTableDialog = useCallback(() => {
+    setTableDialog(null);
+  }, []);
+
+  const applyTableDialog = useCallback(
+    (spec: TableInsertSpec) => {
+      if (!tableDialog) return;
+      runEditorCommand(tableDialog.editor, "tableInsert", spec);
+      setTableDialog(null);
+    },
+    [tableDialog],
   );
 
   // --- broken-image re-link (plan 08 task 8.5, issue #80, AC6) ----------------
@@ -2034,6 +2081,9 @@ export default function App() {
                   onApply={applyImageEditDialog}
                   onClose={closeImageEditDialog}
                 />
+              )}
+              {tableDialog && (
+                <InsertTableDialog onApply={applyTableDialog} onClose={closeTableDialog} />
               )}
               {modifyStyleKey !== null && (
                 <ModifyStyleDialog

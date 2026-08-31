@@ -13,9 +13,12 @@ import {
   fontColorOf,
   fontSizeOf,
   highlightColorOf,
+  registerTablePickerListener,
   runEditorCommand,
 } from "../lib/editorCommands";
 import type { EditorCommandId } from "../lib/editorCommands";
+import type { TableInsertSpec } from "../lib/tables";
+import TableSizePicker from "./TableSizePicker";
 
 interface ToolbarProps {
   editor: CoreEditor | null;
@@ -102,14 +105,40 @@ export default function Toolbar({ editor }: ToolbarProps) {
   const [imageMenuOpen, setImageMenuOpen] = useState(false);
   const imageSplitRef = useRef<HTMLSpanElement>(null);
 
-  // Close the dropdown on an outside click or an Escape press.
+  // Table split button (plan 06 task 6.3, issue #63): the main button opens
+  // the 10×10 size-picker popover, the caret opens the "Insert table…" menu.
+  const [tablePickerOpen, setTablePickerOpen] = useState(false);
+  const [tableMenuOpen, setTableMenuOpen] = useState(false);
+  const tableSplitRef = useRef<HTMLSpanElement>(null);
+
+  // The "table" registry command (slash menu /table, the Table button)
+  // requests the size picker; this listener is the single renderer (the
+  // toolbar that owns the button), the same shape as the link/image dialog
+  // commands. Insert > Table dispatches the tableDialog command instead,
+  // since a native menu item cannot anchor the hover popover.
   useEffect(() => {
-    if (!imageMenuOpen) return;
+    if (!editor) return;
+    return registerTablePickerListener(() => {
+      setTableMenuOpen(false);
+      setTablePickerOpen(true);
+    });
+  }, [editor]);
+
+  // Close the open dropdown / picker on an outside click or an Escape press.
+  useEffect(() => {
+    if (!imageMenuOpen && !tableMenuOpen && !tablePickerOpen) return;
     const onPointerDown = (e: MouseEvent) => {
       if (!imageSplitRef.current?.contains(e.target as Node)) setImageMenuOpen(false);
+      if (!tableSplitRef.current?.contains(e.target as Node)) {
+        setTableMenuOpen(false);
+        setTablePickerOpen(false);
+      }
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setImageMenuOpen(false);
+      if (e.key !== "Escape") return;
+      setImageMenuOpen(false);
+      setTableMenuOpen(false);
+      setTablePickerOpen(false);
     };
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
@@ -117,7 +146,7 @@ export default function Toolbar({ editor }: ToolbarProps) {
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [imageMenuOpen]);
+  }, [imageMenuOpen, tableMenuOpen, tablePickerOpen]);
 
   if (!editor) return null;
 
@@ -249,6 +278,70 @@ export default function Toolbar({ editor }: ToolbarProps) {
     </span>
   );
 
+  // The table split button (plan 06 task 6.3, issue #63): the main half opens
+  // the 10×10 size-picker popover (the pick dispatches the tableInsert
+  // command with the hovered size), the caret half opens the "Insert table…"
+  // dialog menu (precise sizes / header choice).
+  const renderTableSplit = () => {
+    const handlePick = (spec: TableInsertSpec) => {
+      setTablePickerOpen(false);
+      runEditorCommand(editor, "tableInsert", spec);
+    };
+    return (
+      <span key="table" className="quillmd-toolbar-split" ref={tableSplitRef}>
+        <button
+          type="button"
+          title={title("table")}
+          aria-haspopup="grid"
+          aria-expanded={tablePickerOpen}
+          className={tablePickerOpen ? "quillmd-toolbar-active" : ""}
+          onClick={() => {
+            setTableMenuOpen(false);
+            if (tablePickerOpen) {
+              setTablePickerOpen(false);
+            } else {
+              runEditorCommand(editor, "table");
+            }
+          }}
+        >
+          {GLYPHS.table}
+        </button>
+        <button
+          type="button"
+          title="Table options"
+          aria-haspopup="menu"
+          aria-expanded={tableMenuOpen}
+          className={tableMenuOpen ? "quillmd-toolbar-active" : ""}
+          onClick={() => {
+            setTablePickerOpen(false);
+            setTableMenuOpen((open) => !open);
+          }}
+        >
+          {"\u25BE"}
+        </button>
+        {tableMenuOpen && (
+          <span className="quillmd-toolbar-dropdown" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setTableMenuOpen(false);
+                runEditorCommand(editor, "tableDialog");
+              }}
+            >
+              Insert table…
+            </button>
+          </span>
+        )}
+        {tablePickerOpen && (
+          <span className="quillmd-toolbar-picker-anchor">
+            <TableSizePicker onPick={handlePick} />
+          </span>
+        )}
+      </span>
+    );
+  };
+
   return (
     <div className="quillmd-toolbar">
       {/* Style gallery (plan 05 task 5.2, issue #55): the Word-style
@@ -303,7 +396,9 @@ export default function Toolbar({ editor }: ToolbarProps) {
       />
 
       <span className="quillmd-toolbar-sep" />
-      {BLOCK_CMDS.map((id) => (id === "image" ? renderImageSplit() : renderButton(id)))}
+      {BLOCK_CMDS.map((id) =>
+        id === "image" ? renderImageSplit() : id === "table" ? renderTableSplit() : renderButton(id),
+      )}
 
       <span className="quillmd-toolbar-sep" />
       {ALIGN_CMDS.map(renderButton)}

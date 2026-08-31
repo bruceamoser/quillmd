@@ -9,6 +9,7 @@ import type { Node as PmNode } from "@tiptap/pm/model";
 import type { EditorState } from "@tiptap/pm/state";
 import { CellSelection, cellAround, findCell } from "@tiptap/pm/tables";
 import { FRONTMATTER_LANG } from "./pm";
+import { insertTableAt, type TableInsertSpec } from "./tables";
 import type { DocSettings } from "./docSettings";
 import { normalizeColor } from "./colors";
 import {
@@ -44,6 +45,8 @@ export type EditorCommandId =
   | "orderedList"
   | "taskList"
   | "table"
+  | "tableInsert"
+  | "tableDialog"
   | "rowInsertAbove"
   | "rowInsertBelow"
   | "rowDelete"
@@ -93,11 +96,14 @@ export type EditorCommandId =
 // document default), the color commands (`fontColor` / `highlightColor`)
 // take the picked color — a hex string for a swatch or custom color, or
 // `null` for "auto" (inherit / no color) — and `editorFont` takes the full
-// per-app editor-chrome font settings object.
+// per-app editor-chrome font settings object. The tableInsert command
+// (plan 06 task 6.3, issue #63) takes the picked size — the rows/cols/header
+// spec the size-picker popover or the "Insert table…" dialog produced.
 export type EditorCommandParam =
   | LineSpacingValue
   | ZoomParam
   | EditorFontSettings
+  | TableInsertSpec
   | string
   | number
   | null;
@@ -600,6 +606,32 @@ function inList(editor: CoreEditor): boolean {
   return editor.isActive("listItem") || editor.isActive("taskItem");
 }
 
+// An EditorFontSettings param (plan 04 task 4.5, issue #51). The tableInsert
+// command (plan 06 task 6.3, issue #63) added a second object param to the
+// union, so the font commands need a shape check to tell the two apart.
+function isEditorFontSettings(
+  param: EditorCommandParam | undefined,
+): param is EditorFontSettings {
+  if (typeof param !== "object" || param === null) return false;
+  const settings = param as EditorFontSettings;
+  return isEditorFontFamily(settings.family) && isEditorFontSize(settings.size);
+}
+
+// A TableInsertSpec param (plan 06 task 6.3, issue #63): an object with
+// whole-number rows/cols and a header-row flag. Anything else (the string /
+// number / null params the other commands use) is rejected.
+function isTableInsertSpec(param: EditorCommandParam | undefined): param is TableInsertSpec {
+  if (typeof param !== "object" || param === null) return false;
+  const spec = param as TableInsertSpec;
+  return (
+    typeof spec.rows === "number" &&
+    Number.isInteger(spec.rows) &&
+    typeof spec.cols === "number" &&
+    Number.isInteger(spec.cols) &&
+    typeof spec.withHeaderRow === "boolean"
+  );
+}
+
 // --- table commands (plan 06 task 6.2, issue #62) --------------------------
 //
 // The row / column / cell / header / delete commands. Each wraps TipTap's
@@ -986,8 +1018,35 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
   {
     id: "table",
     label: "Table",
-    run: (editor) =>
-      editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+    // Plan 06 task 6.3 (issue #63): the fixed 3x3 insert is replaced by the
+    // size-picker popover — the command requests it (the toolbar's Table
+    // button renders it) instead of inserting directly, the same shape as
+    // the link and image dialog commands. A no-op outside WYSIWYG, where no
+    // toolbar is mounted to host the picker.
+    run: (editor) => requestTableInsert(editor),
+  },
+  {
+    id: "tableInsert",
+    label: "Insert table",
+    // Plan 06 task 6.3 (issue #63): inserts the picked size (a TableInsertSpec
+    // param from the size-picker popover or the "Insert table…" dialog).
+    // Every surface dispatches this one command, so the inserted table is
+    // identical no matter where the pick came from. Invalid sizes are
+    // rejected (no document change).
+    run: (editor, param) => {
+      if (!isTableInsertSpec(param)) return false;
+      return insertTableAt(editor, param);
+    },
+  },
+  {
+    id: "tableDialog",
+    label: "Insert table…",
+    // Plan 06 task 6.3 (issue #63): requests the "Insert table…" dialog for
+    // precise sizes (>10, or with/without a header row). The app shell
+    // (App.tsx) renders it, the same shape as the link/image dialog
+    // commands; a no-op outside WYSIWYG, where there is no editor to insert
+    // into.
+    run: (editor) => requestTableDialog(editor),
   },
   // Table editing (plan 06 task 6.2, issue #62). TipTap's table commands
   // resolve the cell under the selection themselves; focus() (position
@@ -1248,14 +1307,12 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
     id: "editorFont",
     label: "Editor font",
     run: (editor, param) => {
-      if (typeof param !== "object" || param === null) return false;
-      if (!isEditorFontFamily(param.family) || !isEditorFontSize(param.size)) return false;
+      if (!isEditorFontSettings(param)) return false;
       applyEditorFont(editor, param);
       return true;
     },
     active: (editor, param) => {
-      if (typeof param !== "object" || param === null) return false;
-      if (!isEditorFontFamily(param.family) || !isEditorFontSize(param.size)) return false;
+      if (!isEditorFontSettings(param)) return false;
       const current = editorFontOf(editor);
       return current.family === param.family && current.size === param.size;
     },
@@ -1432,6 +1489,54 @@ export function registerImageEditDialogListener(fn: ImageEditDialogListener): ()
 export function requestImageEditDialog(editor: CoreEditor): boolean {
   if (!imageEditDialogListener) return false;
   imageEditDialogListener(editor);
+  return true;
+}
+
+// Table size-picker plumbing (plan 06 task 6.3, issue #63). The "table"
+// command cannot render UI itself, so it requests the hover size-picker
+// popover and the toolbar's Table button renders it (the same request/listener
+// shape as the link and image dialog commands). The request carries the live
+// editor so the picker's pick inserts into the same instance.
+type TablePickerListener = (editor: CoreEditor) => void;
+let tablePickerListener: TablePickerListener | null = null;
+
+export function registerTablePickerListener(fn: TablePickerListener): () => void {
+  tablePickerListener = fn;
+  return () => {
+    if (tablePickerListener === fn) tablePickerListener = null;
+  };
+}
+
+// Requests the table size-picker popover for the given editor. Returns false
+// (no-op) when no renderer is registered — e.g. outside WYSIWYG where the
+// toolbar that hosts the picker is not mounted.
+export function requestTableInsert(editor: CoreEditor): boolean {
+  if (!tablePickerListener) return false;
+  tablePickerListener(editor);
+  return true;
+}
+
+// "Insert table…" dialog plumbing (plan 06 task 6.3, issue #63). The
+// tableDialog command (the toolbar dropdown item and the Insert > Table
+// menu) requests the dialog and the app shell (App.tsx) renders it: the
+// request carries the live editor so the dialog's pick applies to the same
+// instance, the same shape as the link dialog from plan 08 task 8.1.
+type TableDialogListener = (editor: CoreEditor) => void;
+let tableDialogListener: TableDialogListener | null = null;
+
+export function registerTableDialogListener(fn: TableDialogListener): () => void {
+  tableDialogListener = fn;
+  return () => {
+    if (tableDialogListener === fn) tableDialogListener = null;
+  };
+}
+
+// Requests the "Insert table…" dialog for the given editor. Returns false
+// (no-op) when no renderer is registered — e.g. outside WYSIWYG where there
+// is no TipTap instance to edit.
+export function requestTableDialog(editor: CoreEditor): boolean {
+  if (!tableDialogListener) return false;
+  tableDialogListener(editor);
   return true;
 }
 
