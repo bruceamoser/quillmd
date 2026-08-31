@@ -251,11 +251,11 @@ function deleteSlashRange(editor: CoreEditor): void {
 }
 
 // Key handling for the WYSIWYG view (plan 02 task 2.4). Covers the registry
-// commands that have no native extension keymap: Ctrl+K (link) and the Word
-// parity Ctrl+]/Ctrl+[ (indent/outdent). Tab/Shift+Tab re-nests list items
-// and blockquotes through the same registry commands the toolbar and menus
-// use (native sink/lift for lists, wrap/lift for quotes). Returns true when
-// the event was consumed.
+// commands that have no native extension keymap: Ctrl+K (link), the Word
+// parity Ctrl+]/Ctrl+[ (indent/outdent), and Ctrl+1..6 (heading levels,
+// acceptance #3). Tab/Shift+Tab re-nests list items and blockquotes through
+// the same registry commands the toolbar and menus use (native sink/lift for
+// lists, wrap/lift for quotes). Returns true when the event was consumed.
 export function handleEditorKeyDown(editor: CoreEditor, event: KeyboardEvent): boolean {
   const mod = event.ctrlKey || event.metaKey;
 
@@ -270,6 +270,15 @@ export function handleEditorKeyDown(editor: CoreEditor, event: KeyboardEvent): b
   if (mod && !event.shiftKey && (event.key === "]" || event.key === "[")) {
     event.preventDefault();
     runEditorCommand(editor, event.key === "]" ? "indent" : "outdent");
+    return true;
+  }
+
+  // Word parity (plan 02 §4 AC3): Ctrl+1..6 sets the heading level of the
+  // block under the cursor. The h1..h6 registry commands toggle, so pressing
+  // the current level's key again returns the block to a paragraph.
+  if (mod && !event.shiftKey && !event.altKey && event.key >= "1" && event.key <= "6") {
+    event.preventDefault();
+    runEditorCommand(editor, `h${event.key}` as EditorCommandId);
     return true;
   }
 

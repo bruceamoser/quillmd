@@ -114,3 +114,46 @@ caps, first-line indent.
    command, clipboard vitest with a real Word-exported HTML sample.
 8. **Acceptance** — `tests/acceptance-test.sh` section `p1-editor`; manual
    Windows checklist.
+
+## 6. Manual acceptance checklist (Windows box)
+
+The headless suites (`npm test`, `tests\acceptance-test.sh p1-editor`) run
+everywhere, but the native menu accelerators, the WebView2 spellchecker, and
+real clipboard round-trips can only be observed on a real desktop. After
+`npm run tauri build` on a Windows 10/11 machine, run
+`tests\acceptance-test.sh p1-editor` (Git Bash) and then check §4 by hand:
+
+- [ ] **AC1 — Underline.** Select text; Ctrl+U, Format > Underline, and the
+      toolbar button each toggle the underline. Save, close the tab, reopen:
+      the file still contains `<u>…</u>` and the text renders underlined. An
+      untouched `<u>` document (e.g. `fixtures\clean\underline-html.md`)
+      saves byte-identically (`git diff` empty).
+- [ ] **AC2 — Alignment.** Center a heading (toolbar or Format > Paragraph >
+      Align Center). Save: the file contains a `quillmd-align-center` wrapper
+      on that block only. Reopen: the heading renders centered. A document
+      with no aligned blocks saves verbatim (byte-identical, no wrappers).
+- [ ] **AC3 — List/heading keyboard.** In a bullet list, Tab nests the item
+      and Shift+Tab lifts it (the saved file shows the nested list); Ctrl+] /
+      Ctrl+[ do the same and add/remove one quote level outside lists.
+      Ctrl+1..6 set heading levels 1-6; pressing the current level's key
+      again returns the block to a paragraph. Help > Keyboard Shortcuts
+      lists all of these.
+- [ ] **AC4 — Zoom.** View > Zoom > Zoom In/Out steps by 10%; Ctrl+= /
+      Ctrl+- do the same; Ctrl+0 resets to 100%; Ctrl+mouse-wheel over the
+      editor zooms. The status bar shows the current percent. Close the tab
+      and reopen the file: the zoom is restored.
+- [ ] **AC5 — Formatting marks.** View > Show Formatting Marks toggles
+      pilcrows (¶) and visible whitespace without changing the document: the
+      dirty indicator stays off and the file on disk is untouched.
+- [ ] **AC6 — Paste.** Copy a rich block (bold, italic, a link, a heading)
+      from Word and paste with Ctrl+V: the markup survives into the markdown
+      (bold/italic/links/headings). Ctrl+Shift+V (and Edit > Paste as Text)
+      pastes plain text only.
+- [ ] **AC7 — Spellcheck.** A misspelled word gets the WebView2 red squiggle
+      in WYSIWYG; View > Spellcheck toggles it off/on and the status-bar
+      indicator reflects the state; the Source view (CodeMirror) never
+      spellchecks.
+- [ ] **AC8 — Regressions.** `npm test` green on the Windows box (round-trip
+      fixtures, CRLF); `tests\acceptance-test.sh p1-editor` green;
+      `tests\acceptance-test.sh core` green with the built binary
+      (`QUILLMD_BIN` or the default target path).

@@ -74,6 +74,16 @@ function md(editor: Editor): string {
   return tiptapToMarkdown(editor.getJSON());
 }
 
+// djb2 over the editor's current markdown text. Acceptance #5 verifies the ¶
+// toggle by hashing the document text before and after the toggle.
+function hashText(text: string): number {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0;
+  }
+  return hash;
+}
+
 describe("registry expansion (plan 02 task 2.1)", () => {
   it("registers all 10 new command ids exactly once", () => {
     const ids = EDITOR_COMMANDS.map((cmd) => cmd.id);
@@ -279,14 +289,20 @@ describe("registry expansion (plan 02 task 2.1)", () => {
       const editor = makeEditor("Hello world");
       const dom = editor.view.dom as HTMLElement;
       const before = md(editor);
+      // Acceptance #5: the toggle is verified by hashing the current text
+      // before and after — the hash must not change.
+      const beforeHash = hashText(before);
       expect(editorCommandActive(editor, "showMarks")).toBe(false);
       expect(runEditorCommand(editor, "showMarks")).toBe(true);
       expect(dom.classList.contains("quillmd-show-marks")).toBe(true);
       expect(editorCommandActive(editor, "showMarks")).toBe(true);
       expect(md(editor)).toBe(before);
+      expect(hashText(md(editor))).toBe(beforeHash);
       expect(runEditorCommand(editor, "showMarks")).toBe(true);
       expect(dom.classList.contains("quillmd-show-marks")).toBe(false);
       expect(editorCommandActive(editor, "showMarks")).toBe(false);
+      expect(md(editor)).toBe(before);
+      expect(hashText(md(editor))).toBe(beforeHash);
       editor.destroy();
     });
   });
