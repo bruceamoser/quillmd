@@ -89,9 +89,17 @@ and closes the worktree, leaving the branch pushed for inspection):
 1. `npm test` (includes all round-trip fixtures)
 2. `npm run build` (type-check + bundle)
 3. `cd src-tauri && cargo test` (only if the diff touches `src-tauri/`)
-4. Fixture-diff check: if `tests/fixtures/*` changed, the PR body must
-   contain the string `fixture-change-justified:` — otherwise the gate
+4. Fixture-diff check: if `tests/fixtures/*` changed, a `FIXTURE-CHANGE.md`
+   must exist at the repo root justifying the change — otherwise the gate
    fails (forces the agent to explain).
+
+**Flake tolerance:** gates 1 and 2 each run up to 3 times and pass on any
+green run. jsdom + ProseMirror can flake on layout/timing (the canonical
+case: issue #55, where `EditorView.scrollToSelection` hit jsdom's missing
+`getClientRects` and failed once in three otherwise-identical runs). One
+unlucky run must not halt a 70-issue pipeline; a gate that fails all three
+attempts is a real failure. The root cause of the #55 flake was fixed in
+the repo itself (`src/test/setup.ts` polyfills the layout APIs).
 
 ## 5. Resume, stop, and human checkpoints
 
