@@ -4,9 +4,9 @@
 // in one place is what lets App.tsx (menu events) and Toolbar.tsx reuse the
 // exact same functions.
 
-import type { Editor as CoreEditor } from "@tiptap/core";
+import { canInsertNode, isNodeSelection, type Editor as CoreEditor } from "@tiptap/core";
 import type { Node as PmNode } from "@tiptap/pm/model";
-import type { EditorState } from "@tiptap/pm/state";
+import { NodeSelection, TextSelection, type EditorState } from "@tiptap/pm/state";
 import { CellSelection, cellAround, findCell } from "@tiptap/pm/tables";
 import { FRONTMATTER_LANG } from "./pm";
 import { insertTableAt, type TableInsertSpec } from "./tables";
@@ -61,6 +61,7 @@ export type EditorCommandId =
   | "cellClear"
   | "tableDelete"
   | "codeBlock"
+  | "diagram"
   | "hr"
   | "footnote"
   | "frontmatter"
@@ -115,6 +116,13 @@ export interface EditorCommand {
   run: (editor: CoreEditor, param?: EditorCommandParam) => boolean;
   active?: (editor: CoreEditor, param?: EditorCommandParam) => boolean;
 }
+
+// The starter template for a new Mermaid diagram (plan 11 task 11.1, issue
+// #100): a 3-node flowchart. Insert > Diagram (and /diagram, the toolbar)
+// insert a mermaidBlock whose content is exactly this text, so the saved
+// file carries the fence with this body (plan 11 AC1).
+export const MERMAID_STARTER_TEMPLATE =
+  "graph TD\n  A[Start] --> B{Decision}\n  B -->|Yes| C[Done]\n  B -->|No| D[Retry]";
 
 // --- view-level command parameters -----------------------------------------
 
@@ -1145,6 +1153,74 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
     label: "Code block",
     run: (editor) => editor.chain().focus().toggleCodeBlock().run(),
     active: (editor) => editor.isActive("codeBlock"),
+  },
+  {
+    id: "diagram",
+    label: "Diagram",
+    // Plan 11 task 11.1 (issue #100): insert a mermaidBlock with the starter
+    // template at the cursor. Every surface (Insert > Diagram, /diagram, the
+    // toolbar) dispatches this one command, so the inserted diagram is
+    // identical no matter where it came from. A no-op when the cursor is
+    // already inside a diagram (no nested insert).
+    //
+    // The insertion follows TipTap's block-insert algorithm (the one
+    // setHorizontalRule uses): when the cursor sits at the very start of a
+    // paragraph, the diagram goes *before* that paragraph instead of splitting
+    // it — splitting would leave a stray empty paragraph at the top of the
+    // document. Otherwise the paragraph splits around the cursor. The cursor
+    // then lands just after the inserted block, or inside it when the diagram
+    // ends the document (so the user can edit the starter template in place).
+    run: (editor) => {
+      if (editor.isActive("mermaidBlock")) return false;
+      const state = editor.state;
+      if (!canInsertNode(state, state.schema.nodes.mermaidBlock)) return false;
+      const { selection } = state;
+      const {
+        $from: $originFrom,
+        $to: $originTo,
+      } = selection;
+      const diagram = {
+        type: "mermaidBlock",
+        content: [{ type: "text", text: MERMAID_STARTER_TEMPLATE }],
+      };
+      const chain = editor.chain().focus();
+      if ($originFrom.parentOffset === 0) {
+        chain.insertContentAt(
+          { from: Math.max($originFrom.pos - 1, 0), to: $originTo.pos },
+          diagram,
+        );
+      } else if (isNodeSelection(selection)) {
+        chain.insertContentAt($originTo.pos, diagram);
+      } else {
+        chain.insertContent(diagram);
+      }
+      return chain
+        .command(({ tr, dispatch }) => {
+          if (dispatch) {
+            const { $to } = tr.selection;
+            const posAfter = $to.end();
+            if ($to.nodeAfter) {
+              if ($to.nodeAfter.isTextblock) {
+                tr.setSelection(TextSelection.create(tr.doc, $to.pos + 1));
+              } else if ($to.nodeAfter.isBlock) {
+                tr.setSelection(NodeSelection.create(tr.doc, $to.pos));
+              } else {
+                tr.setSelection(TextSelection.create(tr.doc, $to.pos));
+              }
+            } else {
+              const filler = $to.parent.type.contentMatch.defaultType?.create();
+              if (filler) {
+                tr.insert(posAfter, filler);
+                tr.setSelection(TextSelection.create(tr.doc, posAfter + 1));
+              }
+            }
+            tr.scrollIntoView();
+          }
+          return true;
+        })
+        .run();
+    },
+    active: (editor) => editor.isActive("mermaidBlock"),
   },
   {
     id: "hr",

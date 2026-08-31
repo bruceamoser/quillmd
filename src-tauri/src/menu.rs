@@ -402,6 +402,11 @@ fn build_insert_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
     // popover, which cannot be anchored to a native menu item).
     let table = MenuItem::with_id(app, "insert-table", "Insert Table...", true, None::<&str>)?;
     let codeblock = MenuItem::with_id(app, "insert-codeblock", "Code Block", true, None::<&str>)?;
+    // Plan 11 task 11.1 (issue #100): Insert > Diagram (Mermaid) inserts a
+    // ```mermaid fenced block with the starter template through the shared
+    // frontend "diagram" command (App.tsx MENU_TO_COMMAND) — the same path as
+    // /diagram and the toolbar button.
+    let diagram = MenuItem::with_id(app, "insert-diagram", "Diagram (Mermaid)", true, None::<&str>)?;
     let hr = MenuItem::with_id(app, "insert-hr", "Horizontal Rule", true, None::<&str>)?;
     let footnote = MenuItem::with_id(app, "insert-footnote", "Footnote", true, None::<&str>)?;
     let tasklist = MenuItem::with_id(app, "insert-tasklist", "Task List", true, None::<&str>)?;
@@ -414,7 +419,7 @@ fn build_insert_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
         .items(&[&bold, &italic, &strike, &code, &link])
         .item(&image)
         .separator()
-        .items(&[&table, &codeblock, &hr, &footnote, &tasklist, &blockquote, &emoji])
+        .items(&[&table, &codeblock, &diagram, &hr, &footnote, &tasklist, &blockquote, &emoji])
         .build()?;
     Ok(insert)
 }

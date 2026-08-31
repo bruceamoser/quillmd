@@ -205,6 +205,10 @@ const MENU_TO_COMMAND: Record<string, EditorCommandId> = {
   // hover size-picker popover, which the toolbar's Table button carries.
   "insert-table": "tableDialog",
   "insert-codeblock": "codeBlock",
+  // Plan 11 task 11.1 (issue #100): Insert > Diagram (Mermaid) dispatches the
+  // shared "diagram" command — the same path as /diagram and the toolbar
+  // button — inserting a ```mermaid block with the starter template.
+  "insert-diagram": "diagram",
   "insert-hr": "hr",
   "insert-footnote": "footnote",
   "insert-tasklist": "taskList",

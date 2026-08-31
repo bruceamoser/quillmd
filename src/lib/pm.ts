@@ -339,6 +339,17 @@ function flowToTiptap(node: FlowNode, source: string): JSONContent | null {
     case "list":
       return listToTiptap(node, source);
     case "code":
+      // A ```mermaid fence is a diagram (plan 11 task 11.1, issue #100): it
+      // maps to the dedicated mermaidBlock node so the editor can render it
+      // as a diagram card. Serialization is a plain code fence (see
+      // mermaidBlockToMdast), so the byte-identical round-trip invariant is
+      // preserved — the fence text is the document content.
+      if (node.lang === "mermaid") {
+        return {
+          type: "mermaidBlock",
+          content: [{ type: "text", text: node.value }],
+        };
+      }
       return {
         type: "codeBlock",
         attrs: { language: node.lang ?? "" },
@@ -707,6 +718,8 @@ function tiptapToFlowPlain(node: JSONContent): FlowNode | null {
       };
     case "codeBlock":
       return codeBlockToMdast(node);
+    case "mermaidBlock":
+      return mermaidBlockToMdast(node);
     case "horizontalRule":
       return { type: "thematicBreak" };
     case "table":
@@ -739,6 +752,15 @@ function codeBlockToMdast(node: JSONContent): FlowNode {
     return { type: "html", value: text };
   }
   return { type: "code", lang: lang || null, meta: null, value: text };
+}
+
+// The mermaidBlock node (plan 11 task 11.1, issue #100) back to a fenced
+// code node with the fixed `mermaid` info string. The fence form is the
+// portable, source-of-truth representation — the rendered SVG is a view
+// artifact (a later task) and is never stored.
+function mermaidBlockToMdast(node: JSONContent): FlowNode {
+  const text = node.content?.map((c) => c.text ?? "").join("") ?? "";
+  return { type: "code", lang: "mermaid", meta: null, value: text };
 }
 
 function tiptapListItems(node: JSONContent): ListItem[] {
