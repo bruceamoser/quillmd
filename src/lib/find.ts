@@ -29,8 +29,11 @@ export interface NormalizedSearchOptions {
 }
 
 // One match, in doc positions. `block` is the top-level block index containing
-// the match start; `crossBlock` is true when the match covers text of more
-// than one top-level block (highlighted, but replace must refuse it).
+// the match start; `crossBlock` is true when the match spans more than one
+// innermost text container (paragraph, heading, code block, table cell,
+// list item, ...), i.e. its range cannot be rewritten as a single text node.
+// Such matches are highlighted, but replace must refuse them (plan 07 §3:
+// replace only applies within a single text block).
 export interface SearchMatch {
   from: number;
   to: number;
@@ -97,6 +100,11 @@ interface FlatSegment {
   from: number;
   to: number;
   block: number;
+  // The innermost block node that directly contains the text run (the text
+  // node's parent). Segments of one container differ only by inline marks,
+  // so a range inside a single container can be rewritten as one text node;
+  // crossing containers (block boundary, list item, table cell) cannot.
+  container: Node;
 }
 
 interface FlatDoc {
@@ -119,7 +127,7 @@ function flattenDoc(doc: Node): FlatDoc {
   // content starts at position 0, unlike every other node (content at
   // pos + 1).
   doc.forEach((child, contentOffset, index) => {
-    walkBlock(child, contentOffset, index, segments);
+    walkBlock(child, contentOffset, index, segments, doc);
   });
 
   // Segments of one block concatenate directly; a top-level block boundary
@@ -140,14 +148,26 @@ function flattenDoc(doc: Node): FlatDoc {
   return { text, segments, starts, segmentAt: Int32Array.from(segmentAt) };
 }
 
-function walkBlock(node: Node, pos: number, block: number, segments: FlatSegment[]): void {
+function walkBlock(
+  node: Node,
+  pos: number,
+  block: number,
+  segments: FlatSegment[],
+  parent: Node,
+): void {
   if (node.isText) {
-    segments.push({ text: node.text ?? "", from: pos, to: pos + node.nodeSize, block });
+    segments.push({
+      text: node.text ?? "",
+      from: pos,
+      to: pos + node.nodeSize,
+      block,
+      container: parent,
+    });
     return;
   }
   if (node.isAtom) return;
   node.forEach((child, contentOffset) => {
-    walkBlock(child, pos + 1 + contentOffset, block, segments);
+    walkBlock(child, pos + 1 + contentOffset, block, segments, node);
   });
 }
 
@@ -162,6 +182,13 @@ function docPosAt(flat: FlatDoc, k: number): number {
 
 function blockAt(flat: FlatDoc, k: number): number {
   return flat.segments[flat.segmentAt[k]].block;
+}
+
+// The text container (innermost direct parent of the text run) of flat
+// character k. Segments of one container are contiguous in doc order, so
+// comparing the match's first and last characters decides container spans.
+function containerAt(flat: FlatDoc, k: number): Node {
+  return flat.segments[flat.segmentAt[k]].container;
 }
 
 // Runs the matcher over the doc and builds the SearchState. Invalid regex
@@ -204,7 +231,7 @@ export function searchDoc(doc: Node, options: SearchOptions): SearchState {
             from: docPosAt(flat, start),
             to: docPosAt(flat, end - 1) + 1,
             block: blockAt(flat, start),
-            crossBlock: flat.segmentAt[start] !== flat.segmentAt[end - 1],
+            crossBlock: containerAt(flat, start) !== containerAt(flat, end - 1),
           }
         : {
             from: docPosAt(flat, Math.min(start, flat.text.length - 1)),
@@ -261,8 +288,10 @@ export function matchDecorations(doc: Node, state: SearchState): DecorationSet {
 // every match in ONE transaction (Word parity: Replace All is one undo
 // step). Matches are applied in reverse offset order so the earlier ranges
 // stay valid, and every replacement string is computed from the original
-// doc, never the partially rewritten one. Cross-block matches are refused:
-// replace only applies within a single text block (plan 07 §3).
+// doc, never the partially rewritten one. Cross-container matches are
+// refused: replace only applies within a single text block (plan 07 §3).
+// An empty replacement string deletes the match (Word behavior); ProseMirror
+// forbids empty text nodes, so the delete goes through tr.delete.
 
 // The replacement text for one match. Regex mode runs the replacement string
 // through JS `String.replace` semantics ($1, $&, $` ...) against the pattern
@@ -295,7 +324,15 @@ export function replaceActiveMatch(
     state,
     replacement,
   );
-  const tr = editor.state.tr.replaceWith(m.from, m.to, editor.state.schema.text(text));
+  if (text.length === 0 && m.to === m.from) return true; // no-op: zero-width, empty
+  const tr = editor.state.tr;
+  if (text.length === 0) {
+    // Empty replacement deletes the match; ProseMirror forbids empty text
+    // nodes (a zero-width match has nothing to delete and is a no-op).
+    if (m.to > m.from) tr.delete(m.from, m.to);
+  } else {
+    tr.replaceWith(m.from, m.to, editor.state.schema.text(text));
+  }
   tr.setSelection(TextSelection.create(tr.doc, m.from, m.from + text.length));
   editor.view.dispatch(tr);
   return true;
@@ -321,7 +358,13 @@ export function replaceAllMatches(
   if (ops.length === 0) return 0;
   const tr = editor.state.tr;
   for (const op of ops) {
-    tr.replaceWith(op.from, op.to, editor.state.schema.text(op.text));
+    if (op.text.length === 0) {
+      // Empty replacement deletes the match (ProseMirror forbids empty text
+      // nodes); a zero-width match has nothing to delete.
+      if (op.to > op.from) tr.delete(op.from, op.to);
+    } else {
+      tr.replaceWith(op.from, op.to, editor.state.schema.text(op.text));
+    }
   }
   editor.view.dispatch(tr);
   return ops.length;
