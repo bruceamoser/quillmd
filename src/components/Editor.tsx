@@ -25,6 +25,7 @@ import { markdownToTiptap, tiptapToMarkdown } from "../lib/pm";
 import {
   applyViewSettings,
   registerEditorCommandListener,
+  requestImageEditDialog,
   runEditorCommand,
 } from "../lib/editorCommands";
 import type { EditorCommandId } from "../lib/editorCommands";
@@ -55,6 +56,25 @@ export const LinkWithTitle = Link.extend({
       title: {
         default: null,
         parseHTML: (element: HTMLElement) => element.getAttribute("title"),
+      },
+    };
+  },
+});
+
+// Image with a width attribute (plan 08 task 8.4, issue #79): the Edit
+// dialog's width field round-trips through this node attribute as the HTML
+// width attribute. pm.ts parses/serializes it as the <img src alt width>
+// HTML form; parseHTML picks it up for HTML pasted into the editor and
+// renderHTML sizes the image in the WYSIWYG DOM.
+export const ImageWithWidth = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.getAttribute("width"),
+        renderHTML: (attrs: Record<string, unknown>) =>
+          typeof attrs.width === "string" && attrs.width !== "" ? { width: attrs.width } : {},
       },
     };
   },
@@ -494,8 +514,9 @@ export default function Editor({
       // Inline (plan 08 task 8.2, issue #77): the converter treats images as
       // phrasing content (pm.ts), and a block image is dropped by
       // tiptapToMarkdown — so inserted images must land inside a paragraph
-      // to survive the round-trip.
-      Image.configure({ inline: true }),
+      // to survive the round-trip. The width attribute (task 8.4, issue
+      // #79) carries the Edit dialog's width through the node.
+      ImageWithWidth.configure({ inline: true }),
       TaskList,
       TaskItem.configure({ nested: true }),
       Subscript,
@@ -535,6 +556,14 @@ export default function Editor({
           if (label && label !== node.attrs.label) {
             active.chain().setNodeSelection(nodePos).updateAttributes("footnoteRef", { label }).run();
           }
+          return true;
+        }
+        // Image click (plan 08 task 8.4, issue #79): select the image and
+        // request the edit dialog. The dialog prefills from the selection and
+        // applies URL/alt/width back to this instance.
+        if (node.type.name === "image") {
+          active.chain().setNodeSelection(nodePos).run();
+          requestImageEditDialog(active);
           return true;
         }
         return false;

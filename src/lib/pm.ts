@@ -67,6 +67,67 @@ function wrapAligned(flow: FlowNode, align: keyof typeof ALIGN_CLASSES): FlowNod
 
 type FlowNode = BlockContent | DefinitionContent;
 
+// --- <img> HTML (plan 08 task 8.4, issue #79) --------------------------------
+//
+// A width-carrying image serializes as the HTML form <img src="…" alt="…"
+// title="…" width="…"> (decision in plan 08 §3: HTML over the pandoc
+// {width=...} syntax for maximum renderer compatibility). Parsing and
+// rendering share one canonical shape — src first, then alt, title, and
+// width in that order, each only when set — so the WYSIWYG round-trip of an
+// edited block is byte-stable. Tags with anything beyond the recognized
+// attributes stay opaque HTML (the norm-002 passthrough behavior).
+
+const IMG_TAG_RE = /^<img\b([^>]*?)>$/i;
+
+interface ImgAttrs {
+  src: string;
+  alt: string | null;
+  title: string | null;
+  width: string | null;
+}
+
+// The recognized attributes of an <img> tag, or null when the value is not
+// an <img> tag or carries an unrecognized attribute (then it stays opaque
+// HTML, never silently rewritten).
+export function parseImgHtml(value: string): ImgAttrs | null {
+  const m = IMG_TAG_RE.exec(value.trim());
+  if (!m) return null;
+  const attrs: Record<string, string> = {};
+  const attrRe = /\b(src|alt|title|width)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+  let a: RegExpExecArray | null;
+  while ((a = attrRe.exec(m[1])) !== null) {
+    attrs[a[1].toLowerCase()] = a[2] ?? a[3] ?? "";
+  }
+  const stripped = m[1]
+    .replace(/\b(src|alt|title|width)\s*=\s*(?:"[^"]*"|'[^']*')/gi, " ")
+    .replace(/\/$/, " ")
+    .trim();
+  if (stripped.length > 0) return null;
+  if (typeof attrs.src !== "string") return null;
+  return {
+    src: attrs.src,
+    alt: attrs.alt ?? null,
+    title: attrs.title ?? null,
+    width: attrs.width ?? null,
+  };
+}
+
+// The canonical <img> tag for an image node's attributes: src always, then
+// alt, title, and width only when set.
+export function renderImgHtml(attrs: {
+  src: string;
+  alt?: string | null;
+  title?: string | null;
+  width?: string | null;
+}): string {
+  const parts = [`src="${attrs.src}"`];
+  for (const name of ["alt", "title", "width"] as const) {
+    const v = attrs[name];
+    if (typeof v === "string" && v !== "") parts.push(`${name}="${v}"`);
+  }
+  return `<img ${parts.join(" ")}>`;
+}
+
 // --- markdown -> TipTap ---------------------------------------------------
 
 export function markdownToTiptap(markdown: string): JSONContent {
@@ -136,6 +197,16 @@ function flowToTiptap(node: FlowNode, source: string): JSONContent | null {
     case "table":
       return tableToTiptap(node);
     case "html": {
+      const img = parseImgHtml(node.value);
+      if (img) {
+        // A standalone <img> line is phrasing content, so it lives in a
+        // paragraph (the doc schema has no top-level image). Serializing an
+        // image that carries a width back to <img> keeps this byte-stable.
+        return {
+          type: "paragraph",
+          content: [imageToJson(img)],
+        };
+      }
       const aligned = matchAlignWrapper(node.value);
       if (aligned) {
         const inner = parseToAst(aligned.inner);
@@ -257,24 +328,40 @@ function inlineToTiptap(node: PhrasingContent): JSONContent | null {
         title: typeof node.title === "string" ? node.title : null,
       });
     case "image":
-      return {
-        type: "image",
-        attrs: { src: node.url, alt: node.alt ?? null, title: node.title ?? null },
-      };
+      return imageToJson({ src: node.url, alt: node.alt, title: node.title });
     case "break":
       return { type: "hardBreak" };
-    case "html":
+    case "html": {
+      const img = parseImgHtml(node.value);
+      if (img) return imageToJson(img);
       return { type: "text", text: node.value };
+    }
     case "linkReference":
       return markWrapped(node.children, "link", { href: node.identifier });
     case "imageReference":
-      return {
-        type: "image",
-        attrs: { src: node.identifier, alt: node.alt ?? null },
-      };
+      return imageToJson({ src: node.identifier, alt: node.alt });
     default:
       return null;
   }
+}
+
+// The TipTap image node for a parsed image: markdown image syntax (no width)
+// and the <img> HTML form (width set) both land here.
+function imageToJson(attrs: {
+  src: string;
+  alt?: string | null;
+  title?: string | null;
+  width?: string | null;
+}): JSONContent {
+  return {
+    type: "image",
+    attrs: {
+      src: attrs.src,
+      alt: attrs.alt ?? null,
+      title: attrs.title ?? null,
+      width: attrs.width ?? null,
+    },
+  };
 }
 
 function markWrapped(
@@ -455,12 +542,18 @@ function tiptapInline(node: JSONContent): PhrasingContent[] {
       continue;
     }
     if (child.type === "image") {
-      out.push({
-        type: "image",
-        url: typeof child.attrs?.src === "string" ? child.attrs.src : "",
-        alt: typeof child.attrs?.alt === "string" ? child.attrs.alt : null,
-        title: typeof child.attrs?.title === "string" ? child.attrs.title : null,
-      });
+      const src = typeof child.attrs?.src === "string" ? child.attrs.src : "";
+      const alt = typeof child.attrs?.alt === "string" ? child.attrs.alt : null;
+      const title = typeof child.attrs?.title === "string" ? child.attrs.title : null;
+      const width = typeof child.attrs?.width === "string" ? child.attrs.width : null;
+      // A width (plan 08 task 8.4, issue #79) has no markdown image-syntax
+      // home, so it serializes as the canonical <img> HTML form; without a
+      // width the image stays markdown syntax (source-of-truth preference).
+      if (width) {
+        out.push({ type: "html", value: renderImgHtml({ src, alt, title, width }) });
+      } else {
+        out.push({ type: "image", url: src, alt, title });
+      }
       continue;
     }
     if (child.type === "footnoteRef") {

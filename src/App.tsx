@@ -41,12 +41,13 @@ import {
   clampZoom,
   dispatchEditorCommand,
   isLineSpacingValue,
+  registerImageEditDialogListener,
   registerImageInsertListener,
   registerLinkDialogListener,
 } from "./lib/editorCommands";
 import { IMAGE_FILTER, pickOpenFile } from "./lib/dialogs";
-import { insertImage } from "./lib/images";
-import type { ImagePayload } from "./lib/images";
+import { applyImageEdit, insertImage, readImagePrefill } from "./lib/images";
+import type { ImageEditPayload, ImageEditPrefill, ImagePayload } from "./lib/images";
 import { assetSrcForPickedFile, loadAssetFolder } from "./lib/assets";
 import type { EditorCommandId, LineSpacingValue } from "./lib/editorCommands";
 import {
@@ -104,6 +105,7 @@ import FindReplacePanel from "./components/FindReplacePanel";
 import type { FindPanelMode, FindPanelOption, FindPanelResult } from "./components/FindReplacePanel";
 import LinkDialog from "./components/LinkDialog";
 import ImageDialog from "./components/ImageDialog";
+import ImageEditDialog from "./components/ImageEditDialog";
 import { loadViewMode, saveViewMode } from "./components/viewModes";
 import type { ViewMode } from "./components/viewModes";
 import "./App.css";
@@ -241,6 +243,14 @@ export default function App() {
   // to the same instance.
   const [imageDialog, setImageDialog] = useState<{
     editor: CoreEditor;
+  } | null>(null);
+  // Image edit dialog (plan 08 task 8.4, issue #79): the registry "imageEdit"
+  // command (or clicking an image in the editor) requests the dialog; the
+  // editor the request came from is kept so the dialog prefills from the
+  // image under the caret and applies its result to the same instance.
+  const [imageEditDialog, setImageEditDialog] = useState<{
+    editor: CoreEditor;
+    prefill: ImageEditPrefill;
   } | null>(null);
   // Find panel position setting (plan 07 task 7.5, issue #73): a global
   // top/bottom preference persisted in localStorage; the panel docks via its
@@ -896,6 +906,40 @@ export default function App() {
       setImageDialog(null);
     },
     [imageDialog],
+  );
+
+  // --- image edit (plan 08 task 8.4, issue #79) -------------------------------
+  //
+  // The registry "imageEdit" command and the editor's image click handler
+  // request the dialog; this listener is the single renderer. The prefill
+  // (the image under the caret, or empty values when there is none) is read
+  // at request time so a tab switch while the dialog is open can never
+  // prefill from the wrong document (same rule as the link dialog).
+
+  useEffect(() => {
+    return registerImageEditDialogListener((editor) => {
+      setImageEditDialog({ editor, prefill: readImagePrefill(editor) });
+    });
+  }, []);
+
+  // The dialog edits a specific TipTap instance, which unmounts on a tab
+  // switch or a view-mode change — close it so it never talks to a dead
+  // editor (same rule as the link dialog).
+  useEffect(() => {
+    setImageEditDialog(null);
+  }, [activePath, viewMode]);
+
+  const closeImageEditDialog = useCallback(() => {
+    setImageEditDialog(null);
+  }, []);
+
+  const applyImageEditDialog = useCallback(
+    (payload: ImageEditPayload) => {
+      if (!imageEditDialog) return;
+      applyImageEdit(imageEditDialog.editor, payload);
+      setImageEditDialog(null);
+    },
+    [imageEditDialog],
   );
 
   // Per-doc term memory (plan 07 task 7.5, issue #73): writes the panel's
@@ -1612,6 +1656,13 @@ export default function App() {
               )}
               {imageDialog && (
                 <ImageDialog onApply={applyImageDialog} onClose={closeImageDialog} />
+              )}
+              {imageEditDialog && (
+                <ImageEditDialog
+                  prefill={imageEditDialog.prefill}
+                  onApply={applyImageEditDialog}
+                  onClose={closeImageEditDialog}
+                />
               )}
             </div>
             {infoOpen && activeDoc && (

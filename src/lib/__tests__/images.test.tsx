@@ -13,16 +13,31 @@ import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import { markdownToTiptap, tiptapToMarkdown } from "../pm";
+import { createDocument, encodeDocument, saveDocument } from "../pipeline";
 import {
   EDITOR_COMMANDS,
+  registerImageEditDialogListener,
   registerImageInsertListener,
+  requestImageEditDialog,
   requestImageInsert,
   runEditorCommand,
   type ImageInsertSource,
 } from "../editorCommands";
-import { imageSrcForPickedFile, insertImage, validateImageUrl } from "../images";
+import {
+  applyImageEdit,
+  imageAtCaret,
+  imageSrcForPickedFile,
+  insertImage,
+  normalizeImageWidth,
+  readImagePrefill,
+  validateImageUrl,
+  validateImageWidth,
+} from "../images";
 import ImageDialog from "../../components/ImageDialog";
 import type { ImageDialogProps } from "../../components/ImageDialog";
+import ImageEditDialog from "../../components/ImageEditDialog";
+import type { ImageEditDialogProps } from "../../components/ImageEditDialog";
+import { ImageWithWidth } from "../../components/Editor";
 
 // React 19 act() requires the environment flag in jsdom.
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -32,6 +47,16 @@ import type { ImageDialogProps } from "../../components/ImageDialog";
 function makeEditor(markdown = "Hello world"): Editor {
   return new Editor({
     extensions: [StarterKit, Image.configure({ inline: true })],
+    content: markdownToTiptap(markdown),
+  });
+}
+
+// The width-carrying image node (plan 08 task 8.4, issue #79): the same
+// ImageWithWidth extension the app editor uses, so the width attribute is
+// present for the edit-dialog tests.
+function makeWidthEditor(markdown = "Hello world"): Editor {
+  return new Editor({
+    extensions: [StarterKit, ImageWithWidth.configure({ inline: true })],
     content: markdownToTiptap(markdown),
   });
 }
@@ -226,7 +251,7 @@ describe("registry wiring (issue #77)", () => {
   it("the app editor keeps images inline", () => {
     const here = dirname(fileURLToPath(import.meta.url));
     const src = readFileSync(join(here, "..", "..", "components", "Editor.tsx"), "utf8");
-    expect(src).toContain("Image.configure({ inline: true })");
+    expect(src).toContain("ImageWithWidth.configure({ inline: true })");
   });
 });
 
@@ -374,3 +399,398 @@ describe("ImageDialog component", () => {
     expect(h2.props.onClose).not.toHaveBeenCalled();
   });
 });
+
+// --- image edit dialog (plan 08 task 8.4, issue #79) -------------------------
+
+describe("normalizeImageWidth / validateImageWidth (plan 08 §2.5)", () => {
+  it("normalizes pixel widths to a bare number", () => {
+    for (const [input, expected] of [
+      ["320", "320"],
+      [" 320 ", "320"],
+      ["320px", "320"],
+      ["320PX", "320"],
+      ["0.5", "0.5"],
+      ["32.5px", "32.5"],
+      ["", ""],
+    ] as const) {
+      expect(normalizeImageWidth(input), input).toBe(expected);
+    }
+  });
+
+  it("normalizes percent widths, keeping the percent sign", () => {
+    expect(normalizeImageWidth("50%")).toBe("50%");
+    expect(normalizeImageWidth(" 50% ")).toBe("50%");
+    expect(normalizeImageWidth("33.5%")).toBe("33.5%");
+  });
+
+  it("rejects anything that is not pixels or a percent", () => {
+    for (const input of ["abc", "32 px", "50 %", "100em", "-5", "3.2.1", "32%px"]) {
+      expect(normalizeImageWidth(input), input).toBeNull();
+    }
+  });
+
+  it("validateImageWidth reports null for accepted widths", () => {
+    for (const input of ["", "320", "320px", "50%", "0.5"]) {
+      expect(validateImageWidth(input), input).toBeNull();
+    }
+  });
+
+  it("validateImageWidth names the error for rejected widths", () => {
+    const err = validateImageWidth("32 px");
+    expect(err).not.toBeNull();
+    expect(err).toContain("pixels");
+    expect(err).toContain("percent");
+  });
+});
+
+describe("<img> HTML serialization (plan 08 §3, issue #79)", () => {
+  it("serializes a width-carrying image to canonical <img> HTML", () => {
+    const out = tiptapToMarkdown(
+      markdownToTiptap('<img src="sized.png" alt="Sized" width="320">\n'),
+    );
+    expect(out).toBe('<img src="sized.png" alt="Sized" width="320">\n');
+  });
+
+  it("round-trips an inline <img> with a percent width byte-identically", () => {
+    const src = 'Before <img src="a.png" alt="A" width="50%"> after.\n';
+    expect(tiptapToMarkdown(markdownToTiptap(src))).toBe(src);
+  });
+
+  it("re-applies the width on reopen (parse keeps the width attribute)", () => {
+    const json = markdownToTiptap('<img src="a.png" alt="A" width="320">\n') as {
+      content?: Array<{ content?: Array<{ type: string; attrs?: Record<string, unknown> }> }>;
+    };
+    const paragraph = json.content?.[0];
+    const image = paragraph?.content?.find((n) => n.type === "image");
+    expect(image?.type).toBe("image");
+    expect(image?.attrs?.src).toBe("a.png");
+    expect(image?.attrs?.alt).toBe("A");
+    expect(image?.attrs?.width).toBe("320");
+  });
+
+  it("keeps a plain markdown image as markdown when it has no width", () => {
+    const src = "![Alt](a.png)\n";
+    expect(tiptapToMarkdown(markdownToTiptap(src))).toBe(src);
+  });
+
+  it("keeps a markdown image with a title as markdown (no width)", () => {
+    const src = '![Alt](a.png "A title")\n';
+    expect(tiptapToMarkdown(markdownToTiptap(src))).toBe(src);
+  });
+
+  // The AC8 document shape (links + 2 images, 1 relative + 1 HTML-width) must
+  // survive the WYSIWYG converter byte-identically so the save pipeline keeps
+  // every block verbatim on a no-op save.
+  it("round-trips the task 8.4 fixture through the WYSIWYG converter", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(
+      join(here, "..", "..", "..", "fixtures", "clean", "images-edit-width.md"),
+      "utf8",
+    );
+    expect(tiptapToMarkdown(markdownToTiptap(src))).toBe(src);
+  });
+
+  // Golden rule 4 (Windows first-class): the task 8.4 document must also
+  // survive a CRLF source byte-identically through the real save pipeline
+  // (editor re-serializes to LF, encodeDocument restores the CRLF ending).
+  it("round-trips the task 8.4 fixture byte-identically on CRLF (save pipeline)", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const lf = readFileSync(
+      join(here, "..", "..", "..", "fixtures", "clean", "images-edit-width.md"),
+      "utf8",
+    );
+    const crlf = lf.replace(/\n/g, "\r\n");
+    const model = createDocument(crlf);
+    // Simulate the WYSIWYG editor's output for an untouched doc (LF).
+    const editorText = tiptapToMarkdown(markdownToTiptap(crlf));
+    const result = saveDocument(model, editorText);
+    const bytes = encodeDocument(result.text, { eol: "crlf", bom: false });
+    expect(bytes).toEqual(new TextEncoder().encode(crlf));
+  });
+});
+
+describe("imageAtCaret / readImagePrefill (plan 08 §2.5)", () => {
+  it("reads the image under the caret as an editing prefill", () => {
+    const editor = trackedEditorFrom(
+      makeWidthEditor('<img src="a.png" alt="A" width="320">\n'),
+    );
+    // Place a node selection over the image.
+    const imageNode = findImageNode(editor);
+    editor.chain().setNodeSelection(imageNode.pos).run();
+    const prefill = readImagePrefill(editor);
+    expect(prefill.isEditing).toBe(true);
+    expect(prefill.src).toBe("a.png");
+    expect(prefill.alt).toBe("A");
+    expect(prefill.width).toBe("320");
+    expect(prefill.title).toBe("");
+  });
+
+  it("returns empty non-editing values when the caret is on plain text", () => {
+    const editor = trackedEditorFrom(makeWidthEditor("Hello world"));
+    editor.chain().setTextSelection(1).run();
+    const prefill = readImagePrefill(editor);
+    expect(prefill).toEqual({ src: "", alt: "", title: "", width: "", isEditing: false });
+  });
+
+  it("finds the image adjacent to a collapsed caret (click boundary)", () => {
+    const editor = trackedEditorFrom(
+      makeWidthEditor('<img src="a.png" width="100"> and text\n'),
+    );
+    // Collapse the caret just after the image (on the boundary).
+    const imageNode = findImageNode(editor);
+    editor.chain().setTextSelection(imageNode.pos + imageNode.node.nodeSize).run();
+    const target = imageAtCaret(editor);
+    expect(target).not.toBeNull();
+    expect(target?.node.attrs.src).toBe("a.png");
+  });
+});
+
+describe("applyImageEdit (plan 08 task 8.4, issue #79)", () => {
+  it("sets the width, turning the image into HTML form", () => {
+    const editor = trackedEditorFrom(makeWidthEditor("![A](a.png)\n"));
+    const imageNode = findImageNode(editor);
+    editor.chain().setNodeSelection(imageNode.pos).run();
+    expect(applyImageEdit(editor, { src: "a.png", alt: "A", width: "320", title: "" })).toBe(
+      true,
+    );
+    expect(md(editor)).toBe('<img src="a.png" alt="A" width="320">\n');
+  });
+
+  it("clears the width, returning the image to markdown form", () => {
+    const editor = trackedEditorFrom(
+      makeWidthEditor('<img src="a.png" alt="A" width="320">\n'),
+    );
+    const imageNode = findImageNode(editor);
+    editor.chain().setNodeSelection(imageNode.pos).run();
+    expect(applyImageEdit(editor, { src: "a.png", alt: "A", width: "", title: "" })).toBe(true);
+    expect(md(editor)).toBe("![A](a.png)\n");
+  });
+
+  it("updates the URL and alt in place", () => {
+    const editor = trackedEditorFrom(makeWidthEditor('<img src="a.png" alt="A" width="50%">\n'));
+    const imageNode = findImageNode(editor);
+    editor.chain().setNodeSelection(imageNode.pos).run();
+    applyImageEdit(editor, { src: "b.png", alt: "B", width: "50%", title: "" });
+    expect(md(editor)).toBe('<img src="b.png" alt="B" width="50%">\n');
+  });
+
+  it("normalizes a px width before writing", () => {
+    const editor = trackedEditorFrom(makeWidthEditor("![A](a.png)\n"));
+    const imageNode = findImageNode(editor);
+    editor.chain().setNodeSelection(imageNode.pos).run();
+    applyImageEdit(editor, { src: "a.png", alt: "A", width: "320px", title: "" });
+    expect(md(editor)).toBe('<img src="a.png" alt="A" width="320">\n');
+  });
+
+  it("carries the title through unedited", () => {
+    const editor = trackedEditorFrom(
+      makeWidthEditor('<img src="a.png" alt="A" title="T" width="320">\n'),
+    );
+    const imageNode = findImageNode(editor);
+    editor.chain().setNodeSelection(imageNode.pos).run();
+    applyImageEdit(editor, { src: "a.png", alt: "A", width: "640", title: "T" });
+    expect(md(editor)).toBe('<img src="a.png" alt="A" title="T" width="640">\n');
+  });
+
+  it("refuses an invalid URL and leaves the document untouched", () => {
+    const editor = trackedEditorFrom(makeWidthEditor('<img src="a.png" width="320">\n'));
+    const imageNode = findImageNode(editor);
+    editor.chain().setNodeSelection(imageNode.pos).run();
+    expect(
+      applyImageEdit(editor, { src: "javascript:alert(1)", alt: "A", width: "320", title: "" }),
+    ).toBe(false);
+    expect(md(editor)).toBe('<img src="a.png" width="320">\n');
+  });
+
+  it("refuses an invalid width and leaves the document untouched", () => {
+    const editor = trackedEditorFrom(makeWidthEditor('<img src="a.png" width="320">\n'));
+    const imageNode = findImageNode(editor);
+    editor.chain().setNodeSelection(imageNode.pos).run();
+    expect(
+      applyImageEdit(editor, { src: "a.png", alt: "A", width: "32 px", title: "" }),
+    ).toBe(false);
+    expect(md(editor)).toBe('<img src="a.png" width="320">\n');
+  });
+});
+
+describe("imageEdit registry wiring (issue #79)", () => {
+  it("the imageEdit command requests the dialog for the live editor", () => {
+    const editor = trackedEditorFrom(makeWidthEditor('<img src="a.png" width="320">\n'));
+    const seen: Editor[] = [];
+    const dispose = registerImageEditDialogListener((e) => seen.push(e));
+    disposers.push(dispose);
+
+    expect(runEditorCommand(editor, "imageEdit")).toBe(true);
+    expect(seen).toEqual([editor]);
+    // The command itself edits nothing; the dialog's result does.
+    expect(md(editor)).toBe('<img src="a.png" width="320">\n');
+  });
+
+  it("imageEdit is a no-op without a renderer", () => {
+    const editor = trackedEditorFrom(makeWidthEditor("Hello world"));
+    expect(requestImageEditDialog(editor)).toBe(false);
+    expect(md(editor)).toBe("Hello world\n");
+  });
+
+  it("the registry carries the imageEdit entry", () => {
+    const ids = EDITOR_COMMANDS.map((cmd) => cmd.id);
+    expect(ids).toContain("imageEdit");
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("ImageEditDialog component", () => {
+  interface Harness {
+    container: HTMLDivElement;
+    props: {
+      prefill: {
+        src: string;
+        alt: string;
+        width: string;
+        title: string;
+        isEditing: boolean;
+      };
+      onApply: ReturnType<typeof vi.fn>;
+      onClose: ReturnType<typeof vi.fn>;
+    };
+    type: (el: HTMLInputElement, value: string) => void;
+    input: (label: string) => HTMLInputElement;
+  }
+
+  function type(el: HTMLInputElement, value: string): void {
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )!.set!;
+    setter.call(el, value);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function renderDialog(prefill?: Partial<ImageEditDialogProps["prefill"]>): Harness {
+    const props = {
+      prefill: {
+        src: "",
+        alt: "",
+        width: "",
+        title: "",
+        isEditing: false,
+        ...prefill,
+      },
+      onApply: vi.fn(),
+      onClose: vi.fn(),
+    };
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    roots.push(root);
+    act(() => {
+      root.render(<ImageEditDialog {...(props as unknown as ImageEditDialogProps)} />);
+    });
+    return {
+      container,
+      props,
+      type,
+      input: (label) => {
+        const field = Array.from(
+          container.querySelectorAll<HTMLLabelElement>(".quillmd-image-field"),
+        ).find((l) => l.querySelector(".quillmd-image-label")?.textContent === label);
+        return field!.querySelector("input") as HTMLInputElement;
+      },
+    };
+  }
+
+  it("opens with the URL focused and the prefill values in the fields", () => {
+    const h = renderDialog({ src: "a.png", alt: "A", width: "320", isEditing: true });
+    const url = h.input("URL");
+    expect(h.container.querySelector(".quillmd-image-title")!.textContent).toBe("Edit Image");
+    expect(document.activeElement).toBe(url);
+    expect(url.value).toBe("a.png");
+    expect(h.input("Alt text").value).toBe("A");
+    expect(h.input("Width").value).toBe("320");
+  });
+
+  it("submits on Enter with the field values and the carried title", () => {
+    const h = renderDialog({ src: "a.png", alt: "A", width: "", title: "T", isEditing: true });
+    act(() => {
+      h.type(h.input("Width"), "320");
+    });
+    act(() => {
+      h.input("Width").dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(h.props.onApply).toHaveBeenCalledTimes(1);
+    expect(h.props.onApply).toHaveBeenCalledWith({
+      src: "a.png",
+      alt: "A",
+      width: "320",
+      title: "T",
+    });
+  });
+
+  it("cancels on Esc", () => {
+    const h = renderDialog();
+    act(() => {
+      h.input("Alt text").dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(h.props.onClose).toHaveBeenCalledTimes(1);
+    expect(h.props.onApply).not.toHaveBeenCalled();
+  });
+
+  it("refuses an invalid width and shows the error", () => {
+    const h = renderDialog({ src: "a.png" });
+    act(() => {
+      h.type(h.input("Width"), "32 px");
+    });
+    expect(h.input("Width").classList.contains("error")).toBe(true);
+    act(() => {
+      h.input("Width").dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(h.props.onApply).not.toHaveBeenCalled();
+    expect(h.container.querySelector(".quillmd-image-error")!.textContent).toContain("pixels");
+  });
+
+  it("refuses an invalid URL scheme and shows the error", () => {
+    const h = renderDialog({ src: "javascript:alert(1)" });
+    act(() => {
+      h.input("URL").dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(h.props.onApply).not.toHaveBeenCalled();
+    expect(h.container.querySelector(".quillmd-image-error")!.textContent).toContain("scheme");
+  });
+
+  it("keeps an empty URL from submitting", () => {
+    const h = renderDialog();
+    act(() => {
+      h.input("URL").dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(h.props.onApply).not.toHaveBeenCalled();
+    expect(h.container.querySelector(".quillmd-image-error")!.textContent).toBe("Enter a URL");
+  });
+});
+
+// Helpers for the image edit tests: wrap an editor in the tracked list and
+// locate the image node's position for a node selection.
+function trackedEditorFrom(editor: Editor): Editor {
+  editors.push(editor);
+  return editor;
+}
+
+function findImageNode(
+  editor: Editor,
+): { pos: number; node: import("@tiptap/pm/model").Node } {
+  let found: { pos: number; node: import("@tiptap/pm/model").Node } | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (!found && node.type.name === "image") found = { pos, node };
+    return true;
+  });
+  return found!;
+}

@@ -23,6 +23,7 @@ export type EditorCommandId =
   | "link"
   | "image"
   | "imageFromFile"
+  | "imageEdit"
   | "highlight"
   | "subscript"
   | "superscript"
@@ -414,6 +415,16 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
     run: (editor) => requestImageInsert(editor, "file"),
   },
   {
+    id: "imageEdit",
+    label: "Edit image",
+    // Plan 08 task 8.4 (issue #79): the Edit-image command requests the in-app
+    // image edit dialog (App.tsx renders it), the same shape as the link
+    // command from task 8.1. Clicking an image in the editor reaches this
+    // command; the dialog prefills from the image under the caret and applies
+    // URL/alt/width back to the same instance.
+    run: (editor) => requestImageEditDialog(editor),
+  },
+  {
     id: "highlight",
     label: "Highlight",
     run: (editor) => editor.chain().focus().toggleHighlight().run(),
@@ -770,5 +781,29 @@ export function registerImageInsertListener(fn: ImageInsertListener): () => void
 export function requestImageInsert(editor: CoreEditor, source: ImageInsertSource): boolean {
   if (!imageInsertListener) return false;
   imageInsertListener(editor, source);
+  return true;
+}
+
+// Image edit plumbing (plan 08 task 8.4, issue #79). The image edit command
+// and the editor's image click handler cannot render UI themselves, so they
+// request the dialog and the app shell (App.tsx) renders it. The request
+// carries the live editor so the dialog can prefill from the image under the
+// caret and apply the result to the same instance.
+type ImageEditDialogListener = (editor: CoreEditor) => void;
+let imageEditDialogListener: ImageEditDialogListener | null = null;
+
+export function registerImageEditDialogListener(fn: ImageEditDialogListener): () => void {
+  imageEditDialogListener = fn;
+  return () => {
+    if (imageEditDialogListener === fn) imageEditDialogListener = null;
+  };
+}
+
+// Requests the image edit dialog for the given editor. Returns false (no-op)
+// when no renderer is registered — e.g. outside WYSIWYG where there is no
+// TipTap instance to edit.
+export function requestImageEditDialog(editor: CoreEditor): boolean {
+  if (!imageEditDialogListener) return false;
+  imageEditDialogListener(editor);
   return true;
 }
