@@ -46,6 +46,7 @@ export type EditorCommandId =
   | "showMarks"
   | "wordWrap"
   | "zoom"
+  | "spellcheck"
   | "pasteAsText"
   | "undo"
   | "redo"
@@ -118,18 +119,24 @@ const SHOW_MARKS_CLASS = "quillmd-show-marks";
 // the content scrolls horizontally. Absent (the default) means wrap is on.
 const NO_WRAP_CLASS = "quillmd-no-wrap";
 
+// The contenteditable spellcheck attribute (plan 02 §2.8, issue #36): the
+// browser engine (WebKitGTK/WebView2) does the actual checking, so the
+// command only toggles the attribute on the editor DOM.
+const SPELLCHECK_ATTR = "spellcheck";
+
 // Applies a document's persisted view settings (plan 02 task 2.5, zoom per
 // task 2.6) to the editor DOM: the line-spacing and zoom CSS variables plus
-// the formatting-marks and no-wrap wrapper classes. The Editor calls this on
-// mount and whenever the settings change so a reopened tab restores its look;
-// the toggling commands mutate the same DOM state, which keeps re-application
-// idempotent.
+// the formatting-marks and no-wrap wrapper classes and the spellcheck
+// attribute. The Editor calls this on mount and whenever the settings change
+// so a reopened tab restores its look; the toggling commands mutate the same
+// DOM state, which keeps re-application idempotent.
 export function applyViewSettings(editor: CoreEditor, settings: DocSettings): void {
   const dom = editorDom(editor);
   dom.style.setProperty(LINE_SPACING_VAR, LINE_SPACING_CSS[settings.lineSpacing]);
   dom.style.setProperty(ZOOM_VAR, String(clampZoom(settings.zoom)));
   dom.classList.toggle(SHOW_MARKS_CLASS, settings.showMarks);
   dom.classList.toggle(NO_WRAP_CLASS, !settings.wordWrap);
+  dom.setAttribute(SPELLCHECK_ATTR, settings.spellcheck ? "true" : "false");
 }
 
 function headingCmd(level: 1 | 2 | 3 | 4 | 5 | 6): EditorCommand {
@@ -187,6 +194,13 @@ export function clampZoom(percent: number): number {
 
 function setZoomPercent(editor: CoreEditor, percent: number): void {
   editorDom(editor).style.setProperty(ZOOM_VAR, String(clampZoom(percent)));
+}
+
+// Whether the contenteditable spellcheck attribute is on (plan 02 §2.8,
+// issue #36). A missing attribute reads as off, matching the explicit
+// "false" the editor used to hard-code.
+export function spellcheckOf(editor: CoreEditor): boolean {
+  return editorDom(editor).getAttribute(SPELLCHECK_ATTR) === "true";
 }
 
 // Node types that carry per-block alignment (plan 02 §2.2). The textAlign
@@ -601,6 +615,16 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
     },
     active: (editor, param) =>
       typeof param === "number" && Number.isFinite(param) && zoomPercentOf(editor) === param,
+  },
+  {
+    id: "spellcheck",
+    label: "Spellcheck",
+    run: (editor) => {
+      const dom = editorDom(editor);
+      dom.setAttribute(SPELLCHECK_ATTR, spellcheckOf(editor) ? "false" : "true");
+      return true;
+    },
+    active: (editor) => spellcheckOf(editor),
   },
   {
     id: "pasteAsText",

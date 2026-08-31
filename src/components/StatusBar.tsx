@@ -10,11 +10,17 @@ interface StatusBarProps {
   dirty: boolean;
   // Content zoom percent (plan 02 task 2.6, issue #35); 100 is the default.
   zoom: number;
+  // WYSIWYG spellcheck state (plan 02 §2.8, issue #36); on by default.
+  spellcheck?: boolean;
   fileName: string | null;
   onModeChange?: (mode: ViewMode) => void;
   // When provided, the zoom readout is a button that resets to 100% (Word
   // behavior). Absent (tests, embedded) it renders as a plain label.
   onZoomReset?: () => void;
+  // When provided, the spellcheck indicator is a button that toggles it
+  // (View > Spellcheck). Absent (tests, embedded) it renders as a plain
+  // label.
+  onSpellcheckToggle?: () => void;
 }
 
 export default function StatusBar({
@@ -24,9 +30,11 @@ export default function StatusBar({
   eol,
   dirty,
   zoom,
+  spellcheck = true,
   fileName,
   onModeChange,
   onZoomReset,
+  onSpellcheckToggle,
 }: StatusBarProps) {
   return (
     <div className="quillmd-statusbar">
@@ -63,6 +71,23 @@ export default function StatusBar({
         </button>
       ) : (
         <span className="quillmd-status-zoom">{zoom}%</span>
+      )}
+      <span className="quillmd-status-sep">|</span>
+      {onSpellcheckToggle ? (
+        <button
+          type="button"
+          className={spellcheck ? "quillmd-status-spellcheck" : "quillmd-status-spellcheck off"}
+          title="Spellcheck — click to toggle (View > Spellcheck)"
+          onClick={onSpellcheckToggle}
+        >
+          {spellcheck ? "Spellcheck: on" : "Spellcheck: off"}
+        </button>
+      ) : (
+        <span
+          className={spellcheck ? "quillmd-status-spellcheck" : "quillmd-status-spellcheck off"}
+        >
+          {spellcheck ? "Spellcheck: on" : "Spellcheck: off"}
+        </span>
       )}
       <span className="quillmd-status-sep">|</span>
       <span>{wordCount} words</span>

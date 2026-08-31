@@ -15,7 +15,9 @@
  #                       serializer wiring (#32), indent/outdent + list
  #                       keyboard (Ctrl+]/[ + Tab) wiring (#33), line spacing +
   #                       word wrap + formatting marks wiring (#34), zoom
-  #                       state/menu submenu/shortcuts/Ctrl-wheel/status (#35)
+   #                       state/menu submenu/shortcuts/Ctrl-wheel/status (#35),
+   #                       spellcheck attr + View toggle / paste-as-text
+   #                       Edit menu + Ctrl+Shift+V wiring (#36)
 #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -692,6 +694,85 @@ test_editor_zoom_css_statusbar() {
     fi
 }
 
+# --- p1-editor: spellcheck + paste handling (issue #36, plan 02 task 2.7) ----
+# The command behavior (spellcheck attribute toggle + active state,
+# applyViewSettings restore, pasteAsText payload, the Ctrl+Shift+V paste-event
+# interception, and the rich Word paste keeping bold/italic/links/headings)
+# is covered by the vitest suites (editorCommands.test.ts, paste.test.tsx,
+# clipboard.test.ts, docSettings.test.ts, statusBar.test.tsx); this section
+# checks the app-level wiring the GUI driver cannot reach headlessly: the
+# native View > Spellcheck + Edit > Paste as Text (Ctrl+Shift+V) menu items,
+# the App.tsx routing that reads the system clipboard and persists the
+# per-doc setting, the WYSIWYG attribute, and the source-view override.
+test_editor_spellcheck_menu_wiring() {
+    note "editor.spellcheck View > Spellcheck menu item present"
+    if grep -q 'MenuItem::with_id(app, "view-spellcheck", "Spellcheck"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '&spellcheck' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "editor.spellcheck View > Spellcheck menu item present"
+    else
+        fail "editor.spellcheck View > Spellcheck menu item present"
+    fi
+}
+test_editor_spellcheck_app_routing() {
+    note "editor.spellcheck App.tsx routes view-spellcheck + persists per-doc"
+    if grep -q 'id === "view-spellcheck"' "$ROOT/src/App.tsx" \
+        && grep -q 'patchDocSettings({ spellcheck' "$ROOT/src/App.tsx" \
+        && grep -q 'dispatchEditorCommand("spellcheck")' "$ROOT/src/App.tsx" \
+        && grep -q 'spellcheck={activeDoc?.settings.spellcheck' "$ROOT/src/App.tsx"; then
+        pass "editor.spellcheck App.tsx routes view-spellcheck + persists per-doc"
+    else
+        fail "editor.spellcheck App.tsx routes view-spellcheck + persists per-doc"
+    fi
+}
+test_editor_spellcheck_attr_source_off() {
+    note "editor.spellcheck WYSIWYG attr enabled; source view (CodeMirror) off"
+    if grep -q 'spellcheck: (settings?.spellcheck ?? true)' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'id: "spellcheck"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export function spellcheckOf' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'spellcheck' "$ROOT/src/lib/docSettings.ts" \
+        && grep -q '"false"' "$ROOT/src/components/SourceView.tsx" \
+        && [ -f "$ROOT/src/lib/__tests__/paste.test.tsx" ]; then
+        pass "editor.spellcheck WYSIWYG attr enabled; source view (CodeMirror) off"
+    else
+        fail "editor.spellcheck WYSIWYG attr enabled; source view (CodeMirror) off"
+    fi
+}
+test_editor_pasteas_menu_wiring() {
+    note "editor.pasteas Edit > Paste as Text + Ctrl+Shift+V present"
+    if grep -q 'MenuItem::with_id(app, "edit-paste-as-text", "Paste as Text", true, Some("Ctrl+Shift+V"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '&paste_as_text' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "editor.pasteas Edit > Paste as Text + Ctrl+Shift+V present"
+    else
+        fail "editor.pasteas Edit > Paste as Text + Ctrl+Shift+V present"
+    fi
+}
+test_editor_pasteas_app_routing() {
+    note "editor.pasteas App.tsx routes edit-paste-as-text + reads clipboard"
+    if grep -q 'id === "edit-paste-as-text"' "$ROOT/src/App.tsx" \
+        && grep -q 'from "./lib/clipboard"' "$ROOT/src/App.tsx" \
+        && grep -q 'readClipboardText()' "$ROOT/src/App.tsx" \
+        && grep -q 'dispatchEditorCommand("pasteAsText"' "$ROOT/src/App.tsx" \
+        && grep -q 'Ctrl+Shift+V' "$ROOT/src/App.tsx"; then
+        pass "editor.pasteas App.tsx routes edit-paste-as-text + reads clipboard"
+    else
+        fail "editor.pasteas App.tsx routes edit-paste-as-text + reads clipboard"
+    fi
+}
+test_editor_pasteas_interception() {
+    note "editor.pasteas Ctrl+Shift+V paste-event interception + Word sample test"
+    if grep -q 'handlePaste' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'export function handleEditorPaste' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'runEditorCommand(editor, "pasteAsText", text)' "$ROOT/src/components/Editor.tsx" \
+        && [ -f "$ROOT/src/lib/__tests__/paste.test.tsx" ] \
+        && grep -q 'WORD_HTML' "$ROOT/src/lib/__tests__/paste.test.tsx" \
+        && grep -q 'handleEditorPaste' "$ROOT/src/lib/__tests__/paste.test.tsx" \
+        && [ -f "$ROOT/src/lib/__tests__/clipboard.test.ts" ]; then
+        pass "editor.pasteas Ctrl+Shift+V paste-event interception + Word sample test"
+    else
+        fail "editor.pasteas Ctrl+Shift+V paste-event interception + Word sample test"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -755,6 +836,12 @@ case "$SUBSET" in
         test_editor_zoom_app_routing
         test_editor_zoom_registry
         test_editor_zoom_css_statusbar
+        test_editor_spellcheck_menu_wiring
+        test_editor_spellcheck_app_routing
+        test_editor_spellcheck_attr_source_off
+        test_editor_pasteas_menu_wiring
+        test_editor_pasteas_app_routing
+        test_editor_pasteas_interception
         ;;
     shell)
         test_shell_new_bundled
@@ -835,6 +922,12 @@ case "$SUBSET" in
         test_editor_zoom_app_routing
         test_editor_zoom_registry
         test_editor_zoom_css_statusbar
+        test_editor_spellcheck_menu_wiring
+        test_editor_spellcheck_app_routing
+        test_editor_spellcheck_attr_source_off
+        test_editor_pasteas_menu_wiring
+        test_editor_pasteas_app_routing
+        test_editor_pasteas_interception
         ;;
     *)
         echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|shell|copyclose|info|dragdrop|all)" >&2

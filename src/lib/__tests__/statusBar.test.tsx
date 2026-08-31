@@ -67,3 +67,63 @@ describe("statusBar zoom readout (issue #35)", () => {
     expect(resets).toBe(1);
   });
 });
+
+describe("statusBar spellcheck indicator (plan 02 §2.8, issue #36)", () => {
+  let roots: Root[] = [];
+  let container: HTMLDivElement;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    for (const root of roots) root.unmount();
+    roots = [];
+    container.remove();
+  });
+
+  const render = (props: Parameters<typeof StatusBar>[0]) => {
+    const root = createRoot(container);
+    roots.push(root);
+    act(() => {
+      root.render(<StatusBar {...props} />);
+    });
+    return container;
+  };
+
+  const baseProps = {
+    mode: "wysiwyg" as const,
+    wordCount: 3,
+    charCount: 12,
+    eol: "lf" as const,
+    dirty: false,
+    fileName: "a.md",
+    zoom: 100,
+  };
+
+  it("shows the default on state as a plain label without a toggle handler", () => {
+    render({ ...baseProps });
+    const indicator = container.querySelector(".quillmd-status-spellcheck");
+    expect(indicator?.textContent).toBe("Spellcheck: on");
+    expect(indicator?.tagName).not.toBe("BUTTON");
+  });
+
+  it("shows the off state dimmed", () => {
+    render({ ...baseProps, spellcheck: false });
+    const indicator = container.querySelector(".quillmd-status-spellcheck");
+    expect(indicator?.textContent).toBe("Spellcheck: off");
+    expect(indicator?.classList.contains("off")).toBe(true);
+  });
+
+  it("renders a toggle button that invokes onSpellcheckToggle", () => {
+    let toggles = 0;
+    render({ ...baseProps, spellcheck: false, onSpellcheckToggle: () => { toggles += 1; } });
+    const button = container.querySelector<HTMLButtonElement>("button.quillmd-status-spellcheck");
+    expect(button?.textContent).toBe("Spellcheck: off");
+    act(() => {
+      button?.click();
+    });
+    expect(toggles).toBe(1);
+  });
+});

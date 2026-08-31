@@ -143,12 +143,17 @@ fn build_edit_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> 
     let cut = MenuItem::with_id(app, "edit-cut", "Cut", true, Some("Ctrl+X"))?;
     let copy = MenuItem::with_id(app, "edit-copy", "Copy", true, Some("Ctrl+C"))?;
     let paste = MenuItem::with_id(app, "edit-paste", "Paste", true, Some("Ctrl+V"))?;
+    // Paste-as-text (plan 02 §2.9, issue #36): strips the clipboard to plain
+    // text. The accelerator is the Word parity Ctrl+Shift+V; the frontend
+    // dispatches the pasteAsText registry command with the clipboard payload.
+    let paste_as_text =
+        MenuItem::with_id(app, "edit-paste-as-text", "Paste as Text", true, Some("Ctrl+Shift+V"))?;
     let find = MenuItem::with_id(app, "edit-find", "Find", true, Some("Ctrl+F"))?;
 
     let edit = SubmenuBuilder::new(app, "Edit")
         .items(&[&undo, &redo])
         .separator()
-        .items(&[&cut, &copy, &paste])
+        .items(&[&cut, &copy, &paste, &paste_as_text])
         .separator()
         .item(&find)
         .build()?;
@@ -183,6 +188,10 @@ fn build_view_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> 
         MenuItem::with_id(app, "view-show-marks", "Show Formatting Marks", true, None::<&str>)?;
     let word_wrap =
         MenuItem::with_id(app, "view-word-wrap", "Word Wrap", true, None::<&str>)?;
+    // Spellcheck (plan 02 §2.8, issue #36): toggles the contenteditable
+    // spellcheck attribute in the WYSIWYG view; per-doc persisted on the
+    // frontend. The source view (CodeMirror) is always off.
+    let spellcheck = MenuItem::with_id(app, "view-spellcheck", "Spellcheck", true, None::<&str>)?;
 
     // Zoom (plan 02 task 2.6, issue #35): 50-200% in 10% steps, per-doc
     // persisted on the frontend. The accelerators are the Word parity ones:
@@ -203,6 +212,7 @@ fn build_view_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> 
         .item(&zoom)
         .item(&show_marks)
         .item(&word_wrap)
+        .item(&spellcheck)
         .separator()
         .items(&[&explorer, &statusbar])
         .build()?;

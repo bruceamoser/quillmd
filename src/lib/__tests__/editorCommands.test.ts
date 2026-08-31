@@ -18,6 +18,7 @@ import {
   lineSpacingOf,
   registerEditorCommandListener,
   runEditorCommand,
+  spellcheckOf,
   textAlignOf,
   zoomPercentOf,
 } from "../editorCommands";
@@ -34,6 +35,7 @@ const NEW_IDS: EditorCommandId[] = [
   "showMarks",
   "zoom",
   "pasteAsText",
+  "spellcheck",
 ];
 
 function makeEditor(markdown = "Hello world") {
@@ -316,14 +318,26 @@ describe("registry expansion (plan 02 task 2.1)", () => {
     it("applies the line-spacing variable and both wrapper classes", () => {
       const editor = makeEditor("Hello world");
       const dom = editor.view.dom as HTMLElement;
-      applyViewSettings(editor, { lineSpacing: "1.5", wordWrap: false, showMarks: true, zoom: 100 });
+      applyViewSettings(editor, {
+        lineSpacing: "1.5",
+        wordWrap: false,
+        showMarks: true,
+        zoom: 100,
+        spellcheck: true,
+      });
       expect(dom.style.getPropertyValue("--quillmd-line-spacing")).toBe("1.5");
       expect(lineSpacingOf(editor)).toBe("1.5");
       expect(dom.classList.contains("quillmd-show-marks")).toBe(true);
       expect(dom.classList.contains("quillmd-no-wrap")).toBe(true);
 
       // Re-applying the defaults clears the classes (idempotent restore).
-      applyViewSettings(editor, { lineSpacing: "single", wordWrap: true, showMarks: false, zoom: 100 });
+      applyViewSettings(editor, {
+        lineSpacing: "single",
+        wordWrap: true,
+        showMarks: false,
+        zoom: 100,
+        spellcheck: true,
+      });
       expect(lineSpacingOf(editor)).toBe("single");
       expect(dom.classList.contains("quillmd-show-marks")).toBe(false);
       expect(dom.classList.contains("quillmd-no-wrap")).toBe(false);
@@ -334,16 +348,34 @@ describe("registry expansion (plan 02 task 2.1)", () => {
       const editor = makeEditor("Hello world");
       const dom = editor.view.dom as HTMLElement;
       // A reopened tab at 140% gets the variable applied on mount.
-      applyViewSettings(editor, { lineSpacing: "single", wordWrap: true, showMarks: false, zoom: 140 });
+      applyViewSettings(editor, {
+        lineSpacing: "single",
+        wordWrap: true,
+        showMarks: false,
+        zoom: 140,
+        spellcheck: true,
+      });
       expect(dom.style.getPropertyValue("--quillmd-zoom")).toBe("140");
       expect(zoomPercentOf(editor)).toBe(140);
 
       // Reverting to the default restores 100 (idempotent).
-      applyViewSettings(editor, { lineSpacing: "single", wordWrap: true, showMarks: false, zoom: 100 });
+      applyViewSettings(editor, {
+        lineSpacing: "single",
+        wordWrap: true,
+        showMarks: false,
+        zoom: 100,
+        spellcheck: true,
+      });
       expect(zoomPercentOf(editor)).toBe(100);
 
       // An out-of-range stored value is clamped when applied.
-      applyViewSettings(editor, { lineSpacing: "single", wordWrap: true, showMarks: false, zoom: 999 });
+      applyViewSettings(editor, {
+        lineSpacing: "single",
+        wordWrap: true,
+        showMarks: false,
+        zoom: 999,
+        spellcheck: true,
+      });
       expect(zoomPercentOf(editor)).toBe(200);
       editor.destroy();
     });
@@ -352,7 +384,13 @@ describe("registry expansion (plan 02 task 2.1)", () => {
       const editor = makeEditor("# Title\n\nHello **world**\n\n- a\n- b\n");
       const before = md(editor);
       cursorAfter(editor, "Hello");
-      applyViewSettings(editor, { lineSpacing: "double", wordWrap: false, showMarks: true, zoom: 150 });
+      applyViewSettings(editor, {
+        lineSpacing: "double",
+        wordWrap: false,
+        showMarks: true,
+        zoom: 150,
+        spellcheck: true,
+      });
       runEditorCommand(editor, "wordWrap");
       expect(md(editor)).toBe(before);
       editor.destroy();
@@ -456,6 +494,52 @@ describe("registry expansion (plan 02 task 2.1)", () => {
     });
   });
 
+  describe("spellcheck (plan 02 §2.8, issue #36)", () => {
+    it("toggles the contenteditable attribute and reports active state", () => {
+      const editor = makeEditor("Hello world");
+      const dom = editor.view.dom as HTMLElement;
+      // The app editor initializes the attribute from settings; a bare
+      // editor (like this test) has no attribute, which reads as off.
+      expect(spellcheckOf(editor)).toBe(false);
+      expect(editorCommandActive(editor, "spellcheck")).toBe(false);
+
+      expect(runEditorCommand(editor, "spellcheck")).toBe(true);
+      expect(dom.getAttribute("spellcheck")).toBe("true");
+      expect(spellcheckOf(editor)).toBe(true);
+      expect(editorCommandActive(editor, "spellcheck")).toBe(true);
+
+      expect(runEditorCommand(editor, "spellcheck")).toBe(true);
+      expect(dom.getAttribute("spellcheck")).toBe("false");
+      expect(spellcheckOf(editor)).toBe(false);
+      editor.destroy();
+    });
+
+    it("applyViewSettings restores a persisted off state on mount", () => {
+      const editor = makeEditor("Hello world");
+      applyViewSettings(editor, {
+        lineSpacing: "single",
+        wordWrap: true,
+        showMarks: false,
+        zoom: 100,
+        spellcheck: false,
+      });
+      expect((editor.view.dom as HTMLElement).getAttribute("spellcheck")).toBe("false");
+      expect(spellcheckOf(editor)).toBe(false);
+      expect(editorCommandActive(editor, "spellcheck")).toBe(false);
+      editor.destroy();
+    });
+
+    it("never mutates the document", () => {
+      const editor = makeEditor("# Title\n\nHello **world**\n\n- a\n- b\n");
+      const before = md(editor);
+      cursorAfter(editor, "Hello");
+      runEditorCommand(editor, "spellcheck");
+      runEditorCommand(editor, "spellcheck");
+      expect(md(editor)).toBe(before);
+      editor.destroy();
+    });
+  });
+
   describe("view-level commands never mutate the document", () => {
     it("round-trip stays identical after lineSpacing, showMarks, wordWrap, zoom, alignment", () => {
       const editor = makeEditor("# Title\n\nHello **world**\n\n- a\n- b\n");
@@ -466,6 +550,7 @@ describe("registry expansion (plan 02 task 2.1)", () => {
       runEditorCommand(editor, "wordWrap");
       runEditorCommand(editor, "zoom", "in");
       runEditorCommand(editor, "alignCenter");
+      runEditorCommand(editor, "spellcheck");
       expect(md(editor)).toBe(before);
       editor.destroy();
     });

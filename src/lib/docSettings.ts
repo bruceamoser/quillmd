@@ -19,6 +19,9 @@ export interface DocSettings {
   // Content zoom percent, 50-200 (plan 02 §2.6, issue #35); 100 is the
   // default. View-only — rendered as the --quillmd-zoom CSS variable.
   zoom: number;
+  // Browser spellcheck on the WYSIWYG contenteditable (plan 02 §2.8, issue
+  // #36). On by default; the source view (CodeMirror) is always off.
+  spellcheck: boolean;
 }
 
 export const DEFAULT_DOC_SETTINGS: DocSettings = {
@@ -26,6 +29,7 @@ export const DEFAULT_DOC_SETTINGS: DocSettings = {
   wordWrap: true,
   showMarks: false,
   zoom: ZOOM_DEFAULT,
+  spellcheck: true,
 };
 
 const SETTINGS_KEY = "quillmd.docSettings";
@@ -40,6 +44,7 @@ function normalize(raw: unknown): DocSettings {
   if (isLineSpacingValue(record.lineSpacing)) out.lineSpacing = record.lineSpacing;
   if (typeof record.wordWrap === "boolean") out.wordWrap = record.wordWrap;
   if (typeof record.showMarks === "boolean") out.showMarks = record.showMarks;
+  if (typeof record.spellcheck === "boolean") out.spellcheck = record.spellcheck;
   if (typeof record.zoom === "number" && Number.isFinite(record.zoom)) {
     out.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(record.zoom)));
   }
