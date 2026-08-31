@@ -167,6 +167,28 @@ export function applyLink(editor: CoreEditor, payload: LinkPayload): boolean {
   return true;
 }
 
+// A middle-click event, structurally: the DOM MouseEvent and React's
+// synthetic MouseEvent both satisfy it (React's omits the layer/offset
+// coordinates the DOM type requires).
+interface MiddleClickEvent {
+  button: number;
+  target: EventTarget | null;
+}
+
+// The href of the link under a middle click inside `root` (plan 08 task
+// 8.5, issue #80): null for any other button, a target that is not an
+// anchor, or an anchor without an href. The WYSIWYG editor resolves the
+// link mark at the click position instead (its DOM carries the href); the
+// preview's rendered HTML does not, so it reads the anchor directly.
+export function middleClickLinkHref(event: MiddleClickEvent, root: Element): string | null {
+  if (event.button !== 1) return null;
+  const target = event.target;
+  if (!(target instanceof Element)) return null;
+  const anchor = target.closest("a[href]");
+  if (!anchor || !root.contains(anchor)) return null;
+  return anchor.getAttribute("href");
+}
+
 // Opens the destination in the system browser (plan 08 §2.1 "Open" button):
 // plugin-opener under Tauri, a new tab in browser dev.
 export async function openLinkUrl(url: string): Promise<void> {

@@ -22,6 +22,8 @@ import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import { markdownToTiptap, tiptapToMarkdown } from "../lib/pm";
+import { baseName } from "../lib/fileIo";
+import { openLinkUrl } from "../lib/links";
 import {
   applyViewSettings,
   registerEditorCommandListener,
@@ -34,6 +36,7 @@ import type { DocSettings } from "../lib/docSettings";
 import { matchDecorations, registerFindEditor, registerFindStateListener } from "../lib/find";
 import type { SearchState } from "../lib/find";
 import { DecorationSet } from "@tiptap/pm/view";
+import type { EditorView } from "@tiptap/pm/view";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import Toolbar from "./Toolbar";
 
@@ -66,6 +69,21 @@ export const LinkWithTitle = Link.extend({
 // width attribute. pm.ts parses/serializes it as the <img src alt width>
 // HTML form; parseHTML picks it up for HTML pasted into the editor and
 // renderHTML sizes the image in the WYSIWYG DOM.
+// Broken-image placeholder (plan 08 task 8.5, issue #80): the set of image
+// srcs whose local file is gone, computed by App on doc load, plus the
+// re-link handler (App runs the picker and the asset copy). The node view
+// below is created once per node, so it reads both through this module
+// holder on every (re)render — the same registry shape as editorCommands.ts.
+export const imagePlaceholderRuntime = {
+  missing: new Set<string>() as ReadonlySet<string>,
+  onReLink: null as ((src: string, pos: number) => void) | null,
+};
+// The live placeholder node views' re-render functions: the missing set can
+// change without the doc changing (a file is restored, a re-link applied),
+// so the Editor re-renders every mounted view when its props change.
+const imagePlaceholderViews = new Set<() => void>();
+const EMPTY_MISSING: ReadonlySet<string> = new Set();
+
 export const ImageWithWidth = Image.extend({
   addAttributes() {
     return {
@@ -76,6 +94,71 @@ export const ImageWithWidth = Image.extend({
         renderHTML: (attrs: Record<string, unknown>) =>
           typeof attrs.width === "string" && attrs.width !== "" ? { width: attrs.width } : {},
       },
+    };
+  },
+  addNodeView() {
+    return ({ node, getPos }) => {
+      const dom = document.createElement("span");
+      const render = () => {
+        dom.innerHTML = "";
+        const src = typeof node.attrs.src === "string" ? node.attrs.src : "";
+        if (src !== "" && imagePlaceholderRuntime.missing.has(src)) {
+          // Missing local file: the placeholder names the file and offers
+          // the re-link flow (AC6). The doc bytes are untouched — the
+          // placeholder is view-only until the user re-links.
+          const wrap = document.createElement("span");
+          wrap.className = "quillmd-img-missing";
+          const label = document.createElement("span");
+          label.className = "quillmd-img-missing-label";
+          label.textContent = `${baseName(src)} (missing)`;
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "quillmd-img-relink";
+          button.textContent = "Re-link…";
+          // Keep the editor's selection while the button is pressed.
+          button.addEventListener("mousedown", (e) => e.preventDefault());
+          button.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const pos = getPos();
+            if (typeof pos === "number" && imagePlaceholderRuntime.onReLink) {
+              imagePlaceholderRuntime.onReLink(src, pos);
+            }
+          });
+          wrap.append(label, button);
+          dom.appendChild(wrap);
+          return;
+        }
+        const img = document.createElement("img");
+        img.src = src;
+        const alt = typeof node.attrs.alt === "string" ? node.attrs.alt : "";
+        if (alt !== "") img.alt = alt;
+        const width = typeof node.attrs.width === "string" ? node.attrs.width : "";
+        if (width !== "") img.setAttribute("width", width);
+        dom.appendChild(img);
+      };
+      render();
+      imagePlaceholderViews.add(render);
+      return {
+        dom,
+        update(updated) {
+          if (updated.type !== node.type) return false;
+          node = updated;
+          render();
+          return true;
+        },
+        selectNode() {
+          dom.classList.add("ProseMirror-selectednode");
+        },
+        deselectNode() {
+          dom.classList.remove("ProseMirror-selectednode");
+        },
+        stopEvent: () => false,
+        ignoreMutation: () => true,
+        destroy() {
+          imagePlaceholderViews.delete(render);
+        },
+      };
     };
   },
 });
@@ -283,6 +366,11 @@ interface EditorProps {
   // Per-doc view settings (plan 02 task 2.5): line spacing, word wrap, and
   // formatting marks, applied to the editor DOM and persisted by the caller.
   settings?: DocSettings;
+  // Broken-image placeholder (plan 08 task 8.5, issue #80): the srcs whose
+  // local file no longer exists (rendered as the missing-image placeholder)
+  // and the re-link handler the placeholder's button calls.
+  missingImages?: ReadonlySet<string>;
+  onReLinkImage?: (src: string, pos: number) => void;
 }
 
 interface SlashAction {
@@ -474,12 +562,37 @@ export function handleEditorPaste(editor: CoreEditor, event: ClipboardEvent): bo
   return true;
 }
 
+// The href of the link mark at a doc position, or null when the position
+// carries no link (plan 08 task 8.5, issue #80).
+export function linkHrefAt(view: EditorView, pos: number): string | null {
+  const resolved = view.state.doc.resolve(pos);
+  const mark = resolved.marks().find((m) => m.type.name === "link");
+  const href = mark?.attrs.href;
+  return typeof href === "string" && href !== "" ? href : null;
+}
+
+// Middle-click on a link (plan 08 task 8.5, issue #80, AC7): resolves the
+// click to a doc position, finds the link mark there, and opens the href
+// through plugin-opener — http/https in the system browser, file:// in the
+// OS handler (openLinkUrl). Returns true when the event was consumed.
+export function handleEditorMiddleClick(view: EditorView, event: MouseEvent): boolean {
+  if (event.button !== 1) return false;
+  const found = view.posAtCoords({ left: event.clientX, top: event.clientY });
+  if (!found) return false;
+  const href = linkHrefAt(view, found.pos);
+  if (href === null) return false;
+  void openLinkUrl(href);
+  return true;
+}
+
 export default function Editor({
   value,
   onChange,
   readOnly = false,
   placeholder = "",
   settings,
+  missingImages,
+  onReLinkImage,
 }: EditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -548,6 +661,12 @@ export default function Editor({
         const active = editorRef.current;
         return active ? handleEditorPaste(active, event) : false;
       },
+      // Middle-click on a link (plan 08 task 8.5, issue #80, AC7): opens the
+      // link through plugin-opener instead of the webview's default
+      // (download/save-as for file://, nothing useful for http/https).
+      handleDOMEvents: {
+        auxclick: (view, event) => handleEditorMiddleClick(view, event as MouseEvent),
+      },
       handleClickOn: (_view, _pos, node, nodePos, _event, direct) => {
         const active = editorRef.current;
         if (!active || !direct) return false;
@@ -591,6 +710,16 @@ export default function Editor({
   useEffect(() => {
     editorRef.current = editor;
   }, [editor]);
+
+  // Broken-image placeholder (plan 08 task 8.5, issue #80): point the module
+  // holder at the latest missing set / re-link handler and re-render every
+  // mounted image node view, so a change in the set (file restored, re-link
+  // applied) swaps the placeholder without a doc transaction.
+  useEffect(() => {
+    imagePlaceholderRuntime.missing = missingImages ?? EMPTY_MISSING;
+    imagePlaceholderRuntime.onReLink = onReLinkImage ?? null;
+    for (const rerender of imagePlaceholderViews) rerender();
+  }, [missingImages, onReLinkImage]);
 
   useEffect(() => {
     if (!editor) return;

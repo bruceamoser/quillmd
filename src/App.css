@@ -962,6 +962,48 @@ button.quillmd-status-spellcheck:hover {
   margin-bottom: 4px;
 }
 
+/* Broken-image placeholder (plan 08 task 8.5, issue #80): an inline image
+   whose local file is gone renders as a named chip with the re-link button.
+   View-only — the markdown keeps the original src until the user re-links. */
+.quillmd-prosemirror .quillmd-img-missing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-panel);
+  border: 1px dashed var(--warn);
+  border-radius: 6px;
+  padding: 2px 8px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+.quillmd-prosemirror .quillmd-img-missing-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 280px;
+}
+
+.quillmd-prosemirror .quillmd-img-relink {
+  flex: none;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.quillmd-prosemirror .quillmd-img-relink:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+
 /* Find highlights (plan 07, issue #69): every match yellow, active match
    the stronger orange. Rendered as ProseMirror inline decorations. */
 .quillmd-prosemirror .quillmd-find-match {
