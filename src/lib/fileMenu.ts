@@ -12,9 +12,11 @@ import {
   pickSavePath,
 } from "./dialogs";
 import type { DialogFilter } from "./dialogs";
-import { baseName, exportDocument, importDocument, isAbsolutePath, saveAs } from "./fileIo";
+import { baseName, importDocument, isAbsolutePath, saveAs } from "./fileIo";
 import type { ExportFormat, OpenFileResult } from "./fileIo";
+import { exportCurrentDocument } from "./mermaidExport";
 import { isUntitledPath, untitledDefaultName } from "./newDoc";
+import type { ThemeId } from "./theme";
 
 export interface FileMenuDeps {
   // Opens the file at `path` as a new tab and activates it.
@@ -121,22 +123,39 @@ export function exportDefaultName(docPath: string, format: ExportFormat): string
   return stem + "." + ext;
 }
 
+// The document an export runs on: its path (seeds the save dialog) plus the
+// current text and theme. The current text — unsaved edits included — is what
+// gets exported: with diagrams, each mermaid fence is rendered to PNG and the
+// fence swapped for an image ref in a temp copy (plan 11 task 11.5, issue
+// #104); without diagrams the temp copy is the text itself, so an untitled
+// document can be exported at all.
+export interface ExportJob {
+  docPath: string;
+  markdown: string;
+  theme: ThemeId;
+}
+
 // File > Export: pick the destination through a per-format save dialog, then
-// run the Rust conversion service.
+// run the mermaid-aware export pipeline (temp assets + Rust conversion).
 export async function exportDocumentAs(
-  docPath: string,
+  job: ExportJob,
   format: ExportFormat,
   deps: FileMenuDeps,
 ): Promise<void> {
   deps.status(`Exporting ${exportLabel(format)}...`);
   const out = await pickSavePath(
-    exportDefaultName(docPath, format),
+    exportDefaultName(job.docPath, format),
     exportFilter(format),
     `Export as ${exportLabel(format)}`,
   );
   if (out === null) return;
   try {
-    await exportDocument(docPath, format, out);
+    await exportCurrentDocument({
+      markdown: job.markdown,
+      theme: job.theme,
+      format,
+      outPath: out,
+    });
     deps.status(`Exported ${out}`);
   } catch (err) {
     deps.status(`Export failed: ${String(err)}`);

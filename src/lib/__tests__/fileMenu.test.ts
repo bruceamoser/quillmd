@@ -16,6 +16,14 @@ import {
   saveAsDocument,
 } from "../fileMenu";
 import type { FileMenuDeps } from "../fileMenu";
+import { exportCurrentDocument } from "../mermaidExport";
+
+// The pipeline itself (fence discovery, PNG rendering, temp assets, cleanup)
+// is covered in mermaidExport.test.ts; here we only verify the File > Export
+// wiring: dialog, job arguments, and status reporting.
+vi.mock("../mermaidExport", () => ({
+  exportCurrentDocument: vi.fn(async () => {}),
+}));
 
 const g = globalThis as unknown as Record<string, unknown>;
 
@@ -63,6 +71,7 @@ beforeEach(() => {
   // A browser window always exists: clearMocks() and mockInternals() touch it,
   // and tests simulate the user's dialog choices through it.
   installBrowserWindow();
+  vi.mocked(exportCurrentDocument).mockReset();
 });
 
 afterEach(() => {
@@ -246,8 +255,10 @@ describe("File > Make a copy (#25)", () => {
   });
 });
 
-describe("File > Export (#23)", () => {
-  it("seeds the save dialog with <stem>.<ext> and the per-format filter", async () => {
+describe("File > Export (#23, mermaid pipeline #104)", () => {
+  const job = { docPath: "/docs/notes.md", markdown: "# T\n\nText.\n", theme: "quill" as const };
+
+  it("seeds the save dialog with <stem>.<ext> and the per-format filter, then runs the pipeline on the current text", async () => {
     g.isTauri = true;
     tauriIpc((cmd, payload) => {
       if (cmd === "plugin:dialog|save") {
@@ -258,18 +269,17 @@ describe("File > Export (#23)", () => {
         });
         return "/docs/notes.pdf";
       }
-      if (cmd === "export_document") {
-        expect(payload).toEqual({
-          path: "/docs/notes.md",
-          format: "pdf",
-          outPath: "/docs/notes.pdf",
-        });
-        return;
-      }
       throw new Error(`unexpected IPC ${cmd}`);
     });
     const { deps, status } = makeDeps();
-    await exportDocumentAs("/docs/notes.md", "pdf", deps);
+    await exportDocumentAs(job, "pdf", deps);
+    expect(vi.mocked(exportCurrentDocument)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(exportCurrentDocument)).toHaveBeenCalledWith({
+      markdown: job.markdown,
+      theme: "quill",
+      format: "pdf",
+      outPath: "/docs/notes.pdf",
+    });
     expect(status).toHaveBeenLastCalledWith("Exported /docs/notes.pdf");
   });
 
@@ -284,25 +294,38 @@ describe("File > Export (#23)", () => {
     expect(exportDefaultName("C:\\docs\\notes.md", "epub")).toBe("C:\\docs\\notes.epub");
   });
 
-  it("does not convert anything when the save dialog is cancelled", async () => {
+  it("does not run the pipeline when the save dialog is cancelled", async () => {
     g.isTauri = true;
     const calls = tauriIpc((cmd) => (cmd === "plugin:dialog|save" ? null : undefined));
     const { deps, status } = makeDeps();
-    await exportDocumentAs("/docs/notes.md", "pdf", deps);
+    await exportDocumentAs(job, "pdf", deps);
     expect(calls.map((c) => c.cmd)).toEqual(["plugin:dialog|save"]);
+    expect(vi.mocked(exportCurrentDocument)).not.toHaveBeenCalled();
     expect(status).not.toHaveBeenCalledWith(expect.stringContaining("Exported"));
   });
 
-  it("reports conversion failures in the status bar", async () => {
+  it("reports pipeline failures in the status bar", async () => {
     g.isTauri = true;
-    tauriIpc((cmd) => {
-      if (cmd === "plugin:dialog|save") return "/docs/notes.pdf";
-      if (cmd === "export_document") throw new Error("tool_missing: typst");
-      throw new Error(`unexpected IPC ${cmd}`);
-    });
+    vi.mocked(exportCurrentDocument).mockRejectedValueOnce(
+      new Error("tool_missing: typst"),
+    );
+    tauriIpc((cmd) => (cmd === "plugin:dialog|save" ? "/docs/notes.pdf" : undefined));
     const { deps, status } = makeDeps();
-    await exportDocumentAs("/docs/notes.md", "pdf", deps);
+    await exportDocumentAs(job, "pdf", deps);
     expect(status).toHaveBeenLastCalledWith("Export failed: Error: tool_missing: typst");
+  });
+
+  it("reports a refused mermaid export with the named diagrams", async () => {
+    g.isTauri = true;
+    vi.mocked(exportCurrentDocument).mockRejectedValueOnce(
+      new Error("Mermaid export refused: diagram 2: Parse error on line 1"),
+    );
+    tauriIpc((cmd) => (cmd === "plugin:dialog|save" ? "/docs/notes.pdf" : undefined));
+    const { deps, status } = makeDeps();
+    await exportDocumentAs(job, "pdf", deps);
+    expect(status).toHaveBeenLastCalledWith(
+      "Export failed: Error: Mermaid export refused: diagram 2: Parse error on line 1",
+    );
   });
 });
 

@@ -189,6 +189,19 @@ export async function importDocument(docxPath: string, outMdPath: string): Promi
   await invoke("import_document", { path: docxPath, outMdPath });
 }
 
+// Writes one export asset (a diagram PNG or the temp export markdown) into
+// the Rust layer with collision-safe, reserved-name-validated naming.
+// Returns the path actually written (plan 11 task 11.5, issue #104).
+export async function exportWriteAsset(dir: string, name: string, bytes: Uint8Array): Promise<string> {
+  return invoke<string>("export_write_asset", { dir, name, bytes: Array.from(bytes) });
+}
+
+// Best-effort cleanup of the assets an export wrote. The Rust side skips
+// invalid or missing paths, so this never throws.
+export async function exportRemoveAsset(paths: string[]): Promise<string[]> {
+  return invoke<string[]>("export_remove_asset", { paths });
+}
+
 // Triggers a browser download of the given bytes (dev-only save fallback).
 export function downloadBytes(fileName: string, bytes: Uint8Array, mime = "text/markdown"): void {
   const blob = new Blob([bytes], { type: mime });
