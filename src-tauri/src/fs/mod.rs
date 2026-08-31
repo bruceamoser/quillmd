@@ -1,3 +1,4 @@
+pub mod assets;
 pub mod atomic;
 pub mod encoding;
 pub mod paths;

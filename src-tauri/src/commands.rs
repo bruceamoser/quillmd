@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
+use crate::fs::assets;
 use crate::fs::encoding::{self, Eol};
 use crate::fs::safety::{self, ExternalStatus};
 use crate::fs::snapshot::{self, SnapshotInfo};
@@ -166,6 +167,28 @@ pub fn list_dir(path: String) -> Result<Vec<DirEntry>, String> {
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     Ok(entries)
+}
+
+/// Copies a picked file next to the open document and returns the
+/// markdown-relative path to embed in the document (plan 08 task 8.3,
+/// issue #78). `asset_folder` is "assets" (an `assets/` subfolder next to
+/// the doc, the default) or "doc" (the doc's own folder). Collision-safe:
+/// `photo.png`, `photo-1.png`, ... The copy is atomic and the target is
+/// validated to stay inside the document's folder.
+#[tauri::command]
+pub fn copy_asset(src: String, doc_dir: String, asset_folder: String) -> Result<String, String> {
+    let folder = assets::parse_asset_folder(&asset_folder)
+        .ok_or_else(|| err("bad_request", format!("unknown asset folder setting: {asset_folder}")))?;
+    assets::copy_asset(&PathBuf::from(&src), &PathBuf::from(&doc_dir), folder)
+        .map_err(|e| err("asset_copy", e))
+}
+
+/// Batch existence check for asset paths (plan 08 §3 broken-image
+/// detection): one list in, one list out, in input order. Used to flag
+/// images whose src no longer exists on disk.
+#[tauri::command]
+pub fn file_exists(paths: Vec<String>) -> Vec<bool> {
+    assets::files_exist(&paths)
 }
 
 #[tauri::command]
@@ -355,5 +378,102 @@ mod tests {
         let res = file_stat("/nonexistent/quillmd/stat.md".to_string());
         let msg = res.unwrap_err();
         assert!(msg.starts_with("io:"), "got {msg}");
+    }
+
+    // --- asset copy pipeline (plan 08 task 8.3, issue #78) ----------------
+
+    #[test]
+    fn copy_asset_command_copies_and_relativizes() {
+        let dir = tempdir().unwrap();
+        let doc_dir = dir.path().join("docs");
+        let src = dir.path().join("photo.png");
+        fs::write(&src, b"img-bytes").unwrap();
+
+        let rel = copy_asset(
+            src.display().to_string(),
+            doc_dir.display().to_string(),
+            "assets".to_string(),
+        )
+        .unwrap();
+        assert_eq!(rel, "assets/photo.png");
+        let copied = doc_dir.join("assets").join("photo.png");
+        assert_eq!(fs::read(&copied).unwrap(), b"img-bytes");
+
+        // Collision: the same source again gets photo-1.png.
+        let rel = copy_asset(
+            src.display().to_string(),
+            doc_dir.display().to_string(),
+            "assets".to_string(),
+        )
+        .unwrap();
+        assert_eq!(rel, "assets/photo-1.png");
+    }
+
+    #[test]
+    fn copy_asset_command_doc_folder_setting() {
+        let dir = tempdir().unwrap();
+        let doc_dir = dir.path().join("docs");
+        let src = dir.path().join("pic.jpg");
+        fs::write(&src, b"img").unwrap();
+
+        let rel = copy_asset(
+            src.display().to_string(),
+            doc_dir.display().to_string(),
+            "doc".to_string(),
+        )
+        .unwrap();
+        assert_eq!(rel, "pic.jpg");
+        assert_eq!(fs::read(doc_dir.join("pic.jpg")).unwrap(), b"img");
+    }
+
+    #[test]
+    fn copy_asset_command_rejects_bad_settings_and_sources() {
+        let dir = tempdir().unwrap();
+        let doc_dir = dir.path().join("docs");
+
+        let bad_setting = copy_asset(
+            dir.path().join("a.png").display().to_string(),
+            doc_dir.display().to_string(),
+            "everywhere".to_string(),
+        )
+        .unwrap_err();
+        assert!(bad_setting.starts_with("bad_request:"), "got {bad_setting}");
+
+        let missing = copy_asset(
+            dir.path().join("missing.png").display().to_string(),
+            doc_dir.display().to_string(),
+            "assets".to_string(),
+        )
+        .unwrap_err();
+        assert!(missing.starts_with("asset_copy:"), "got {missing}");
+        assert!(missing.contains("not found"), "got {missing}");
+
+        let reserved = {
+            let con = dir.path().join("CON");
+            fs::write(&con, b"x").unwrap();
+            copy_asset(
+                con.display().to_string(),
+                doc_dir.display().to_string(),
+                "assets".to_string(),
+            )
+            .unwrap_err()
+        };
+        assert!(reserved.contains("reserved"), "got {reserved}");
+    }
+
+    #[test]
+    fn file_exists_command_reports_each_path() {
+        let dir = tempdir().unwrap();
+        let a = dir.path().join("a.png");
+        fs::write(&a, b"x").unwrap();
+        let b = dir.path().join("b.png");
+
+        let out = file_exists(vec![
+            a.display().to_string(),
+            b.display().to_string(),
+            String::new(),
+        ]);
+        assert_eq!(out, vec![true, false, false]);
+        assert_eq!(file_exists(vec![]), Vec::<bool>::new());
     }
 }

@@ -54,19 +54,25 @@ export function insertImage(editor: CoreEditor, payload: ImagePayload): boolean 
 
 // The document's folder for a real on-disk path ("", when the document has
 // no folder to relativize against: untitled :new: tabs, browser-picked
-// files keyed by bare name).
-function docFolderOf(docPath: string): string {
+// files keyed by bare name). The result stays absolute (the POSIX root
+// slash is kept) so it can be handed to the Rust copy_asset command as a
+// real directory; relativePath is slash-insensitive, so the relative-src
+// math is unaffected. Exported for the asset pipeline (assets.ts).
+export function docFolderOf(docPath: string): string {
   if (!isAbsolutePath(docPath)) return "";
+  const root = docPath.startsWith("/") ? "/" : "";
   const parts = docPath.split(/[\\/]/).filter(Boolean);
   parts.pop(); // the file name
-  return parts.join("/");
+  return root + parts.join("/");
 }
 
 // The relative path from `fromDir` to `toFile`: forward slashes (markdown's
 // universal separator, golden rule 1) and `..` segments when the target sits
 // outside the directory tree. Path segments compare case-insensitively so a
 // Windows drive root (`C:` vs `c:`) does not split a same-folder pair.
-function relativePath(fromDir: string, toFile: string): string {
+// Exported for the asset pipeline (assets.ts), which needs to tell "inside
+// the doc folder" (no `..` segment) from "outside" (leading `..`).
+export function relativePath(fromDir: string, toFile: string): string {
   const from = fromDir.split(/[\\/]/).filter(Boolean);
   const to = toFile.split(/[\\/]/).filter(Boolean);
   let i = 0;
@@ -88,9 +94,10 @@ function relativePath(fromDir: string, toFile: string): string {
 // from the doc's own assets folder becomes `assets/photo.png` and a file
 // next to the doc becomes `photo.png`. A document without a folder (an
 // unsaved :new: tab, or a browser-dev file keyed by bare name) cannot be
-// relativized, so the file name alone is referenced. The asset-copy
-// pipeline (task 8.3) upgrades this entry point to copy picked files into
-// the doc folder; the picker and this computation stay.
+// relativized, so the file name alone is referenced. The live from-file
+// flow uses assetSrcForPickedFile (assets.ts, task 8.3), which copies picks
+// outside the doc folder; this pure computation is kept as its no-copy
+// fallback and for the tests.
 export function imageSrcForPickedFile(docPath: string, filePath: string): string {
   if (!isAbsolutePath(filePath)) return filePath;
   const folder = docFolderOf(docPath);
