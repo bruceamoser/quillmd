@@ -62,6 +62,17 @@ import type { LinkPayload, LinkPrefill } from "./lib/links";
 import type { Editor as CoreEditor } from "@tiptap/core";
 import { loadDocSettings, saveDocSettings } from "./lib/docSettings";
 import type { DocSettings } from "./lib/docSettings";
+import {
+  THEME_DEFAULT_MENU_ID_PREFIX,
+  THEME_MENU_ID_PREFIX,
+  THEME_RESET_MENU_ID,
+  hasSavedThemeDefault,
+  isThemeId,
+  loadThemeDefault,
+  resolveTheme,
+  saveThemeDefault,
+} from "./lib/theme";
+import type { ThemeId } from "./lib/theme";
 import { isEditorFontFamily, isEditorFontSize, loadEditorFont, saveEditorFont } from "./lib/editorFont";
 import type { EditorFontSettings } from "./lib/editorFont";
 import { readClipboardText } from "./lib/clipboard";
@@ -113,6 +124,7 @@ import ImageDialog from "./components/ImageDialog";
 import ImageEditDialog from "./components/ImageEditDialog";
 import { loadViewMode, saveViewMode } from "./components/viewModes";
 import type { ViewMode } from "./components/viewModes";
+import "./themes/index.css";
 import "./App.css";
 
 interface DocState {
@@ -275,6 +287,11 @@ export default function App() {
   // applied through the editorFont registry command + the Editor's mount
   // re-application. Cosmetic — never part of any document.
   const [editorFont, setEditorFont] = useState<EditorFontSettings>(() => loadEditorFont());
+  // Per-app default document theme (plan 05 task 5.3, issue #56). A per-doc
+  // override lives in DocSettings.theme; the active theme is the override when
+  // present, otherwise this app-wide default. Cosmetic only — the document
+  // bytes are never touched.
+  const [appTheme, setAppTheme] = useState<ThemeId>(() => loadThemeDefault());
   const [findState, setFindState] = useState<SearchState | null>(null);
   const findStateRef = useRef<SearchState | null>(null);
   const findQueryRef = useRef("");
@@ -306,6 +323,11 @@ export default function App() {
   );
   const dirty = activeDoc !== undefined && activeDoc.currentText !== activeDoc.open.source;
   const viewMode = activeDoc?.viewMode;
+  // The theme the content container renders in (plan 05 task 5.3, issue #56):
+  // the active doc's per-doc override when present, otherwise the app-wide
+  // default. View-only — it drives the data-theme attribute and the scoped
+  // CSS variable sheets, never the document bytes.
+  const activeTheme = activeDoc ? resolveTheme(appTheme, activeDoc.settings.theme) : appTheme;
 
   // Which engine the open find panel acts on (plan 07 task 7.4, issue #72):
   // the WYSIWYG doc in wysiwyg mode, the CodeMirror source doc whenever the
@@ -655,6 +677,24 @@ export default function App() {
     },
     [editorFont],
   );
+
+  // Theme picks (plan 05 task 5.3, issue #56). The View > Theme submenu sets
+  // the active document's per-doc override (or clears it back to the app
+  // default); View > Default theme sets the app-wide default. Both are
+  // view-only: the data-theme attribute on the content container changes the
+  // rendered look without dispatching an editor command, so currentText stays
+  // byte-identical.
+  const changeDocTheme = useCallback(
+    (theme: ThemeId | null) => {
+      patchDocSettings({ theme });
+    },
+    [patchDocSettings],
+  );
+
+  const changeAppTheme = useCallback((theme: ThemeId) => {
+    setAppTheme(theme);
+    saveThemeDefault(theme);
+  }, []);
 
   const doExport = useCallback(
     async (format: ExportFormat) => {
@@ -1424,6 +1464,21 @@ export default function App() {
       } else if (id.startsWith("view-editor-font-")) {
         const family = id.slice("view-editor-font-".length);
         if (isEditorFontFamily(family)) changeEditorFont({ family });
+      } else if (id.startsWith(THEME_DEFAULT_MENU_ID_PREFIX)) {
+        // View > Default theme (plan 05 task 5.3, issue #56): the app-wide
+        // default pick. Documents with their own override are unaffected.
+        const theme = id.slice(THEME_DEFAULT_MENU_ID_PREFIX.length);
+        if (isThemeId(theme)) changeAppTheme(theme);
+      } else if (id === THEME_RESET_MENU_ID) {
+        // View > Theme > Use App Default: clears the active doc's per-doc
+        // override so it follows the app-wide default again.
+        changeDocTheme(null);
+      } else if (id.startsWith(THEME_MENU_ID_PREFIX)) {
+        // View > Theme: the active doc's per-doc override. View-only — the
+        // data-theme attribute on the content container changes the look
+        // without dispatching an editor command, so currentText is untouched.
+        const theme = id.slice(THEME_MENU_ID_PREFIX.length);
+        if (isThemeId(theme)) changeDocTheme(theme);
       } else if (id === "format-font-family-custom") {
         // Free-text family (plan 04 §2.1): the native menu has no input
         // field, so the pick prompts and then dispatches the same fontFamily
@@ -1480,6 +1535,8 @@ export default function App() {
       stepZoom,
       changeZoom,
       changeEditorFont,
+      changeDocTheme,
+      changeAppTheme,
       recentFiles,
       activePath,
       openByPath,
@@ -1504,6 +1561,25 @@ export default function App() {
       unlisten?.();
     };
   }, [handleMenuEvent]);
+
+  // OS dark-mode default (plan 05 task 5.3, issue #56, AC5): while the user
+  // has not saved an explicit app-wide theme, follow the OS preference live —
+  // Dark when the OS reports dark mode, Quill otherwise. An explicit pick
+  // (View > Default theme) saves the choice and stops the tracking.
+  useEffect(() => {
+    let media: MediaQueryList | undefined;
+    try {
+      media = window.matchMedia("(prefers-color-scheme: dark)");
+    } catch {
+      return;
+    }
+    const update = () => {
+      if (!hasSavedThemeDefault()) setAppTheme(media?.matches ? "dark" : "quill");
+    };
+    update();
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  }, []);
 
   // Drag & drop (plan 01 task 1.6, issue #27; image insert per plan 08 task
   // 8.6, issue #81): Tauri emits tauri://drag-* events to the webview by
@@ -1782,6 +1858,7 @@ export default function App() {
               className="quillmd-content"
               key={activePath ?? "welcome"}
               ref={contentRef}
+              data-theme={activeTheme}
             >
               {activeDoc ? (
                 editorView

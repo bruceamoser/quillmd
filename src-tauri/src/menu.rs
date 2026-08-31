@@ -147,6 +147,21 @@ pub const STYLES: &[(&str, &str)] = &[
     ("strong", "Strong"),
 ];
 
+// Theme submenu (plan 05 task 5.3, issue #56). These mirror the frontend's
+// built-in theme set — src/lib/theme.ts THEMES, as (id, label) pairs — so the
+// native View > Theme and View > Default theme submenus offer exactly the
+// themes the CSS variable sheets (src/themes/*.css) define; the vitest suite
+// (src/lib/__tests__/theme.test.tsx) asserts the two stay in sync, the same
+// contract as STYLES above. The ids are the stable theme ids the frontend
+// resolves with isThemeId.
+pub const THEMES: &[(&str, &str)] = &[
+    ("quill", "Quill"),
+    ("minimal", "Minimal"),
+    ("serif", "Serif / Book"),
+    ("dark", "Dark"),
+    ("high-contrast", "High Contrast"),
+];
+
 // The family-name slug used in the format-font-family-<slug> menu ids:
 // lowercase, every run of non-alphanumerics collapsed to a single "-". Must
 // stay byte-identical to fontFamilySlug in src/lib/editorCommands.ts, which
@@ -311,6 +326,27 @@ fn build_view_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> 
     }
     let editor_font = editor_font.build()?;
 
+    // Document themes (plan 05 task 5.3, issue #56). View > Theme sets the
+    // active document's per-doc override (or "Use App Default" clears it);
+    // View > Default theme sets the app-wide default. Both are view-only —
+    // the frontend renders the pick as the data-theme attribute on the
+    // content container and never touches the document bytes.
+    let mut theme = SubmenuBuilder::new(app, "Theme");
+    for (id, label) in THEMES {
+        theme = theme.text(format!("view-theme-{id}"), *label);
+    }
+    theme = theme.separator();
+    let use_app_default =
+        MenuItem::with_id(app, "view-theme-reset", "Use App Default", true, None::<&str>)?;
+    theme = theme.item(&use_app_default);
+    let theme = theme.build()?;
+
+    let mut default_theme = SubmenuBuilder::new(app, "Default theme");
+    for (id, label) in THEMES {
+        default_theme = default_theme.text(format!("view-theme-default-{id}"), *label);
+    }
+    let default_theme = default_theme.build()?;
+
     // Zoom (plan 02 task 2.6, issue #35): 50-200% in 10% steps, per-doc
     // persisted on the frontend. The accelerators are the Word parity ones:
     // Ctrl+= zooms in, Ctrl+- out, Ctrl+0 resets.
@@ -332,6 +368,8 @@ fn build_view_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> 
         .item(&word_wrap)
         .item(&spellcheck)
         .item(&editor_font)
+        .item(&theme)
+        .item(&default_theme)
         .separator()
         .items(&[&explorer, &statusbar])
         .build()?;
@@ -540,6 +578,19 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for (id, label) in STYLES {
             assert!(!id.is_empty(), "empty style id");
+            assert!(!label.is_empty(), "empty label for {id}");
+            assert!(seen.insert(*id), "duplicate id {id}");
+        }
+    }
+
+    // Theme lists (plan 05 task 5.3, issue #56); the frontend mirrors them
+    // (theme.test.tsx asserts the sync). A duplicate or empty id would produce
+    // a duplicate menu id the frontend could not resolve.
+    #[test]
+    fn theme_menu_ids_are_nonempty_and_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for (id, label) in THEMES {
+            assert!(!id.is_empty(), "empty theme id");
             assert!(!label.is_empty(), "empty label for {id}");
             assert!(seen.insert(*id), "duplicate id {id}");
         }

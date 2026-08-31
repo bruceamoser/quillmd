@@ -6,6 +6,8 @@
 
 import { ZOOM_DEFAULT, ZOOM_MAX, ZOOM_MIN, isLineSpacingValue } from "./editorCommands";
 import type { LineSpacingValue } from "./editorCommands";
+import { isThemeId } from "./theme";
+import type { ThemeId } from "./theme";
 
 export interface DocSettings {
   // Word/Docs spacing preset; "single" is the default (the app's base line
@@ -22,6 +24,9 @@ export interface DocSettings {
   // Browser spellcheck on the WYSIWYG contenteditable (plan 02 §2.8, issue
   // #36). On by default; the source view (CodeMirror) is always off.
   spellcheck: boolean;
+  // Per-doc theme override (plan 05 task 5.3, issue #56). Null means "use the
+  // app-wide default theme" (theme.ts); a value is a per-path override.
+  theme: ThemeId | null;
 }
 
 export const DEFAULT_DOC_SETTINGS: DocSettings = {
@@ -30,6 +35,7 @@ export const DEFAULT_DOC_SETTINGS: DocSettings = {
   showMarks: false,
   zoom: ZOOM_DEFAULT,
   spellcheck: true,
+  theme: null,
 };
 
 const SETTINGS_KEY = "quillmd.docSettings";
@@ -45,6 +51,7 @@ function normalize(raw: unknown): DocSettings {
   if (typeof record.wordWrap === "boolean") out.wordWrap = record.wordWrap;
   if (typeof record.showMarks === "boolean") out.showMarks = record.showMarks;
   if (typeof record.spellcheck === "boolean") out.spellcheck = record.spellcheck;
+  if (isThemeId(record.theme)) out.theme = record.theme;
   if (typeof record.zoom === "number" && Number.isFinite(record.zoom)) {
     out.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(record.zoom)));
   }

@@ -1,0 +1,34 @@
+/* Minimal theme (plan 05 task 5.3, issue #56): a low-ornament, high-contrast
+   document look. View-only CSS variable sheet — no markdown is added. */
+.quillmd-content[data-theme="minimal"] {
+  --bg: #f7f7f5;
+  --bg-elevated: #efefec;
+  --bg-panel: #e8e8e4;
+  --bg-hover: #eceae6;
+  --bg-active: #dedcd7;
+  --border: #c9c7c1;
+  --text: #26251f;
+  --text-bright: #000000;
+  --text-muted: #6f6d66;
+  --text-faint: #9b998f;
+  --accent: #26251f;
+  --accent-hover: #000000;
+  --accent-soft: rgba(0, 0, 0, 0.08);
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  --font-text: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  --quillmd-link: #000000;
+  --quillmd-code-bg: rgba(0, 0, 0, 0.06);
+  --quillmd-code-text: #26251f;
+  --quillmd-heading-weight: 600;
+  --quillmd-h1: 1.7em;
+  --quillmd-h2: 1.45em;
+  --quillmd-h3: 1.25em;
+  --quillmd-h4: 1.1em;
+  --quillmd-h5: 1em;
+  --quillmd-h6: 0.95em;
+  --quillmd-base-size: 15px;
+  --quillmd-line-height: 1.65;
+}
