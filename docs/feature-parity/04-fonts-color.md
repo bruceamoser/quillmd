@@ -72,6 +72,17 @@ character-level only, like Word).
   export passes them through (pandoc preserves raw HTML by default —
   verify in acceptance with a DOCX export of a styled doc; if pandoc drops
   spans in DOCX, that is documented as an export limitation, not a bug).
+- **Export spot-check results (task 4.6, issue #52; pandoc 3.7 + typst 0.15
+  on fixtures/clean/font-styled.md, the same pipeline as convert.rs):**
+  pandoc's typst and docx writers both drop the quillmd spans, so the styled
+  text **degrades to plain text** in both PDF and DOCX — the text content
+  (and markdown bold) survives byte-for-byte, but the font family/size/color
+  and highlight background do not. This is the documented AC7 export
+  limitation, not a bug: the markdown remains the source of truth with the
+  full styling, and re-importing the DOCX back into QuillMD loses nothing
+  that was not already lost by pandoc. Release notes should carry: "PDF/DOCX
+  export renders styled text as plain text (pandoc drops the quillmd font
+  spans); styling is preserved in the .md source."
 - **Editor font (the editor's own chrome font)** is separate: View >
   "Editor font" select (monospace/sans/serif + size) persisted per-app in
   settings — cosmetic, never touches the document.

@@ -7,6 +7,9 @@
 // ==text== backward-compat syntax, and the per-attribute toggle semantics.
 // The on-disk format lives in fixtures/clean/font-*.md (clean-path corpus);
 // the WYSIWYG converter round-trip is asserted here.
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
@@ -18,6 +21,7 @@ import {
   QuillHighlight,
 } from "../../components/Editor";
 import { markdownToTiptap, tiptapToMarkdown } from "../pm";
+import { createDocument, encodeDocument, saveDocument } from "../pipeline";
 
 const rt = (md: string): string => tiptapToMarkdown(markdownToTiptap(md));
 
@@ -282,5 +286,27 @@ describe("font/highlight editor schema", () => {
     const src = `<span class="quillmd-font" style="font-family: Georgia">**bold** and plain</span>\n`;
     const e = editor(src);
     expect(md(e)).toBe(src);
+  });
+});
+
+// --- save pipeline: Windows CRLF (plan 04 task 4.6, issue #52) --------------
+// Golden rule 4: the CRLF round-trip must hold for a styled document. The
+// editor re-serializes to LF; encodeDocument restores the document's CRLF
+// ending, so an untouched styled doc saves byte-identically on Windows.
+
+describe("save pipeline CRLF (Windows manual pass, issue #52)", () => {
+  it("round-trips the font-styled fixture byte-identically on CRLF (save pipeline)", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const lf = readFileSync(
+      join(here, "..", "..", "..", "fixtures", "clean", "font-styled.md"),
+      "utf8",
+    );
+    const crlf = lf.replace(/\n/g, "\r\n");
+    const model = createDocument(crlf);
+    // Simulate the WYSIWYG editor's output for an untouched doc (LF).
+    const editorText = tiptapToMarkdown(markdownToTiptap(crlf));
+    const result = saveDocument(model, editorText);
+    const bytes = encodeDocument(result.text, { eol: "crlf", bom: false });
+    expect(bytes).toEqual(new TextEncoder().encode(crlf));
   });
 });
