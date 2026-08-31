@@ -904,6 +904,17 @@ button.quillmd-status-spellcheck:hover {
   margin-bottom: 4px;
 }
 
+/* Find highlights (plan 07, issue #69): every match yellow, active match
+   the stronger orange. Rendered as ProseMirror inline decorations. */
+.quillmd-prosemirror .quillmd-find-match {
+  background: rgba(255, 209, 102, 0.32);
+  border-radius: 2px;
+}
+
+.quillmd-prosemirror .quillmd-find-current {
+  background: rgba(255, 140, 0, 0.6);
+}
+
 /* --- slash menu ---------------------------------------------------------- */
 
 .quillmd-slash-menu {
