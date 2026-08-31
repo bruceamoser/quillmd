@@ -179,6 +179,101 @@ pub fn import_docx(src: &Path, out_md: &Path) -> Result<(), ConvertError> {
     ensure_extension(out_md, "md")?;
     convert_to(src, out_md, &["-t", "gfm"])
 }
+
+// --- Export assets (plan 11 task 11.5, issue #104) ---------------------------
+//
+// Mermaid diagrams are rendered to PNG in the frontend (SVG -> image ->
+// canvas -> PNG at 2x scale) and written here, next to the temp export
+// markdown, so pandoc can embed the relative image references when it
+// produces PDF/DOCX/EPUB. The write is collision-safe and atomic and the
+// name is gated by the same reserved-name check as the asset copy pipeline
+// (golden rule 4), so an asset can never escape the export directory or
+// clobber a file a crashed export left behind.
+
+#[derive(Debug)]
+pub enum ExportAssetError {
+    /// `dir` is empty or not an absolute path.
+    BadDir(String),
+    /// `name` is not a safe single file name (traversal, Windows reserved
+    /// name, trailing dot/space, empty, or too long).
+    BadName(String),
+    Io(String),
+}
+
+impl std::fmt::Display for ExportAssetError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExportAssetError::BadDir(d) => write!(f, "export dir must be an absolute path: {d}"),
+            ExportAssetError::BadName(n) => write!(f, "reserved or unsafe file name: {n}"),
+            ExportAssetError::Io(msg) => write!(f, "{msg}"),
+        }
+    }
+}
+
+impl std::error::Error for ExportAssetError {}
+
+/// Validates an export asset file name: one non-empty segment of at most 255
+/// chars, no separators or `..`, and no Windows reserved device name
+/// (golden rule 4 — the gate shared with the asset copy pipeline).
+fn validate_asset_name(name: &str) -> Result<(), ExportAssetError> {
+    let bad = || ExportAssetError::BadName(name.to_string());
+    if name.is_empty() || name.len() > 255 {
+        return Err(bad());
+    }
+    if name == "."
+        || name == ".."
+        || name.contains('/')
+        || name.contains('\\')
+        || name.contains('\0')
+    {
+        return Err(bad());
+    }
+    if crate::fs::paths::is_windows_reserved(name) {
+        return Err(bad());
+    }
+    Ok(())
+}
+
+/// Writes `bytes` into `dir` under `name` and returns the path actually
+/// written. If `dir/name` already exists (a stale file from a crashed
+/// export), the collision-safe naming shared with the asset copy pipeline
+/// takes over: `stem-1.ext`, `stem-2.ext`, ... The write is atomic
+/// (fs/atomic.rs) and `dir` is created when missing.
+pub fn write_export_asset(dir: &Path, name: &str, bytes: &[u8]) -> Result<PathBuf, ExportAssetError> {
+    if dir.as_os_str().is_empty() || !dir.is_absolute() {
+        return Err(ExportAssetError::BadDir(dir.display().to_string()));
+    }
+    validate_asset_name(name)?;
+    fs::create_dir_all(dir)
+        .map_err(|e| ExportAssetError::Io(format!("create {}: {e}", dir.display())))?;
+    let file_name = crate::fs::assets::free_name_in(dir, name);
+    let target = dir.join(&file_name);
+    atomic::write_file_atomic(&target, bytes)
+        .map_err(|e| ExportAssetError::Io(format!("write {}: {e}", target.display())))?;
+    Ok(target)
+}
+
+/// Best-effort removal of the export assets an export wrote (the temp export
+/// markdown + the diagram PNGs). Only absolute paths whose file name passes
+/// the same validation as `write_export_asset` and that are regular files
+/// are removed; missing paths are skipped so cleanup can never fail an
+/// export. Returns the paths actually removed.
+pub fn remove_export_assets(paths: &[PathBuf]) -> Vec<PathBuf> {
+    let mut removed = Vec::new();
+    for path in paths {
+        let name_ok = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| validate_asset_name(n).is_ok());
+        if !path.is_absolute() || !name_ok || !path.is_file() {
+            continue;
+        }
+        if fs::remove_file(path).is_ok() {
+            removed.push(path.clone());
+        }
+    }
+    removed
+}
 fn ensure_export_target(src: &Path, out: &Path, ext: &str) -> Result<(), ConvertError> {
     ensure_extension(out, ext)?;
     if paths_resolve_same(src, out) {
@@ -393,6 +488,110 @@ mod tests {
         let out = dir.path().join("result.md");
         let err = export_docx(&src, &out).unwrap_err();
         assert_eq!(err.kind, "convert_failed");
+    }
+
+    // --- export assets (plan 11 task 11.5, issue #104) -----------------------
+
+    #[test]
+    fn export_asset_writes_bytes_and_returns_path() {
+        let dir = tempdir().unwrap();
+        let target_dir = dir.path().join("exports");
+
+        let path = write_export_asset(&target_dir, "diagram-1.png", b"png-bytes").unwrap();
+        assert_eq!(path, target_dir.join("diagram-1.png"));
+        assert_eq!(fs::read(&path).unwrap(), b"png-bytes");
+    }
+
+    #[test]
+    fn export_asset_collision_appends_counter() {
+        let dir = tempdir().unwrap();
+
+        let a = write_export_asset(dir.path(), "diagram.png", b"first").unwrap();
+        let b = write_export_asset(dir.path(), "diagram.png", b"second").unwrap();
+        assert_eq!(a, dir.path().join("diagram.png"));
+        assert_eq!(b, dir.path().join("diagram-1.png"));
+        // The stale first file is untouched; the new bytes land in -1.
+        assert_eq!(fs::read(&a).unwrap(), b"first");
+        assert_eq!(fs::read(&b).unwrap(), b"second");
+    }
+
+    #[test]
+    fn export_asset_hidden_temp_markdown_allowed() {
+        let dir = tempdir().unwrap();
+
+        let path = write_export_asset(dir.path(), ".quillmd-export.md", b"markdown").unwrap();
+        assert_eq!(path, dir.path().join(".quillmd-export.md"));
+        assert_eq!(fs::read(&path).unwrap(), b"markdown");
+    }
+
+    #[test]
+    fn export_asset_rejects_unsafe_names() {
+        let dir = tempdir().unwrap();
+        for name in [
+            "",
+            ".",
+            "..",
+            "a/b.png",
+            "a\\b.png",
+            "CON.png",
+            "con",
+            "photo.",
+            "photo ",
+        ] {
+            let err = write_export_asset(dir.path(), name, b"x")
+                .err()
+                .unwrap_or_else(|| panic!("{name:?} must be rejected"));
+            let msg = err.to_string();
+            assert!(msg.contains("unsafe file name"), "{name:?}: {msg}");
+        }
+        // Nothing was written for any of them.
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn export_asset_rejects_relative_or_empty_dir() {
+        let res = write_export_asset(Path::new("relative"), "a.png", b"x");
+        assert!(res.is_err(), "relative dir must be rejected");
+        let msg = res.unwrap_err().to_string();
+        assert!(msg.contains("absolute path"), "got {msg}");
+
+        let res = write_export_asset(Path::new(""), "a.png", b"x");
+        assert!(res.is_err(), "empty dir must be rejected");
+    }
+
+    #[test]
+    fn export_asset_creates_missing_dir() {
+        let dir = tempdir().unwrap();
+        let target_dir = dir.path().join("deep").join("nested");
+        assert!(!target_dir.exists());
+
+        let path = write_export_asset(&target_dir, "diagram-2.png", b"y").unwrap();
+        assert!(path.is_file());
+        assert_eq!(fs::read(&path).unwrap(), b"y");
+    }
+
+    #[test]
+    fn export_asset_removal_cleans_only_valid_files() {
+        let dir = tempdir().unwrap();
+        let png = write_export_asset(dir.path(), "diagram-1.png", b"x").unwrap();
+        let md = write_export_asset(dir.path(), ".quillmd-export.md", b"y").unwrap();
+        let stale = dir.path().join("keep.md");
+        fs::write(&stale, b"not an export asset").unwrap();
+        fs::create_dir(dir.path().join("subdir")).unwrap();
+
+        let removed = remove_export_assets(&[
+            png.clone(),
+            md.clone(),
+            dir.path().join("missing.png"),
+            dir.path().join("subdir"),
+            PathBuf::from("relative.png"),
+        ]);
+        assert_eq!(removed, vec![png.clone(), md.clone()]);
+        assert!(!png.exists());
+        assert!(!md.exists());
+        // The unrelated file and the directory survive.
+        assert!(stale.exists());
+        assert!(dir.path().join("subdir").is_dir());
     }
 
     #[test]

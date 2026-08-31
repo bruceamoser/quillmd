@@ -134,6 +134,29 @@ pub fn import_document(path: String, out_md_path: String) -> Result<(), String> 
     crate::convert::import_docx(&src, &dst).map_err(|e| e.to_json())
 }
 
+/// Writes one export asset (a diagram PNG or the temp export markdown) into
+/// `dir` under `name`, using the collision-safe + reserved-name-validated
+/// core in convert.rs. Returns the path actually written.
+#[tauri::command]
+pub fn export_write_asset(dir: String, name: String, bytes: Vec<u8>) -> Result<String, String> {
+    let written =
+        crate::convert::write_export_asset(&PathBuf::from(&dir), &name, &bytes)
+            .map_err(|e| err("export_asset", e.to_string()))?;
+    Ok(written.to_string_lossy().into_owned())
+}
+
+/// Best-effort cleanup of the assets an export wrote. Only absolute paths
+/// with validated file names that exist as regular files are removed; the
+/// command never fails.
+#[tauri::command]
+pub fn export_remove_asset(paths: Vec<String>) -> Vec<String> {
+    let ps: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
+    crate::convert::remove_export_assets(&ps)
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect()
+}
+
 #[tauri::command]
 pub fn recover_snapshot(path: String) -> Option<Vec<u8>> {
     let p = PathBuf::from(&path);

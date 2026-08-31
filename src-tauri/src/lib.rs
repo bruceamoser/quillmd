@@ -219,6 +219,54 @@ pub fn large_file_baseline() -> Result<(), SelfTestError> {
     Ok(())
 }
 
+/// Baseline for the export asset write/cleanup pair (plan 11 task 11.5,
+/// issue #104): write a PNG through the real command, verify the bytes land
+/// on disk, verify a collision gets a suffixed name instead of an overwrite,
+/// verify an unsafe name is rejected, and verify the cleanup removes the
+/// assets.
+pub fn export_asset_baseline() -> Result<(), SelfTestError> {
+    let dir = std::env::temp_dir().join(format!("quillmd-export-asset-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|e| SelfTestError(format!("mkdir: {e}")))?;
+    let dir_s = dir.display().to_string();
+    let bytes: Vec<u8> = b"png-payload".to_vec();
+
+    let path = commands::export_write_asset(dir_s.clone(), "diagram-1.png".into(), bytes.clone())
+        .map_err(SelfTestError)?;
+    let read = std::fs::read(&path).map_err(|e| SelfTestError(format!("read back: {e}")))?;
+    if read != bytes {
+        return Err(SelfTestError("export-asset baseline: payload mismatch".into()));
+    }
+
+    // A collision must not overwrite: the second write gets a -1 suffix.
+    let second = commands::export_write_asset(dir_s.clone(), "diagram-1.png".into(), bytes.clone())
+        .map_err(SelfTestError)?;
+    if second == path {
+        return Err(SelfTestError(
+            "export-asset baseline: collision overwrote the first asset".into(),
+        ));
+    }
+
+    // An unsafe name (path traversal) must be rejected.
+    if commands::export_write_asset(dir_s.clone(), "a\\b.png".into(), bytes.clone()).is_ok() {
+        return Err(SelfTestError("export-asset baseline: traversal name accepted".into()));
+    }
+
+    // Cleanup must remove both assets and nothing else.
+    let removed = commands::export_remove_asset(vec![path.clone(), second.clone()]);
+    if removed.len() != 2 {
+        return Err(SelfTestError(
+            "export-asset baseline: cleanup did not remove both assets".into(),
+        ));
+    }
+    if std::path::Path::new(&path).exists() || std::path::Path::new(&second).exists() {
+        return Err(SelfTestError(
+            "export-asset baseline: cleanup left files behind".into(),
+        ));
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}
+
 /// Baseline for the file_stat command (plan 01 task 1.5, issue #26): stat a
 /// real temp file and assert the reported size matches the written payload
 /// and the OS exposes a modified time.
@@ -258,6 +306,8 @@ pub fn run() {
             commands::recover_snapshot,
             commands::export_document,
             commands::import_document,
+            commands::export_write_asset,
+            commands::export_remove_asset,
             commands::list_dir,
             commands::copy_asset,
             commands::file_exists,

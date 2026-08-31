@@ -808,10 +808,17 @@ export default function App() {
       const doc = activeDoc;
       if (!doc) return;
       if (runningInTauri()) {
-        await exportDocumentAs(doc.open.path, format, {
-          openByPath,
-          status: setStatus,
-        });
+        // The current text (unsaved edits included) is what gets exported:
+        // mermaid fences are rendered to PNG and swapped for image refs in a
+        // temp copy before pandoc runs (plan 11 task 11.5, issue #104).
+        await exportDocumentAs(
+          { docPath: doc.open.path, markdown: doc.currentText, theme: activeTheme },
+          format,
+          {
+            openByPath,
+            status: setStatus,
+          },
+        );
       } else {
         const mime =
           format === "pdf"
@@ -826,7 +833,7 @@ export default function App() {
         setStatus(`Exported ${defaultName} (dev: raw markdown bytes)`);
       }
     },
-    [activeDoc, openByPath],
+    [activeDoc, activeTheme, openByPath],
   );
 
   // File > Import: native docx picker + save-as dialog under Tauri; the

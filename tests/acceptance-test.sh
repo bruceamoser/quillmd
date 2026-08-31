@@ -219,8 +219,26 @@
      #                       escaped-pipe round-trip, floating toolbar
      #                       focus, fixtures green), and the GFM lint of the
      #                       table fixtures actually run here (issue #67) —
-     #                       always in CI via the npm test gate
-     #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
+      #                       always in CI via the npm test gate
+      #           p2-mermaid-export -> plan 11 task 11.5 acceptance gate
+      #                       (issue #104): the PNG export pipeline. The
+      #                       export_write_asset / export_remove_asset Rust
+      #                       commands (collision-safe, reserved-name-safe
+      #                       asset writes into the export dir, best-effort
+      #                       cleanup) with the in-binary --self-test
+      #                       export-asset, the SVG -> 2x canvas PNG pipeline
+      #                       module (mermaidExport.ts: fence discovery via
+      #                       the editor's parser, fence swap, all-or-nothing
+      #                       orchestration, temp markdown + diagram-N.png
+      #                       assets cleaned up on every path), the File >
+      #                       Export routing through the current document
+      #                       text (fileMenu.ts + App.tsx), and the plan 11
+      #                       AC5 coverage (2 diagrams -> 2 PNGs in the right
+      #                       positions; a broken diagram refuses the export
+      #                       with a named error) pinned in
+      #                       mermaidExport.test.ts + the on-disk fixture
+      #                       fixtures/clean/mermaid-export.md
+      #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
 #           dragdrop -> p0-shell drag & drop open (issue #27)
@@ -3340,6 +3358,82 @@ test_tables_ac8_fixtures_green() {
         || fail "AC8 coverage missing"
 }
 
+# --- p2-mermaid-export: PNG export pipeline (plan 11 task 11.5, issue #104) ---
+# The pipeline behavior (fence discovery through the editor's parser, SVG ->
+# 2x canvas PNG, fence swap, all-or-nothing orchestration, and the fixture
+# export of 2 diagrams + 1 broken) is covered by the vitest suite
+# src/lib/__tests__/mermaidExport.test.ts; this section checks the app-level
+# wiring the GUI driver cannot reach headlessly: the export_write_asset /
+# export_remove_asset Rust commands (with the in-binary self-test) and the
+# File > Export routing through the current document text.
+
+test_mermaidexport_selftest() {
+    note "mermaid.export export_write_asset live in binary (self-test)"
+    if [ ! -x "$APP_BIN" ]; then
+        echo "SKIP (binary not built)"
+        return
+    fi
+    local out
+    out=$("$APP_BIN" --self-test export-asset 2>/dev/null || echo "MISSING")
+    if [ "$out" = "OK" ]; then pass "mermaid.export export_write_asset live in binary (self-test)"; else fail "mermaid.export export_write_asset live in binary (self-test)"; fi
+}
+
+test_mermaidexport_rust_commands() {
+    note "mermaid.export export_write_asset + export_remove_asset commands wired"
+    if grep -q 'pub fn export_write_asset' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'pub fn export_remove_asset' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'pub fn write_export_asset' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q 'pub fn remove_export_assets' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q 'pub enum ExportAssetError' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q 'commands::export_write_asset' "$ROOT/src-tauri/src/lib.rs" \
+        && grep -q 'commands::export_remove_asset' "$ROOT/src-tauri/src/lib.rs"; then
+        pass "mermaid.export export_write_asset + export_remove_asset commands wired"
+    else
+        fail "mermaid.export export_write_asset + export_remove_asset commands wired"
+    fi
+}
+
+test_mermaidexport_pipeline_module() {
+    note "mermaid.export SVG->canvas PNG pipeline module + File > Export routing"
+    if [ -f "$ROOT/src/lib/mermaidExport.ts" ] \
+        && grep -q 'export async function exportCurrentDocument' "$ROOT/src/lib/mermaidExport.ts" \
+        && grep -q 'export function findMermaidDiagrams' "$ROOT/src/lib/mermaidExport.ts" \
+        && grep -q 'export function swapMermaidFences' "$ROOT/src/lib/mermaidExport.ts" \
+        && grep -q 'export async function svgToPngBytes' "$ROOT/src/lib/mermaidExport.ts" \
+        && grep -q '"export_write_asset"' "$ROOT/src/lib/fileIo.ts" \
+        && grep -q '"export_remove_asset"' "$ROOT/src/lib/fileIo.ts" \
+        && grep -q 'exportCurrentDocument' "$ROOT/src/lib/fileMenu.ts" \
+        && grep -q 'markdown: doc.currentText' "$ROOT/src/App.tsx"; then
+        pass "mermaid.export SVG->canvas PNG pipeline module + File > Export routing"
+    else
+        fail "mermaid.export SVG->canvas PNG pipeline module + File > Export routing"
+    fi
+}
+
+test_mermaidexport_ac5() {
+    note "mermaid.AC5 2 diagrams -> 2 PNGs in position; broken diagram refused with a named error (plan 11 AC5)"
+    local f="$ROOT/src/lib/__tests__/mermaidExport.test.ts"
+    grep -q 'fixture export: 2 diagrams + 1 broken (plan 11 task 11.5, issue #104)' "$f" \
+        && grep -q 'refuses the export, names the broken diagram, and writes nothing' "$f" \
+        && grep -q 'writes both PNGs + the swapped temp markdown, converts it, and cleans up' "$f" \
+        && grep -q 'Mermaid export refused: diagram 3: Parse error on line 2: BROKEN' "$f" \
+        && [ -f "$FIXTURES/clean/mermaid-export.md" ] \
+        && [ "$(grep -c '^```mermaid' "$FIXTURES/clean/mermaid-export.md")" -eq 3 ] \
+        && pass "AC5: fixture export test (2 diagrams + 1 broken) pinned in the suite" \
+        || fail "AC5 coverage missing (mermaidExport.test.ts + fixtures/clean/mermaid-export.md)"
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (running the pipeline suite needs node + node_modules)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/mermaidExport.test.ts) 2>&1 ); then
+        pass "mermaid PNG export pipeline suite green (also runs in CI via npm test)"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "mermaid PNG export pipeline suite failed"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -3690,6 +3784,13 @@ case "$SUBSET" in
         test_tables_ac7_floating_toolbar_focus
         test_tables_ac8_fixtures_green
         ;;
+    p2-mermaid-export)
+        # Task 11.5 (issue #104): PNG export pipeline
+        test_mermaidexport_selftest
+        test_mermaidexport_rust_commands
+        test_mermaidexport_pipeline_module
+        test_mermaidexport_ac5
+        ;;
     shell)
         test_shell_new_bundled
         test_shell_new_menu_wiring
@@ -3923,9 +4024,13 @@ case "$SUBSET" in
         test_tables_ac6_escaped_pipe
         test_tables_ac7_floating_toolbar_focus
         test_tables_ac8_fixtures_green
+        test_mermaidexport_selftest
+        test_mermaidexport_rust_commands
+        test_mermaidexport_pipeline_module
+        test_mermaidexport_ac5
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|p2-style-inspector|p2-tables|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|p2-style-inspector|p2-tables|p2-mermaid-export|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac
