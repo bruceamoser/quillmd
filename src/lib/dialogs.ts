@@ -60,6 +60,9 @@ function normalizeResult(result: MessageDialogResult): MessageResult {
 export interface PickOpenFileOptions {
   title?: string;
   filters?: DialogFilter[];
+  // Seeds the native dialog's starting location (plan 08 task 8.5, issue
+  // #80: the re-link picker opens in the missing image's last folder).
+  defaultPath?: string;
 }
 
 // Picks one or more files (multi-select). Tauri: native open dialog with
@@ -71,6 +74,7 @@ export async function pickOpenFile(options: PickOpenFileOptions = {}): Promise<s
       multiple: true,
       filters: options.filters ?? [MARKDOWN_FILTER],
       title: options.title,
+      defaultPath: options.defaultPath,
     });
   }
   const path = window.prompt("Open file (absolute path)") ?? "";

@@ -57,9 +57,21 @@
  #                       the ImageWithWidth node attribute in Editor.tsx,
  #                       the imageEdit registry command + App.tsx wiring,
  #                       the width/apply/prefill logic in images.ts, and the
- #                       AC8 round-trip fixture (links + 1 relative image +
- #                       1 HTML-width image) + images.test.tsx suite presence
-#           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
+  #                       AC8 round-trip fixture (links + 1 relative image +
+  #                       1 HTML-width image) + images.test.tsx suite presence
+  #           p1-links -> plan 08 task 8.5 acceptance gate (issue #80): the
+  #                       tauri-plugin-opener dependency + opener:default
+  #                       capability, links.ts (openLinkUrl,
+  #                       middleClickLinkHref), the editor auxclick ->
+  #                       linkHrefAt -> openLinkUrl wiring, the preview
+  #                       onAuxClick wiring, the missingImages.ts detection
+  #                       module (collect/resolve/relink-folder/batched
+  #                       find-missing) + filesExist bridge, the image node
+  #                       view broken-image placeholder + Re-link button +
+  #                       CSS, App.tsx detection effect + re-link picker ->
+  #                       setNodeMarkup flow, and the openLinks.test.tsx /
+  #                       missingImages.test.tsx vitest suite presence
+ #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
 #           dragdrop -> p0-shell drag & drop open (issue #27)
@@ -1335,6 +1347,113 @@ test_imageedit_suites_present() {
     fi
 }
 
+# --- p1-links: open links + broken-image placeholder (plan 08 task 8.5, issue #80)
+# The href resolution, middle-click routing, missing-asset detection, and the
+# placeholder node view are covered by the vitest suites (openLinks.test.tsx,
+# missingImages.test.tsx) that `npm test` runs; this section checks the
+# cross-layer wiring a GUI driver cannot reach headlessly: the opener plugin
+# capability, the editor auxclick handler, the preview auxclick handler, the
+# App.tsx detection effect + re-link flow, and the placeholder styling.
+test_links_opener_capability() {
+    note "links.opener tauri-plugin-opener dependency + opener:default capability"
+    if grep -q 'tauri-plugin-opener = "2"' "$ROOT/src-tauri/Cargo.toml" \
+        && grep -q '"opener:default"' "$ROOT/src-tauri/capabilities/default.json"; then
+        pass "links.opener tauri-plugin-opener dependency + opener:default capability"
+    else
+        fail "links.opener tauri-plugin-opener dependency + opener:default capability"
+    fi
+}
+test_links_module() {
+    note "links.module links.ts openLinkUrl + middleClickLinkHref present"
+    if grep -q 'export async function openLinkUrl(url: string): Promise<void>' "$ROOT/src/lib/links.ts" \
+        && grep -q 'export function middleClickLinkHref(event: MiddleClickEvent, root: Element): string | null' "$ROOT/src/lib/links.ts"; then
+        pass "links.module links.ts openLinkUrl + middleClickLinkHref present"
+    else
+        fail "links.module links.ts openLinkUrl + middleClickLinkHref present"
+    fi
+}
+test_links_editor_wiring() {
+    note "links.editor Editor.tsx auxclick -> linkHrefAt -> openLinkUrl"
+    if grep -q 'import { openLinkUrl } from "../lib/links";' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'export function linkHrefAt(view: EditorView, pos: number): string | null' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'export function handleEditorMiddleClick(view: EditorView, event: MouseEvent): boolean' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'auxclick: (view, event) => handleEditorMiddleClick(view, event as MouseEvent)' "$ROOT/src/components/Editor.tsx"; then
+        pass "links.editor Editor.tsx auxclick -> linkHrefAt -> openLinkUrl"
+    else
+        fail "links.editor Editor.tsx auxclick -> linkHrefAt -> openLinkUrl"
+    fi
+}
+test_links_preview_wiring() {
+    note "links.preview PreviewView.tsx onAuxClick -> middleClickLinkHref -> openLinkUrl"
+    if grep -q 'import { middleClickLinkHref, openLinkUrl } from "../lib/links";' "$ROOT/src/components/PreviewView.tsx" \
+        && grep -q 'onAuxClick={(event) => {' "$ROOT/src/components/PreviewView.tsx" \
+        && grep -q 'const href = middleClickLinkHref(event, event.currentTarget);' "$ROOT/src/components/PreviewView.tsx" \
+        && grep -q 'void openLinkUrl(href);' "$ROOT/src/components/PreviewView.tsx"; then
+        pass "links.preview PreviewView.tsx onAuxClick -> middleClickLinkHref -> openLinkUrl"
+    else
+        fail "links.preview PreviewView.tsx onAuxClick -> middleClickLinkHref -> openLinkUrl"
+    fi
+}
+test_missing_images_module() {
+    note "links.missing missingImages.ts detection module + filesExist bridge"
+    if [ -f "$ROOT/src/lib/missingImages.ts" ] \
+        && grep -q 'export function isLocalImageSrc(src: string): boolean' "$ROOT/src/lib/missingImages.ts" \
+        && grep -q 'export function resolveImageSrc(docPath: string, src: string): string | null' "$ROOT/src/lib/missingImages.ts" \
+        && grep -q 'export function collectImageSrcs(doc: PmNode)' "$ROOT/src/lib/missingImages.ts" \
+        && grep -q 'export function relinkFolderFor(docPath: string, src: string): string' "$ROOT/src/lib/missingImages.ts" \
+        && grep -q 'export async function findMissingImageSrcs(' "$ROOT/src/lib/missingImages.ts" \
+        && grep -q 'export async function filesExist(paths: string\[\])' "$ROOT/src/lib/assets.ts"; then
+        pass "links.missing missingImages.ts detection module + filesExist bridge"
+    else
+        fail "links.missing missingImages.ts detection module + filesExist bridge"
+    fi
+}
+test_missing_images_nodeview() {
+    note "links.placeholder image node view placeholder + Re-link button + css"
+    if grep -q 'export const imagePlaceholderRuntime = {' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'wrap.className = "quillmd-img-missing";' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'label.className = "quillmd-img-missing-label";' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'button.textContent = "Re-link…";' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'missingImages?: ReadonlySet<string>;' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'onReLinkImage?: (src: string, pos: number) => void;' "$ROOT/src/components/Editor.tsx" \
+        && grep -q '.quillmd-prosemirror .quillmd-img-missing {' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-prosemirror .quillmd-img-relink {' "$ROOT/src/App.css"; then
+        pass "links.placeholder image node view placeholder + Re-link button + css"
+    else
+        fail "links.placeholder image node view placeholder + Re-link button + css"
+    fi
+}
+test_missing_images_app_wiring() {
+    note "links.relink App.tsx detection effect + re-link picker -> setNodeMarkup"
+    if grep -q 'import { findMissingImageSrcs, relinkFolderFor } from "./lib/missingImages";' "$ROOT/src/App.tsx" \
+        && grep -q 'const missing = await findMissingImageSrcs(editor.state.doc, activePath);' "$ROOT/src/App.tsx" \
+        && grep -q 'defaultPath: relinkFolderFor(docPath, src),' "$ROOT/src/App.tsx" \
+        && grep -q 'const stableReLinkImage = useCallback(' "$ROOT/src/App.tsx" \
+        && grep -q 'tr.setNodeMarkup(pos, null, { ...node.attrs, src: newSrc });' "$ROOT/src/App.tsx" \
+        && grep -q 'missingImages={missingImages}' "$ROOT/src/App.tsx" \
+        && grep -q 'onReLinkImage={stableReLinkImage}' "$ROOT/src/App.tsx"; then
+        pass "links.relink App.tsx detection effect + re-link picker -> setNodeMarkup"
+    else
+        fail "links.relink App.tsx detection effect + re-link picker -> setNodeMarkup"
+    fi
+}
+test_links_suites_present() {
+    note "links.suites plan 08 task 8.5 vitest suites present"
+    if [ -f "$ROOT/src/lib/__tests__/openLinks.test.tsx" ] \
+        && grep -q 'describe("linkHrefAt (plan 08 task 8.5, issue #80)"' "$ROOT/src/lib/__tests__/openLinks.test.tsx" \
+        && grep -q 'describe("handleEditorMiddleClick (plan 08 task 8.5, issue #80, AC7)"' "$ROOT/src/lib/__tests__/openLinks.test.tsx" \
+        && grep -q 'describe("middleClickLinkHref (plan 08 task 8.5, issue #80, AC7 preview)"' "$ROOT/src/lib/__tests__/openLinks.test.tsx" \
+        && grep -q 'describe("broken-image placeholder node view (plan 08 task 8.5, issue #80, AC6)"' "$ROOT/src/lib/__tests__/openLinks.test.tsx" \
+        && [ -f "$ROOT/src/lib/__tests__/missingImages.test.tsx" ] \
+        && grep -q 'describe("resolveImageSrc (plan 08 §3)"' "$ROOT/src/lib/__tests__/missingImages.test.tsx" \
+        && grep -q 'describe("relinkFolderFor (plan 08 §3 last folder)"' "$ROOT/src/lib/__tests__/missingImages.test.tsx" \
+        && grep -q 'describe("findMissingImageSrcs (plan 08 §3 batched check)"' "$ROOT/src/lib/__tests__/missingImages.test.tsx"; then
+        pass "links.suites plan 08 task 8.5 vitest suites present"
+    else
+        fail "links.suites plan 08 task 8.5 vitest suites present"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -1445,6 +1564,16 @@ case "$SUBSET" in
         test_imageedit_app_routing
         test_imageedit_fixture
         test_imageedit_suites_present
+        ;;
+    p1-links)
+        test_links_opener_capability
+        test_links_module
+        test_links_editor_wiring
+        test_links_preview_wiring
+        test_missing_images_module
+        test_missing_images_nodeview
+        test_missing_images_app_wiring
+        test_links_suites_present
         ;;
     shell)
         test_shell_new_bundled
@@ -1564,9 +1693,17 @@ case "$SUBSET" in
         test_imageedit_app_routing
         test_imageedit_fixture
         test_imageedit_suites_present
+        test_links_opener_capability
+        test_links_module
+        test_links_editor_wiring
+        test_links_preview_wiring
+        test_missing_images_module
+        test_missing_images_nodeview
+        test_missing_images_app_wiring
+        test_links_suites_present
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac

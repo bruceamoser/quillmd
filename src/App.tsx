@@ -49,6 +49,7 @@ import { IMAGE_FILTER, pickOpenFile } from "./lib/dialogs";
 import { applyImageEdit, insertImage, readImagePrefill } from "./lib/images";
 import type { ImageEditPayload, ImageEditPrefill, ImagePayload } from "./lib/images";
 import { assetSrcForPickedFile, loadAssetFolder } from "./lib/assets";
+import { findMissingImageSrcs, relinkFolderFor } from "./lib/missingImages";
 import type { EditorCommandId, LineSpacingValue } from "./lib/editorCommands";
 import {
   applyLink,
@@ -252,6 +253,13 @@ export default function App() {
     editor: CoreEditor;
     prefill: ImageEditPrefill;
   } | null>(null);
+  // Broken-image detection (plan 08 task 8.5, issue #80, AC6): the srcs of
+  // the active doc whose local file no longer exists on disk (drives the
+  // WYSIWYG placeholder node view), plus a version counter bumped whenever
+  // an image src can have changed (dialog apply, re-link) to re-run the
+  // check without waiting for the next doc load.
+  const [missingImages, setMissingImages] = useState<ReadonlySet<string>>(new Set());
+  const [missingRefresh, setMissingRefresh] = useState(0);
   // Find panel position setting (plan 07 task 7.5, issue #73): a global
   // top/bottom preference persisted in localStorage; the panel docks via its
   // root class and the toggle lives on the panel itself.
@@ -904,6 +912,8 @@ export default function App() {
       if (!imageDialog) return;
       insertImage(imageDialog.editor, payload);
       setImageDialog(null);
+      // A new (possibly local) src joined the doc: re-run the check.
+      setMissingRefresh((n) => n + 1);
     },
     [imageDialog],
   );
@@ -938,9 +948,84 @@ export default function App() {
       if (!imageEditDialog) return;
       applyImageEdit(imageEditDialog.editor, payload);
       setImageEditDialog(null);
+      // The image's src can have changed: re-run the check.
+      setMissingRefresh((n) => n + 1);
     },
     [imageEditDialog],
   );
+
+  // --- broken-image re-link (plan 08 task 8.5, issue #80, AC6) ----------------
+  //
+  // The placeholder's "Re-link…" button (Editor.tsx node view) calls this with
+  // the clicked image's src and doc position. The picker opens in the missing
+  // file's last folder (plan 08 §3), the pick runs through the same asset
+  // copy pipeline as Insert > Image > From file, and the clicked image node
+  // is pointed at the resulting src.
+
+  const reLinkImage = useCallback(
+    async (src: string, pos: number) => {
+      const editor = currentFindEditor();
+      const docPath = activePath ?? "";
+      if (!editor) return;
+      const picked = await pickOpenFile({
+        title: "Re-link image",
+        filters: [IMAGE_FILTER],
+        defaultPath: relinkFolderFor(docPath, src),
+      });
+      if (!picked || picked.length === 0) return;
+      try {
+        const newSrc = await assetSrcForPickedFile(docPath, picked[0], loadAssetFolder());
+        const node = editor.state.doc.nodeAt(pos);
+        if (node?.type.name === "image" && node.attrs.src === src) {
+          const tr = editor.state.tr;
+          tr.setNodeMarkup(pos, null, { ...node.attrs, src: newSrc });
+          editor.view.dispatch(tr);
+          setStatus(`Re-linked image to ${newSrc}`);
+        } else {
+          setStatus("Image changed while the picker was open; re-link cancelled");
+        }
+        setMissingRefresh((n) => n + 1);
+      } catch (e) {
+        setStatus(`Could not re-link image: ${String(e)}`);
+      }
+    },
+    [activePath, setStatus],
+  );
+
+  // The node view reads the handler through a module holder and re-renders
+  // when its identity changes, so keep this callback stable across re-renders.
+  const reLinkImageRef = useRef(reLinkImage);
+  reLinkImageRef.current = reLinkImage;
+  const stableReLinkImage = useCallback(
+    (src: string, pos: number) => void reLinkImageRef.current(src, pos),
+    [],
+  );
+
+  // The detection effect (plan 08 §3): on doc load and view switch, collect
+  // the WYSIWYG doc's image srcs, resolve the local ones against the doc
+  // folder, and batch-check them through the Rust file_exists command. Only
+  // runs under Tauri with an absolute doc path (a browser-dev doc has no
+  // disk to check) and with a WYSIWYG editor mounted (source/preview have no
+  // placeholder to show).
+  useEffect(() => {
+    if (!runningInTauri() || !activePath || !isAbsolutePath(activePath)) {
+      setMissingImages(new Set());
+      return;
+    }
+    const editor = currentFindEditor();
+    if (!editor) {
+      setMissingImages(new Set());
+      return;
+    }
+    let stale = false;
+    void (async () => {
+      const missing = await findMissingImageSrcs(editor.state.doc, activePath);
+      if (!stale) setMissingImages(missing);
+    })();
+    return () => {
+      stale = true;
+    };
+  }, [activePath, viewMode, missingRefresh]);
 
   // Per-doc term memory (plan 07 task 7.5, issue #73): writes the panel's
   // term + options to the active doc's memory. Only the active doc is
@@ -1532,6 +1617,8 @@ export default function App() {
             value={currentText}
             onChange={setActiveText}
             settings={activeDoc.settings}
+            missingImages={missingImages}
+            onReLinkImage={stableReLinkImage}
           />
         );
         break;
