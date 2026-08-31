@@ -1978,6 +1978,102 @@ test_fontmenu_suites_present() {
     fi
 }
 
+# --- p2-clear-format: clear formatting extension + editor-chrome font (issue #51, plan 04 task 4.5) ---
+# The mark-set semantics (clear strips every character mark — the font
+# family/size/color marks among them — while keeping bold/italic, AC4) and the
+# per-app font setting (localStorage persistence, the CSS variables, the menu
+# picks) are covered by the vitest suites (src/lib/__tests__/clearFormatting.test.tsx,
+# src/lib/__tests__/editorfont.test.tsx); this section checks the wiring the
+# GUI driver cannot reach headlessly: the schema-derived clear in the registry
+# command, the per-app editorFont command + readers, the editorFont module,
+# the CSS fallback contract, the View > Editor font submenu in menu.rs, and
+# the App.tsx routing.
+test_clearformat_registry_command() {
+    note "clear-format registry command strips the schema marks except bold/italic"
+    if grep -q 'id: "clearFormatting"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'mark.name !== "bold" && mark.name !== "italic"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'chain.unsetMark(mark.name)' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'clearNodes()' "$ROOT/src/lib/editorCommands.ts"; then
+        pass "clear-format registry command strips the schema marks except bold/italic"
+    else
+        fail "clear-format registry command strips the schema marks except bold/italic"
+    fi
+}
+test_editorfont_module() {
+    note "editorfont per-app font module with localStorage persistence"
+    if [ -f "$ROOT/src/lib/editorFont.ts" ] \
+        && grep -q 'export type EditorFontFamily' "$ROOT/src/lib/editorFont.ts" \
+        && grep -q 'export const EDITOR_FONT_FAMILIES' "$ROOT/src/lib/editorFont.ts" \
+        && grep -q 'export const EDITOR_FONT_SIZES' "$ROOT/src/lib/editorFont.ts" \
+        && grep -q '"quillmd.editorFont"' "$ROOT/src/lib/editorFont.ts" \
+        && grep -q 'export function loadEditorFont' "$ROOT/src/lib/editorFont.ts" \
+        && grep -q 'export function saveEditorFont' "$ROOT/src/lib/editorFont.ts"; then
+        pass "editorfont per-app font module with localStorage persistence"
+    else
+        fail "editorfont per-app font module with localStorage persistence"
+    fi
+}
+test_editorfont_command_css() {
+    note "editorfont command renders CSS variables on the editor DOM (never the doc)"
+    if grep -q 'id: "editorFont"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q '"--quillmd-editor-font"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q '"--quillmd-editor-font-size"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export function applyEditorFont' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export function editorFontOf' "$ROOT/src/lib/editorCommands.ts"; then
+        pass "editorfont command renders CSS variables on the editor DOM (never the doc)"
+    else
+        fail "editorfont command renders CSS variables on the editor DOM (never the doc)"
+    fi
+}
+test_editorfont_css_fallback() {
+    note "editorfont App.css falls back to the base text stack at 15px"
+    if grep -q 'var(--quillmd-editor-font, var(--font-text))' "$ROOT/src/App.css" \
+        && grep -q 'var(--quillmd-editor-font-size, 15px)' "$ROOT/src/App.css" \
+        && grep -q 'applyEditorFont(editor, loadEditorFont())' "$ROOT/src/components/Editor.tsx"; then
+        pass "editorfont App.css falls back to the base text stack at 15px"
+    else
+        fail "editorfont App.css falls back to the base text stack at 15px"
+    fi
+}
+test_editorfont_menu_wiring() {
+    note "editorfont menu.rs builds View > Editor font with the stable id scheme"
+    if grep -q 'SubmenuBuilder::new(app, "Editor font")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'pub const EDITOR_FONT_FAMILIES' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'pub const EDITOR_FONT_SIZES' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'format!("view-editor-font-{family}")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'format!("view-editor-font-size-{size}")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '.item(&editor_font)' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "editorfont menu.rs builds View > Editor font with the stable id scheme"
+    else
+        fail "editorfont menu.rs builds View > Editor font with the stable id scheme"
+    fi
+}
+test_editorfont_app_routing() {
+    note "editorfont App.tsx routes the family/size ids to the per-app setter"
+    if grep -q 'id.startsWith("view-editor-font-size-")' "$ROOT/src/App.tsx" \
+        && grep -q 'id.startsWith("view-editor-font-")' "$ROOT/src/App.tsx" \
+        && grep -q 'changeEditorFont({ family })' "$ROOT/src/App.tsx" \
+        && grep -q 'changeEditorFont({ size })' "$ROOT/src/App.tsx" \
+        && grep -q 'saveEditorFont(next)' "$ROOT/src/App.tsx" \
+        && grep -q 'dispatchEditorCommand("editorFont", next)' "$ROOT/src/App.tsx"; then
+        pass "editorfont App.tsx routes the family/size ids to the per-app setter"
+    else
+        fail "editorfont App.tsx routes the family/size ids to the per-app setter"
+    fi
+}
+test_clearformat_suites_present() {
+    note "clear-format AC4 + editorfont vitest-suite assertions present"
+    if grep -q 'removes family/size/color while keeping bold/italic' "$ROOT/src/lib/__tests__/clearFormatting.test.tsx" \
+        && grep -q 'still unwraps block-level formatting (clearNodes) while keeping the marks' "$ROOT/src/lib/__tests__/clearFormatting.test.tsx" \
+        && grep -q 'applies the family and size as CSS variables on the editor DOM' "$ROOT/src/lib/__tests__/editorfont.test.tsx" \
+        && grep -q 'mirrors the frontend family/size lists (menu offers the same picks)' "$ROOT/src/lib/__tests__/editorfont.test.tsx" \
+        && grep -q 'the persisted setting is re-applied when the editor remounts' "$ROOT/src/lib/__tests__/editorfont.test.tsx"; then
+        pass "clear-format AC4 + editorfont vitest-suite assertions present"
+    else
+        fail "clear-format AC4 + editorfont vitest-suite assertions present"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -2170,6 +2266,15 @@ case "$SUBSET" in
         test_fontmenu_app_routing
         test_fontmenu_suites_present
         ;;
+    p2-clear-format)
+        test_clearformat_registry_command
+        test_editorfont_module
+        test_editorfont_command_css
+        test_editorfont_css_fallback
+        test_editorfont_menu_wiring
+        test_editorfont_app_routing
+        test_clearformat_suites_present
+        ;;
     shell)
         test_shell_new_bundled
         test_shell_new_menu_wiring
@@ -2327,9 +2432,16 @@ case "$SUBSET" in
         test_fontmenu_resolvers
         test_fontmenu_app_routing
         test_fontmenu_suites_present
+        test_clearformat_registry_command
+        test_editorfont_module
+        test_editorfont_command_css
+        test_editorfont_css_fallback
+        test_editorfont_menu_wiring
+        test_editorfont_app_routing
+        test_clearformat_suites_present
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac
