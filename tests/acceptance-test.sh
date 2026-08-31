@@ -202,6 +202,24 @@
      #                       the indicator CSS, and the styleinspector.test.tsx
      #                       suite presence (style mapping + popover behavior +
      #                       gallery-open request)
+     #           p2-tables -> plan 06 full acceptance gate (issues #61-#67):
+     #                       the task 6.1-6.6 wiring checks (GFM table
+     #                       serializer + GfmTable extension + gfm-tables.md
+     #                       fixture (issue #61), the row/column/cell/header/
+     #                       delete registry commands (issue #62), the size
+     #                       picker + insert dialog + Insert > Table menu
+     #                       (issue #63), the floating table toolbar
+     #                       (issue #64), Tab/Shift+Tab/Escape keyboard
+     #                       navigation with the 99-row guard (issue #65),
+     #                       merged-cell HTML form + colgroup widths
+     #                       (issue #66)), the plan 06 §4 acceptance criteria
+     #                       AC1-AC8 coverage (exact-size pick with header,
+     #                       valid-GFM lint of the table fixtures, alignment
+     #                       + <br> persistence, keyboard nav, delete table,
+     #                       escaped-pipe round-trip, floating toolbar
+     #                       focus, fixtures green), and the GFM lint of the
+     #                       table fixtures actually run here (issue #67) —
+     #                       always in CI via the npm test gate
      #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -3004,6 +3022,324 @@ test_fonts_windows_crlf() {
     fi
 }
 
+# ===========================================================================
+# P2 table editing (plan 06, tasks 6.1-6.7)
+#
+# Parent issue: #60. Task wiring:
+#   6.1 #61 GFM serializer + parser hardening   pm.ts, Editor.tsx,
+#                                               gfmTables.test.ts, gfm-tables.md
+#   6.2 #62 row/column/cell/header/delete ops   editorCommands.ts,
+#                                               tableCommands.test.ts
+#   6.3 #63 size picker + insert dialog         tables.ts, TableSizePicker.tsx,
+#                                               InsertTableDialog.tsx, Toolbar.tsx,
+#                                               menu.rs, App.tsx, tableInsert/
+#                                               tablePicker/tableMenu/tableToolbar
+#   6.4 #64 floating table toolbar              TableToolbar.tsx, Editor.tsx,
+#                                               floatingTableToolbar.test.tsx
+#   6.5 #65 keyboard navigation                 tableKeys.ts, Editor.tsx,
+#                                               tableKeys.test.tsx
+#   6.6 #66 merge + colgroup widths             pm.ts, tableMerge.test.ts
+#   6.7 #67 acceptance gate + GFM lint in CI    this section,
+#                                               gfmLint.test.ts
+#
+# Every plan 06 §4 acceptance criterion (AC1-AC8) gets a dedicated test below.
+# The GFM lint over the table fixtures (AC2) is not only asserted present but
+# actually run here, and it is always run by the CI npm test gate as well.
+# ===========================================================================
+
+test_tables_gfm_serializer() {
+    note "tables.6.1 GFM table serializer (plan 06 task 6.1, issue #61)"
+    local f="$ROOT/src/lib/pm.ts"
+    grep -q 'function tableToMdast(node: JSONContent)' "$f" \
+        && grep -q 'function tableToTiptap(node: Table)' "$f" \
+        && grep -q 'function tableAlignOfAttr' "$f" \
+        && grep -q 'CELL_BR_RE = /' "$f" \
+        && grep -q 'value: "<br>"' "$f" \
+        && pass "pm.ts serializes GFM tables (alignment spec, <br> cells)" \
+        || fail "pm.ts GFM table serializer missing"
+    grep -q 'round-trips cells containing a pipe (escaped on save, unescaped in the model)' \
+        "$ROOT/src/lib/__tests__/gfmTables.test.ts" \
+        && pass "gfmTables.test.ts pins escaped-pipe cell round-trip" \
+        || fail "gfmTables.test.ts escaped-pipe round-trip test missing"
+}
+
+test_tables_gfmtable_extension() {
+    note "tables.6.1 GfmTable extension (plan 06 task 6.1, issue #61)"
+    local f="$ROOT/src/components/Editor.tsx"
+    grep -q 'export const GfmTable = Table.extend({' "$f" \
+        && grep -q 'align: {' "$f" \
+        && grep -q 'resizable: true, cellMinWidth: TABLE_CELL_MIN_WIDTH' "$f" \
+        && grep -q 'export const TABLE_CELL_MIN_WIDTH = 40' "$f" \
+        && pass "Editor.tsx registers GfmTable (align attr, resizable, min width)" \
+        || fail "Editor.tsx GfmTable extension missing"
+    grep -q 'carries the align attribute through the ProseMirror schema' \
+        "$ROOT/src/lib/__tests__/gfmTables.test.ts" \
+        && pass "gfmTables.test.ts pins the align attribute through the schema" \
+        || fail "gfmTables.test.ts align attribute test missing"
+}
+
+test_tables_gfm_fixture() {
+    note "tables.6.1 gfm-tables.md fixture (plan 06 task 6.1, issue #61)"
+    local f="$FIXTURES/clean/gfm-tables.md"
+    [ -f "$f" ] \
+        && grep -q 'a \\| b' "$f" \
+        && grep -q '|:-----|:------:|------:|' "$f" \
+        && pass "gfm-tables.md fixture present (alignment matrix, escaped pipes)" \
+        || fail "gfm-tables.md fixture missing or wrong"
+    grep -q 'classifies all five fixture tables as table blocks' \
+        "$ROOT/src/lib/__tests__/gfmTables.test.ts" \
+        && pass "gfmTables.test.ts classifies all five fixture tables" \
+        || fail "gfmTables.test.ts fixture table classification test missing"
+}
+
+test_tables_registry_commands() {
+    note "tables.6.2 registry commands (plan 06 task 6.2, issue #62)"
+    local f="$ROOT/src/lib/editorCommands.ts"
+    local id
+    for id in rowInsertAbove rowInsertBelow rowDelete colInsertLeft colInsertRight \
+              colDelete cellAlignLeft cellAlignCenter cellAlignRight headerRowToggle \
+              cellMerge cellClear tableDelete; do
+        grep -q "id: \"$id\"" "$f" \
+            || { fail "editorCommands.ts missing table command id: $id"; return; }
+    done
+    grep -q 'export function inTable' "$f" \
+        && grep -q 'export function tablePosOf' "$f" \
+        && pass "editorCommands.ts registers all 13 table ops (row/col/cell/header/merge/clear/delete)" \
+        || fail "editorCommands.ts table helpers (inTable/tablePosOf) missing"
+}
+
+test_tables_commands_suite() {
+    note "tables.6.2 command suite (plan 06 task 6.2, issue #62)"
+    local f="$ROOT/src/lib/__tests__/tableCommands.test.ts"
+    grep -q 'registers every table command id exactly once' "$f" \
+        && grep -q 'removes the whole table block' "$f" \
+        && grep -q 'sets a column to center and persists it as the GFM spec' "$f" \
+        && pass "tableCommands.test.ts covers the registry + each op's saved GFM" \
+        || fail "tableCommands.test.ts coverage missing"
+}
+
+test_tables_insert_module() {
+    note "tables.6.3 insert module (plan 06 task 6.3, issue #63)"
+    local f="$ROOT/src/lib/tables.ts"
+    grep -q 'export const TABLE_PICKER_SIZE = 10' "$f" \
+        && grep -q 'export const TABLE_MAX = 99' "$f" \
+        && grep -q 'export function isValidTableSize' "$f" \
+        && grep -q 'export function insertTableAt' "$f" \
+        && pass "tables.ts: picker size, 99-row cap, validation, insertTableAt" \
+        || fail "tables.ts insert module missing"
+}
+
+test_tables_picker_components() {
+    note "tables.6.3 picker + dialog components (plan 06 task 6.3, issue #63)"
+    [ -f "$ROOT/src/components/TableSizePicker.tsx" ] \
+        && [ -f "$ROOT/src/components/InsertTableDialog.tsx" ] \
+        && grep -q 'export default function TableSizePicker' "$ROOT/src/components/TableSizePicker.tsx" \
+        && grep -q 'export default function InsertTableDialog' "$ROOT/src/components/InsertTableDialog.tsx" \
+        && grep -q 'import TableSizePicker from "./TableSizePicker"' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q '<TableSizePicker onPick={handlePick} />' "$ROOT/src/components/Toolbar.tsx" \
+        && pass "TableSizePicker + InsertTableDialog present, toolbar mounts the picker" \
+        || fail "picker/dialog components missing or unmounted"
+}
+
+test_tables_menu_wiring() {
+    note "tables.6.3 Insert > Table menu wiring (plan 06 task 6.3, issue #63)"
+    grep -q '"insert-table"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"insert-table": "tableDialog"' "$ROOT/src/App.tsx" \
+        && grep -q 'import InsertTableDialog from "./components/InsertTableDialog"' "$ROOT/src/App.tsx" \
+        && grep -q '<InsertTableDialog onApply={applyTableDialog} onClose={closeTableDialog} />' "$ROOT/src/App.tsx" \
+        && grep -q 'id: "tableDialog"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'run: (editor) => requestTableDialog(editor)' "$ROOT/src/lib/editorCommands.ts" \
+        && pass "menu.rs insert-table id routes to the registry tableDialog command + App dialog" \
+        || fail "Insert > Table menu wiring missing"
+}
+
+test_tables_insert_suites() {
+    note "tables.6.3 insert suites (plan 06 task 6.3, issue #63)"
+    grep -q 'inserts exactly the requested size with a header row (plan 06 AC1: 7x2)' \
+        "$ROOT/src/lib/__tests__/tableInsert.test.ts" \
+        && grep -q 'the pick reports exactly the hovered size with a header row' \
+            "$ROOT/src/lib/__tests__/tablePicker.test.tsx" \
+        && grep -q 'Insert > Table opens the dialog on the 3x3 header default' \
+            "$ROOT/src/lib/__tests__/tableMenu.test.tsx" \
+        && grep -q 'a picker pick inserts exactly the hovered size and closes the picker' \
+            "$ROOT/src/lib/__tests__/tableToolbar.test.tsx" \
+        && pass "tableInsert/tablePicker/tableMenu/tableToolbar suites cover the insert path" \
+        || fail "insert-path suite coverage missing"
+}
+
+test_tables_floating_toolbar() {
+    note "tables.6.4 floating table toolbar (plan 06 task 6.4, issue #64)"
+    local f="$ROOT/src/components/TableToolbar.tsx"
+    grep -q 'export function tableToolbarPosition' "$f" \
+        && grep -q 'export const TABLE_TOOLBAR_GAP = 8' "$f" \
+        && grep -q 'const ROW_CMDS: EditorCommandId\[\]' "$f" \
+        && grep -q 'const COL_CMDS: EditorCommandId\[\]' "$f" \
+        && grep -q 'const CELL_CMDS: EditorCommandId\[\]' "$f" \
+        && grep -q 'const DELETE_CMDS: EditorCommandId\[\]' "$f" \
+        && grep -q 'import TableToolbar from "./TableToolbar"' "$ROOT/src/components/Editor.tsx" \
+        && grep -q '{!readOnly && <TableToolbar editor={editor} />}' "$ROOT/src/components/Editor.tsx" \
+        && pass "TableToolbar (positioned above the table, 4 command groups) mounted in Editor" \
+        || fail "floating table toolbar missing"
+}
+
+test_tables_floating_suite() {
+    note "tables.6.4 floating toolbar suite (plan 06 task 6.4, issue #64)"
+    local f="$ROOT/src/lib/__tests__/floatingTableToolbar.test.tsx"
+    grep -q 'appears when the cursor moves into a table' "$f" \
+        && grep -q 'hides when the cursor leaves the table' "$f" \
+        && grep -q "places the bar above the table's rect, in document space" "$f" \
+        && grep -q 'offers the row/column/cell command set plus delete table' "$f" \
+        && pass "floatingTableToolbar.test.tsx covers show/hide/position/command set" \
+        || fail "floatingTableToolbar.test.tsx coverage missing"
+}
+
+test_tables_keyboard() {
+    note "tables.6.5 keyboard navigation (plan 06 task 6.5, issue #65)"
+    local f="$ROOT/src/lib/tableKeys.ts"
+    grep -q 'export function tableTab(editor: CoreEditor, backward: boolean): boolean' "$f" \
+        && grep -q 'export function tableEscape(editor: CoreEditor): boolean' "$f" \
+        && grep -q 'TABLE_MAX' "$f" \
+        && grep -q 'if (tableTab(editor, event.shiftKey)) {' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'if (tableEscape(editor)) {' "$ROOT/src/components/Editor.tsx" \
+        && pass "tableKeys (Tab/Shift+Tab/Escape, 99-row guard) wired into Editor keydown" \
+        || fail "keyboard navigation missing"
+}
+
+test_tables_keys_suite() {
+    note "tables.6.5 keyboard suite (plan 06 task 6.5, issue #65)"
+    local f="$ROOT/src/lib/__tests__/tableKeys.test.tsx"
+    grep -q 'Tab in the last cell appends a row and moves into it' "$f" \
+        && grep -q 'Tab in the last cell is a no-op at the TABLE_MAX row guard' "$f" \
+        && grep -q 'Shift+Tab moves the cursor to the previous cell' "$f" \
+        && grep -q 'moves the cursor to the paragraph after the table' "$f" \
+        && pass "tableKeys.test.tsx covers Tab append, 99 guard, Shift+Tab, Escape exit" \
+        || fail "tableKeys.test.tsx coverage missing"
+}
+
+test_tables_merge_serializer() {
+    note "tables.6.6 merge + colgroup serializer (plan 06 task 6.6, issue #66)"
+    local f="$ROOT/src/lib/pm.ts"
+    grep -q 'function tableNeedsHtmlForm(node: JSONContent): boolean' "$f" \
+        && grep -q 'function renderMergedTableHtml(node: JSONContent): string' "$f" \
+        && grep -q 'export function parseMergedTableHtml(value: string): JSONContent | null' "$f" \
+        && grep -q '"<colgroup>"' "$f" \
+        && pass "pm.ts merged-table HTML emit/parse + colgroup widths" \
+        || fail "pm.ts merged-table serializer missing"
+    grep -q 'emits the canonical HTML form for a colspan merge' "$ROOT/src/lib/__tests__/tableMerge.test.ts" \
+        && grep -q 'emits colgroup widths for user-set colwidths' "$ROOT/src/lib/__tests__/tableMerge.test.ts" \
+        && pass "tableMerge.test.ts pins the canonical HTML emit" \
+        || fail "tableMerge.test.ts emit coverage missing"
+}
+
+test_tables_merge_suite() {
+    note "tables.6.6 merge suite (plan 06 task 6.6, issue #66)"
+    local f="$ROOT/src/lib/__tests__/tableMerge.test.ts"
+    grep -q 'a dragged divider (colwidth) round-trips through the colgroup' "$f" \
+        && grep -q 'rejects non-canonical <table> blocks (they stay opaque HTML)' "$f" \
+        && pass "tableMerge.test.ts covers divider round-trip + opaque-HTML refusal" \
+        || fail "tableMerge.test.ts coverage missing"
+}
+
+test_tables_ac1_picker_inserts_exact_size() {
+    note "tables.AC1 a picked size lands in the saved file with a header row (plan 06 AC1)"
+    grep -q 'plan 06 AC1: a 7x2 with header in the saved file' \
+        "$ROOT/src/lib/__tests__/tableInsert.test.ts" \
+        && grep -q 'serializes the 7x2 header pick to valid GFM with a header row (AC1)' \
+            "$ROOT/src/lib/__tests__/tableInsert.test.ts" \
+        && grep -q 'the pick reports exactly the hovered size with a header row' \
+            "$ROOT/src/lib/__tests__/tablePicker.test.tsx" \
+        && pass "AC1: a 7x2 pick lands in the saved file with a header row" \
+        || fail "AC1 coverage missing (tableInsert/tablePicker suites)"
+}
+
+test_tables_ac2_gfm_lint() {
+    note "tables.AC2 GFM lint in CI for the table fixtures (plan 06 AC2, task 6.7, issue #67)"
+    local f="$ROOT/src/lib/__tests__/gfmLint.test.ts"
+    grep -q 'GFM lint over the table fixtures (plan 06 task 6.7, issue #67)' "$f" \
+        && grep -q 'parses every clean fixture with zero remark parse messages' "$f" \
+        && grep -q '"gfm-tables.md": 5' "$f" \
+        && grep -q '"tables.md": 3' "$f" \
+        && pass "gfmLint.test.ts pins the lint gate (zero parse messages + table counts)" \
+        || fail "gfmLint.test.ts lint gate missing"
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (running the lint needs node + node_modules)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/gfmLint.test.ts) 2>&1 ); then
+        pass "table fixtures lint clean under remark+remark-gfm (also runs in CI via npm test)"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "GFM lint failed on the table fixtures"
+    fi
+}
+
+test_tables_ac3_alignment_persists() {
+    note "tables.AC3 column alignment persists through edit + save (plan 06 AC3)"
+    grep -q 'sets a column to center and persists it as the GFM spec' \
+        "$ROOT/src/lib/__tests__/tableCommands.test.ts" \
+        && grep -q 'round-trips a <br> break inside a cell (model: hardBreak, file: <br>)' \
+            "$ROOT/src/lib/__tests__/gfmTables.test.ts" \
+        && grep -q 'resizable: true, cellMinWidth: TABLE_CELL_MIN_WIDTH' "$ROOT/src/components/Editor.tsx" \
+        && pass "AC3: alignment persists (GFM spec on save) + <br> cells + resizable columns" \
+        || fail "AC3 coverage missing"
+}
+
+test_tables_ac4_keyboard_nav() {
+    note "tables.AC4 Tab/Shift+Tab/Escape navigation (plan 06 AC4)"
+    grep -q 'Tab in the last cell appends a row and moves into it' \
+        "$ROOT/src/lib/__tests__/tableKeys.test.tsx" \
+        && grep -q 'Tab in the last cell is a no-op at the TABLE_MAX row guard' \
+            "$ROOT/src/lib/__tests__/tableKeys.test.tsx" \
+        && grep -q 'moves the cursor to the paragraph after the table' \
+            "$ROOT/src/lib/__tests__/tableKeys.test.tsx" \
+        && pass "AC4: Tab next/append (99 guard), Shift+Tab prev, Escape exits to the next block" \
+        || fail "AC4 coverage missing"
+}
+
+test_tables_ac5_delete_table() {
+    note "tables.AC5 delete table (plan 06 AC5)"
+    grep -q 'id: "tableDelete"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'removes the whole table block' "$ROOT/src/lib/__tests__/tableCommands.test.ts" \
+        && pass "AC5: tableDelete removes the whole table block" \
+        || fail "AC5 coverage missing"
+}
+
+test_tables_ac6_escaped_pipe() {
+    note "tables.AC6 a pipe inside a cell survives save + reload (plan 06 AC6)"
+    grep -q 'round-trips cells containing a pipe (escaped on save, unescaped in the model)' \
+        "$ROOT/src/lib/__tests__/gfmTables.test.ts" \
+        && grep -q 'a \\| b' "$FIXTURES/clean/gfm-tables.md" \
+        && grep -q '"gfm-tables.md": 5' "$ROOT/src/lib/__tests__/gfmLint.test.ts" \
+        && pass "AC6: escaped-pipe cells round-trip and the fixture lints as 5 valid tables" \
+        || fail "AC6 coverage missing"
+}
+
+test_tables_ac7_floating_toolbar_focus() {
+    note "tables.AC7 floating toolbar appears in-table, hides on exit (plan 06 AC7)"
+    grep -q 'appears when the cursor moves into a table' \
+        "$ROOT/src/lib/__tests__/floatingTableToolbar.test.tsx" \
+        && grep -q 'hides when the cursor leaves the table' \
+            "$ROOT/src/lib/__tests__/floatingTableToolbar.test.tsx" \
+        && grep -q "keeps the editor selection while a button is pressed (mousedown preventDefault)" \
+            "$ROOT/src/lib/__tests__/floatingTableToolbar.test.tsx" \
+        && pass "AC7: floating toolbar tracks in/out of tables and keeps the selection" \
+        || fail "AC7 coverage missing"
+}
+
+test_tables_ac8_fixtures_green() {
+    note "tables.AC8 the table fixtures stay green (plan 06 AC8)"
+    local f="$ROOT/src/lib/__tests__/roundtrip.test.ts"
+    grep -q 'round-trip fidelity over clean fixtures' "$f" \
+        && [ -f "$FIXTURES/clean/tables.md" ] \
+        && [ -f "$FIXTURES/clean/table-complex.md" ] \
+        && [ -f "$FIXTURES/clean/gfm-tables.md" ] \
+        && grep -q 'classifies all five fixture tables as table blocks' \
+            "$ROOT/src/lib/__tests__/gfmTables.test.ts" \
+        && pass "AC8: round-trip contract + fixture corpus (tables.md, table-complex.md, gfm-tables.md) green" \
+        || fail "AC8 coverage missing"
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -3322,6 +3658,38 @@ case "$SUBSET" in
         test_styleinspector_css
         test_styleinspector_suites_present
         ;;
+    p2-tables)
+        # Task 6.1 (issue #61): GFM serializer + parser hardening
+        test_tables_gfm_serializer
+        test_tables_gfmtable_extension
+        test_tables_gfm_fixture
+        # Task 6.2 (issue #62): row/column/cell/header/delete registry commands
+        test_tables_registry_commands
+        test_tables_commands_suite
+        # Task 6.3 (issue #63): size picker + insert dialog
+        test_tables_insert_module
+        test_tables_picker_components
+        test_tables_menu_wiring
+        test_tables_insert_suites
+        # Task 6.4 (issue #64): floating table toolbar
+        test_tables_floating_toolbar
+        test_tables_floating_suite
+        # Task 6.5 (issue #65): keyboard navigation
+        test_tables_keyboard
+        test_tables_keys_suite
+        # Task 6.6 (issue #66): merge + colgroup widths
+        test_tables_merge_serializer
+        test_tables_merge_suite
+        # Task 6.7 (issue #67): plan 06 §4 acceptance criteria
+        test_tables_ac1_picker_inserts_exact_size
+        test_tables_ac2_gfm_lint
+        test_tables_ac3_alignment_persists
+        test_tables_ac4_keyboard_nav
+        test_tables_ac5_delete_table
+        test_tables_ac6_escaped_pipe
+        test_tables_ac7_floating_toolbar_focus
+        test_tables_ac8_fixtures_green
+        ;;
     shell)
         test_shell_new_bundled
         test_shell_new_menu_wiring
@@ -3532,9 +3900,32 @@ case "$SUBSET" in
         test_styles_ac4_screenshot_baselines
         test_styles_ac5_os_dark_default
         test_styles_ac6_roundtrip_no_markup
+        test_tables_gfm_serializer
+        test_tables_gfmtable_extension
+        test_tables_gfm_fixture
+        test_tables_registry_commands
+        test_tables_commands_suite
+        test_tables_insert_module
+        test_tables_picker_components
+        test_tables_menu_wiring
+        test_tables_insert_suites
+        test_tables_floating_toolbar
+        test_tables_floating_suite
+        test_tables_keyboard
+        test_tables_keys_suite
+        test_tables_merge_serializer
+        test_tables_merge_suite
+        test_tables_ac1_picker_inserts_exact_size
+        test_tables_ac2_gfm_lint
+        test_tables_ac3_alignment_persists
+        test_tables_ac4_keyboard_nav
+        test_tables_ac5_delete_table
+        test_tables_ac6_escaped_pipe
+        test_tables_ac7_floating_toolbar_focus
+        test_tables_ac8_fixtures_green
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|p2-style-inspector|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|p2-style-inspector|p2-tables|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac
