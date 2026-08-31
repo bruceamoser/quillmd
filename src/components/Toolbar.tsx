@@ -48,6 +48,7 @@ const BLOCK_CMDS: EditorCommandId[] = [
   "taskList",
   "table",
   "codeBlock",
+  "diagram",
   "hr",
   "footnote",
 ];
@@ -77,6 +78,7 @@ const GLYPHS: Partial<Record<EditorCommandId, string>> = {
   taskList: "\u2610 List",
   table: "Table",
   codeBlock: "{ }",
+  diagram: "Diagram",
   hr: "\u2014",
   footnote: "[^1]",
   alignLeft: "L",

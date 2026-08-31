@@ -267,6 +267,31 @@ export const CodeBlockWithLang = CodeBlock.extend({
   },
 });
 
+// Mermaid diagram (plan 11 task 11.1, issue #100): a ```mermaid fenced code
+// block. The node holds the diagram source as plain code text (code: true,
+// like codeBlock) and serializes back to the fence — the source is the
+// document content, the rendered SVG (a later task) is a view artifact that
+// is never stored. parseHTML matches the language-mermaid code element so
+// pasted HTML lands as a diagram too; renderHTML emits the same shape.
+export const MermaidBlock = Node.create({
+  name: "mermaidBlock",
+  group: "block",
+  content: "text*",
+  marks: "",
+  code: true,
+  defining: true,
+  parseHTML() {
+    return [{ tag: "pre > code.language-mermaid", preserveWhitespace: "full" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "pre",
+      mergeAttributes(HTMLAttributes, { "data-language": "mermaid" }),
+      ["code", { class: "language-mermaid" }, 0],
+    ];
+  },
+});
+
 export const AlignedParagraph = Paragraph.extend({
   addAttributes() {
     return {
@@ -489,6 +514,7 @@ const SLASH_ACTIONS: SlashAction[] = [
   },
   commandAction("table", "table", "Table", "Pick a table size (or Insert table…)"),
   commandAction("code", "codeBlock", "Code block", "Fenced code block"),
+  commandAction("diagram", "diagram", "Diagram", "Mermaid diagram"),
   commandAction("image", "image", "Image", "Embed an image"),
   commandAction("link", "link", "Link", "Insert a hyperlink"),
   commandAction("footnote", "footnote", "Footnote", "Footnote reference"),
@@ -728,6 +754,10 @@ export default function Editor({
       AlignedParagraph,
       AlignedHeading,
       AlignedBlockquote,
+      // Mermaid diagrams (plan 11 task 11.1, issue #100): registered before
+      // CodeBlockWithLang so the pre > code.language-mermaid parse rule wins
+      // over the plain pre rule for pasted diagram HTML.
+      MermaidBlock,
       CodeBlockWithLang,
       Underline,
       QuillHighlight,
