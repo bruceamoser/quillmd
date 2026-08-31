@@ -119,6 +119,7 @@ const SHORTCUTS_TEXT = [
   "Ctrl+N: new document",
   "Ctrl+B / Ctrl+I / Ctrl+U: bold / italic / underline",
   "Ctrl+K: link",
+  "Ctrl+1..6: heading level 1-6 (press again to return to paragraph)",
   "Ctrl+] / Ctrl+[: indent / outdent (list item or quote level)",
   "Tab / Shift+Tab: nest / un-nest list item or quote",
   "Ctrl+= / Ctrl+- / Ctrl+0: zoom in / zoom out / reset (Ctrl+wheel)",
