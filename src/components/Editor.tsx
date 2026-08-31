@@ -35,6 +35,7 @@ import {
 import type { EditorCommandId } from "../lib/editorCommands";
 import { currentBlockStyle } from "../lib/styles";
 import { loadEditorFont } from "../lib/editorFont";
+import { tableEscape, tableTab } from "../lib/tableKeys";
 import { DEFAULT_DOC_SETTINGS } from "../lib/docSettings";
 import type { DocSettings } from "../lib/docSettings";
 import { matchDecorations, registerFindEditor, registerFindStateListener } from "../lib/find";
@@ -513,7 +514,10 @@ function deleteSlashRange(editor: CoreEditor): void {
 // parity Ctrl+]/Ctrl+[ (indent/outdent), and Ctrl+1..6 (heading levels,
 // acceptance #3). Tab/Shift+Tab re-nests list items and blockquotes through
 // the same registry commands the toolbar and menus use (native sink/lift for
-// lists, wrap/lift for quotes). Returns true when the event was consumed.
+// lists, wrap/lift for quotes) — and, inside a table, moves the selection
+// cell to cell (plan 06 task 6.5, issue #65, tableKeys.ts), where Tab in the
+// last cell appends a row and Escape exits the table. Returns true when the
+// event was consumed.
 export function handleEditorKeyDown(editor: CoreEditor, event: KeyboardEvent): boolean {
   const mod = event.ctrlKey || event.metaKey;
 
@@ -541,6 +545,14 @@ export function handleEditorKeyDown(editor: CoreEditor, event: KeyboardEvent): b
   }
 
   if (event.key === "Tab") {
+    // Table navigation first (plan 06 task 6.5, issue #65): Tab / Shift+Tab
+    // move cell to cell in reading order, Tab in the last cell appends a
+    // row. tableTab consumes the key for every in-table selection, so the
+    // list/quote nesting below only runs outside tables.
+    if (tableTab(editor, event.shiftKey)) {
+      event.preventDefault();
+      return true;
+    }
     const { $from } = editor.state.selection;
     // Ancestors, not just the parent: an empty list item holds the cursor in
     // its (empty) paragraph, and a quote inside a list item is wrapped in
@@ -555,6 +567,17 @@ export function handleEditorKeyDown(editor: CoreEditor, event: KeyboardEvent): b
     if (inList || inQuote) {
       event.preventDefault();
       runEditorCommand(editor, event.shiftKey ? "outdent" : "indent");
+      return true;
+    }
+  }
+
+  // Escape inside a table exits it (plan 06 task 6.5, issue #65): the cursor
+  // moves to the block after the table, so the selection leaves the table
+  // and the floating table toolbar hides. Outside a table Escape is left
+  // alone (the find panel's Escape is handled app-level, App.tsx).
+  if (event.key === "Escape") {
+    if (tableEscape(editor)) {
+      event.preventDefault();
       return true;
     }
   }
