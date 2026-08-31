@@ -59,6 +59,17 @@ import {
   searchDoc,
 } from "./lib/find";
 import type { SearchState } from "./lib/find";
+import {
+  currentSourceFindView,
+  replaceAllSourceMatches,
+  replaceSourceActiveMatch,
+  selectSourceMatch,
+  setSourceFindHighlight,
+  sourceMatches,
+  toSearchQuery,
+} from "./lib/sourceFind";
+import type { SourceMatch } from "./lib/sourceFind";
+import { getSearchQuery, setSearchQuery, type SearchQuery } from "@codemirror/search";
 import Editor from "./components/Editor";
 import DocInfoPanel from "./components/DocInfoPanel";
 import SourceView from "./components/SourceView";
@@ -189,6 +200,22 @@ export default function App() {
   const [findState, setFindState] = useState<SearchState | null>(null);
   const findStateRef = useRef<SearchState | null>(null);
   const findQueryRef = useRef("");
+  // Source-view search (plan 07 task 7.4, issue #72): mirrors findState for the
+  // CodeMirror doc — the matches in doc offsets, the active index, and the
+  // SearchQuery they came from (so navigation can re-publish the highlight
+  // without re-reading the panel). The panel result and the navigation/replace
+  // handlers read the ref (which is always current); the state drives re-renders.
+  const [sourceFind, setSourceFind] = useState<{
+    matches: SourceMatch[];
+    active: number;
+    query: SearchQuery;
+  } | null>(null);
+  const sourceFindRef = useRef<{
+    matches: SourceMatch[];
+    active: number;
+    query: SearchQuery;
+  } | null>(null);
+  const sourceQueryRef = useRef("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const explorerRef = useRef<ExplorerHandle | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -201,6 +228,18 @@ export default function App() {
   );
   const dirty = activeDoc !== undefined && activeDoc.currentText !== activeDoc.open.source;
   const viewMode = activeDoc?.viewMode;
+
+  // Which engine the open find panel acts on (plan 07 task 7.4, issue #72):
+  // the WYSIWYG doc in wysiwyg mode, the CodeMirror source doc whenever the
+  // source pane is visible (source or split mode), and nothing in preview
+  // (no editable pane — the panel closes). The same term/options object drives
+  // both engines, so results stay in sync across view switches.
+  const findEngine: "wysiwyg" | "source" | "none" =
+    viewMode === "wysiwyg"
+      ? "wysiwyg"
+      : viewMode === "source" || viewMode === "split"
+        ? "source"
+        : "none";
 
   const wordCount = useMemo(() => {
     const trimmed = currentText.trim();
@@ -624,11 +663,26 @@ export default function App() {
   // Ctrl+F / Edit > Find opens the panel in find mode; Ctrl+H / Edit > Find
   // and Replace in replace mode. F3 / Shift+F3 cycle the active match while
   // the panel is open (Word: no find bar, no F3). The search runs in the
-  // effect below against the live WYSIWYG doc (exposed through the find
-  // bridge); outside the WYSIWYG view the panel closes — source-view search
-  // is task 7.4.
+  // effect below against the engine for the active view (findEngine): the
+  // live WYSIWYG doc in wysiwyg mode, the CodeMirror source doc in source /
+  // split mode (task 7.4). The same term/options object drives both engines,
+  // so the results stay in sync across view switches.
 
   const findNext = useCallback(() => {
+    if (findEngine === "source") {
+      const cur = sourceFindRef.current;
+      const view = currentSourceFindView();
+      if (!cur || cur.matches.length === 0 || !view) return;
+      const active = cur.active < 0 ? 0 : (cur.active + 1) % cur.matches.length;
+      const moved = { ...cur, active };
+      sourceFindRef.current = moved;
+      setSourceFind(moved);
+      view.dispatch({
+        effects: [setSourceFindHighlight.of({ query: cur.query, active })],
+      });
+      selectSourceMatch(view, cur.matches[active]);
+      return;
+    }
     const cur = findStateRef.current;
     if (!cur || cur.matches.length === 0) return;
     const moved = nextMatch(cur);
@@ -636,9 +690,24 @@ export default function App() {
     findStateRef.current = moved;
     setFindState(moved);
     publishFindState(moved);
-  }, []);
+  }, [findEngine]);
 
   const findPrev = useCallback(() => {
+    if (findEngine === "source") {
+      const cur = sourceFindRef.current;
+      const view = currentSourceFindView();
+      if (!cur || cur.matches.length === 0 || !view) return;
+      const n = cur.matches.length;
+      const active = cur.active < 0 ? n - 1 : (cur.active - 1 + n) % n;
+      const moved = { ...cur, active };
+      sourceFindRef.current = moved;
+      setSourceFind(moved);
+      view.dispatch({
+        effects: [setSourceFindHighlight.of({ query: cur.query, active })],
+      });
+      selectSourceMatch(view, cur.matches[active]);
+      return;
+    }
     const cur = findStateRef.current;
     if (!cur || cur.matches.length === 0) return;
     const moved = prevMatch(cur);
@@ -646,16 +715,15 @@ export default function App() {
     findStateRef.current = moved;
     setFindState(moved);
     publishFindState(moved);
-  }, []);
+  }, [findEngine]);
 
-  // The panel is a WYSIWYG feature until source-view search lands (task
-  // 7.4): opening it in another view explains that in the status bar, and a
-  // view switch while it is open closes it (Word closes its find bar on view
-  // change too).
+  // The panel opens in any editable view (WYSIWYG, source, or split); only
+  // preview has no editable pane, so opening it there explains that in the
+  // status bar (Word closes its find bar where there is nothing to search).
   const openFindPanel = useCallback(
     (mode: FindPanelMode) => {
-      if (!activePath || viewMode !== "wysiwyg") {
-        setStatus("Find & replace is available in the WYSIWYG view");
+      if (!activePath || viewMode === "preview") {
+        setStatus("Find & replace needs an editable view");
         return;
       }
       setFindPanel((p) => ({ ...p, open: true, mode }));
@@ -684,41 +752,68 @@ export default function App() {
   }, []);
 
   const doReplace = useCallback(() => {
+    const options = {
+      term: findPanel.term,
+      matchCase: findPanel.matchCase,
+      wholeWord: findPanel.wholeWord,
+      useRegex: findPanel.useRegex,
+    };
+    if (findEngine === "source") {
+      const cur = sourceFindRef.current;
+      const view = currentSourceFindView();
+      if (!cur || !view) return;
+      replaceSourceActiveMatch(view, cur.matches, cur.active, options, findPanel.replaceTerm);
+      return;
+    }
     const state = findStateRef.current;
     const editor = currentFindEditor();
     if (!state || !editor) return;
     replaceActiveMatch(editor, state, findPanel.replaceTerm);
-  }, [findPanel.replaceTerm]);
+  }, [
+    findEngine,
+    findPanel.term,
+    findPanel.matchCase,
+    findPanel.wholeWord,
+    findPanel.useRegex,
+    findPanel.replaceTerm,
+  ]);
 
   const doReplaceAll = useCallback(() => {
+    const options = {
+      term: findPanel.term,
+      matchCase: findPanel.matchCase,
+      wholeWord: findPanel.wholeWord,
+      useRegex: findPanel.useRegex,
+    };
+    if (findEngine === "source") {
+      const cur = sourceFindRef.current;
+      const view = currentSourceFindView();
+      if (!cur || !view) return;
+      replaceAllSourceMatches(view, cur.matches, options, findPanel.replaceTerm);
+      return;
+    }
     const state = findStateRef.current;
     const editor = currentFindEditor();
     if (!state || !editor) return;
     replaceAllMatches(editor, state, findPanel.replaceTerm);
-  }, [findPanel.replaceTerm]);
+  }, [
+    findEngine,
+    findPanel.term,
+    findPanel.matchCase,
+    findPanel.wholeWord,
+    findPanel.useRegex,
+    findPanel.replaceTerm,
+  ]);
 
-  // Runs the search engine (task 7.1) for the open panel: recomputes on
-  // term/options changes, doc edits, tab switches, and view-mode changes. A
-  // doc edit with an unchanged query keeps the navigation position (clamped
-  // to the new match count); a new query restarts at the first match. A view
-  // change away from WYSIWYG closes the panel (it is a WYSIWYG feature until
-  // source-view search lands in task 7.4).
+  // Runs the search engine for the open panel against the engine of the active
+  // view (findEngine): the WYSIWYG doc (task 7.1) or the CodeMirror source doc
+  // (task 7.4). Recomputes on term/options changes, doc edits, tab switches,
+  // and view-mode changes. A doc edit with an unchanged query keeps the
+  // navigation position (clamped to the new match count); a new query restarts
+  // at the first match. A switch to preview closes the panel (no editable
+  // pane); switching between WYSIWYG and source/split keeps the panel and its
+  // options and re-runs the search in the other engine.
   useEffect(() => {
-    if (!findPanel.open || !activeDoc) {
-      findQueryRef.current = "";
-      findStateRef.current = null;
-      setFindState(null);
-      publishFindState(null);
-      return;
-    }
-    if (viewMode !== "wysiwyg") {
-      findQueryRef.current = "";
-      findStateRef.current = null;
-      setFindState(null);
-      setFindPanel((p) => ({ ...p, open: false }));
-      publishFindState(null);
-      return;
-    }
     const options = {
       term: findPanel.term,
       matchCase: findPanel.matchCase,
@@ -731,6 +826,75 @@ export default function App() {
       String(options.wholeWord),
       String(options.useRegex),
     ].join("\u0000");
+
+    // Panel closed, no doc, or preview (no editable pane): clear both engines.
+    if (!findPanel.open || !activeDoc || findEngine === "none") {
+      findQueryRef.current = "";
+      findStateRef.current = null;
+      setFindState(null);
+      publishFindState(null);
+      sourceQueryRef.current = "";
+      sourceFindRef.current = null;
+      setSourceFind(null);
+      // The source match decorations persist on the view's state, so turn
+      // them off explicitly (the WYSIWYG ones clear via publishFindState).
+      const srcView = currentSourceFindView();
+      if (srcView) srcView.dispatch({ effects: [setSourceFindHighlight.of(null)] });
+      if (findPanel.open && activeDoc && findEngine === "none") {
+        // Preview: nothing to search — close the panel (Word behavior).
+        setFindPanel((p) => ({ ...p, open: false }));
+      }
+      return;
+    }
+
+    if (findEngine === "source") {
+      // WYSIWYG engine idle while the source doc is searched.
+      findQueryRef.current = "";
+      findStateRef.current = null;
+      setFindState(null);
+      publishFindState(null);
+      const view = currentSourceFindView();
+      if (!view) {
+        // Source pane not mounted yet (just switched) — nothing to search.
+        sourceQueryRef.current = "";
+        sourceFindRef.current = null;
+        setSourceFind(null);
+        return;
+      }
+      // Map the panel options 1:1 onto CodeMirror's search state (task 7.4
+      // AC3), then turn the match decorations on with the same query.
+      const query = toSearchQuery(options);
+      if (!getSearchQuery(view.state).eq(query)) {
+        view.dispatch({ effects: [setSearchQuery.of(query)] });
+      }
+      const matches = sourceMatches(view, options);
+      const prev = sourceFindRef.current;
+      const sameQuery = sourceQueryRef.current === signature;
+      const active =
+        sameQuery && prev && matches.length > 0
+          ? Math.max(0, Math.min(prev.active, matches.length - 1))
+          : matches.length > 0
+            ? 0
+            : -1;
+      sourceQueryRef.current = signature;
+      const next = { matches, active, query };
+      sourceFindRef.current = next;
+      setSourceFind(next);
+      view.dispatch({
+        effects: [setSourceFindHighlight.of(active >= 0 ? { query, active } : null)],
+      });
+      // Only a new query moves the selection (and scrolls) to the active
+      // match; a doc edit with the same query leaves the caret alone.
+      if (!sameQuery && active >= 0) selectSourceMatch(view, matches[active]);
+      return;
+    }
+
+    // findEngine === "wysiwyg": the source engine is idle.
+    sourceQueryRef.current = "";
+    sourceFindRef.current = null;
+    setSourceFind(null);
+    const idleSrcView = currentSourceFindView();
+    if (idleSrcView) idleSrcView.dispatch({ effects: [setSourceFindHighlight.of(null)] });
     const doc = currentFindDoc();
     if (!doc) {
       findQueryRef.current = "";
@@ -750,13 +914,32 @@ export default function App() {
     findStateRef.current = state;
     setFindState(state);
     publishFindState(state);
-  }, [findPanel.open, findPanel.term, findPanel.matchCase, findPanel.wholeWord, findPanel.useRegex, activeDoc, viewMode]);
+  }, [
+    findPanel.open,
+    findPanel.term,
+    findPanel.matchCase,
+    findPanel.wholeWord,
+    findPanel.useRegex,
+    activeDoc,
+    findEngine,
+  ]);
 
-  // The result summary the panel renders: the engine's error for an invalid
-  // regex term (searchDoc reports it as zero matches, so the panel gets it
-  // from compileSearch), the match count, the active index, and the
-  // cross-block flag of the active match (which disables the Replace button).
+  // The result summary the panel renders: the active engine's match count and
+  // active index, the shared engine's error for an invalid regex term
+  // (compileSearch reports it in either engine; the matchers suppress the
+  // search), and the cross-block flag of the active match (WYSIWYG only — it
+  // disables the Replace button; source matches never span blocks, so it is
+  // always false there).
   const findPanelResult: FindPanelResult = useMemo(() => {
+    const error = findPanel.open && findPanel.useRegex ? compileSearch(findPanel).error : null;
+    if (findEngine === "source") {
+      return {
+        count: sourceFind?.matches.length ?? 0,
+        active: sourceFind?.active ?? -1,
+        error,
+        activeCrossBlock: false,
+      };
+    }
     const active =
       findState && findState.active >= 0 && findState.active < findState.matches.length
         ? findState.matches[findState.active]
@@ -764,10 +947,10 @@ export default function App() {
     return {
       count: findState?.matches.length ?? 0,
       active: findState?.active ?? -1,
-      error: findPanel.open && findPanel.useRegex ? compileSearch(findPanel).error : null,
+      error,
       activeCrossBlock: active?.crossBlock ?? false,
     };
-  }, [findPanel, findState]);
+  }, [findPanel, findEngine, findState, sourceFind]);
 
   const handleMenuEvent = useCallback(
     (id: string) => {
