@@ -1942,3 +1942,271 @@ button.quillmd-status-spellcheck:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
 }
+
+/* --- Modify Style dialog (plan 05 task 5.4, issue #57) -------------------- */
+
+.quillmd-modify-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quillmd-modify-dialog {
+  width: 680px;
+  max-width: calc(100vw - 32px);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  padding: 14px 16px 12px;
+}
+
+.quillmd-modify-title {
+  color: var(--text-bright);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+/* Fields (left) + live preview (right); the actions row spans both. */
+.quillmd-modify-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+
+.quillmd-modify-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.quillmd-modify-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.quillmd-modify-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.quillmd-modify-label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.quillmd-modify-hint {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.4;
+  margin-top: -4px;
+}
+
+.quillmd-modify-input,
+.quillmd-modify-select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 5px 8px;
+  outline: none;
+  width: 100%;
+}
+
+.quillmd-modify-input:focus,
+.quillmd-modify-select:focus {
+  border-color: var(--accent);
+}
+
+.quillmd-modify-color {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.quillmd-modify-color input[type="color"] {
+  width: 34px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.quillmd-modify-color input[type="color"]:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.quillmd-modify-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* The live preview pane: a scoped copy of the content typography so the
+   injected override CSS (scoped to .quillmd-modify-preview) renders the
+   same look the document will get on OK. */
+.quillmd-modify-preview-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.quillmd-modify-preview-label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.quillmd-modify-preview {
+  flex: 1;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px 14px;
+  color: var(--text);
+  font-family: var(--font-text);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.quillmd-modify-preview h1,
+.quillmd-modify-preview h2,
+.quillmd-modify-preview h3,
+.quillmd-modify-preview h4,
+.quillmd-modify-preview h5,
+.quillmd-modify-preview h6 {
+  color: var(--text-bright);
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 1.2em 0 0.4em;
+}
+
+.quillmd-modify-preview h1 {
+  font-size: 2em;
+}
+
+.quillmd-modify-preview h2 {
+  font-size: 1.6em;
+}
+
+.quillmd-modify-preview h3 {
+  font-size: 1.3em;
+}
+
+.quillmd-modify-preview h4 {
+  font-size: 1.1em;
+}
+
+.quillmd-modify-preview h5 {
+  font-size: 1em;
+}
+
+.quillmd-modify-preview h6 {
+  font-size: 0.9em;
+  color: var(--text-muted);
+}
+
+.quillmd-modify-preview p {
+  margin: 0.4em 0;
+}
+
+.quillmd-modify-preview blockquote {
+  border-left: 3px solid var(--border);
+  margin: 0.6em 0;
+  padding-left: 10px;
+  color: var(--text-muted);
+}
+
+.quillmd-modify-preview ul {
+  margin: 0.4em 0;
+  padding-left: 18px;
+}
+
+.quillmd-modify-preview pre {
+  background: var(--quillmd-code-bg, rgba(128, 128, 128, 0.16));
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin: 0.4em 0;
+  overflow-x: auto;
+}
+
+.quillmd-modify-preview code {
+  font-family: var(--font-mono);
+  font-size: 0.87em;
+  color: var(--quillmd-code-text, #f0a070);
+}
+
+.quillmd-modify-preview pre code {
+  color: inherit;
+}
+
+.quillmd-modify-preview strong {
+  color: var(--text-bright);
+  font-weight: 700;
+}
+
+.quillmd-modify-preview em {
+  font-style: italic;
+}
+
+.quillmd-modify-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.quillmd-modify-actions-left,
+.quillmd-modify-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quillmd-modify-button {
+  background: var(--bg-active);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 5px 12px;
+}
+
+.quillmd-modify-button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--text-faint);
+}
+
+.quillmd-modify-button.danger {
+  color: var(--danger);
+}
+
+.quillmd-modify-button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+
+.quillmd-modify-button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}

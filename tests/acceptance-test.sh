@@ -162,6 +162,22 @@
     #                       button), and the stylemenu.test.tsx suite
     #                       presence (menu path vs gallery path document
     #                       text parity + menu-event e2e)
+    #           p2-style-modify -> plan 05 task 5.4 acceptance gate (issue #57):
+    #                       the styleOverrides.ts module (the OverrideKey
+    #                       markdown-key model, the style-id -> key map with
+    #                       alias sharing, the field validators, the
+    #                       overridesToCss view-only CSS generator, the
+    #                       Tauri + localStorage storage bridge), the
+    #                       ModifyStyleDialog component (fields + live
+    #                       preview + reset flows), the Rust
+    #                       read/write_style_overrides commands (app config
+    #                       dir JSON), the menu.rs Format > Styles > Modify
+    #                       item, App.tsx routing the menu id to the dialog
+    #                       + <style> injection + persistence, the dialog
+    #                       CSS, and the styleOverrides.test.tsx suite
+    #                       presence (AC3 H2 Georgia/18pt live restyle +
+    #                       bytes untouched + restart persistence, the
+    #                       reset flows, the storage round-trips)
     #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -2283,6 +2299,133 @@ test_theme_suites_present() {
     fi
 }
 
+# --- p2-style-modify: Modify Style + overrides storage (issue #57, plan 05 task 5.4) ---
+# The behavior (the style-id -> markdown-key map with alias sharing, the field
+# validators (family free text, closed pt enum, #rrggbb, weight/italic/
+# spacing), the corruption tolerance of normalizeOverride/normalizeOverrides,
+# the view-only CSS generator, the storage bridge (Tauri invoke + localStorage
+# dev fallback), the dialog component (prefill, live preview, style
+# switching, Enter/Esc, reset style / reset all), and the full-App menu-event
+# e2e (plan 05 AC3: Modify Style on H2 (Georgia, 18pt) restyles every H2
+# live, leaves the document bytes untouched, and persists across restarts;
+# AC6: no style markup ever written to disk)) is covered by the vitest suite
+# (src/lib/__tests__/styleOverrides.test.tsx); this section checks the wiring
+# the GUI driver cannot reach headlessly: the styleOverrides.ts module, the
+# ModifyStyleDialog component, the Rust read/write_style_overrides commands,
+# the menu.rs Modify item, the App.tsx routing + <style> injection, the
+# dialog CSS, and the vitest suite presence.
+test_stylemodify_module() {
+    note "style-modify styleOverrides.ts: key map, validators, CSS gen, storage bridge"
+    local file="$ROOT/src/lib/styleOverrides.ts"
+    if [ -f "$file" ] \
+        && grep -q 'export type OverrideKey' "$file" \
+        && grep -q 'export const STYLE_OVERRIDE_KEYS' "$file" \
+        && grep -q 'export const BLOCK_OVERRIDE_KEYS' "$file" \
+        && grep -q 'export interface StyleOverride' "$file" \
+        && grep -q 'export const MODIFY_STYLE_MENU_ID = "format-style-modify"' "$file" \
+        && grep -q 'export function styleKeyForStyleId' "$file" \
+        && grep -q 'export const OVERRIDE_FONT_SIZES' "$file" \
+        && grep -q 'export function normalizeFontFamily' "$file" \
+        && grep -q 'export function normalizeOverride' "$file" \
+        && grep -q 'export function normalizeOverrides' "$file" \
+        && grep -q 'export function overridesToCss' "$file" \
+        && grep -q 'read_style_overrides' "$file" \
+        && grep -q 'write_style_overrides' "$file" \
+        && grep -q 'quillmd.styleOverrides' "$file"; then
+        pass "style-modify styleOverrides.ts: key map, validators, CSS gen, storage bridge"
+    else
+        fail "style-modify styleOverrides.ts: key map, validators, CSS gen, storage bridge"
+    fi
+}
+test_stylemodify_dialog_component() {
+    note "style-modify ModifyStyleDialog: fields + live preview + reset flows"
+    local file="$ROOT/src/components/ModifyStyleDialog.tsx"
+    if [ -f "$file" ] \
+        && grep -q 'quillmd-modify-dialog' "$file" \
+        && grep -q 'data-field="style"' "$file" \
+        && grep -q 'data-field="family"' "$file" \
+        && grep -q 'data-field="size"' "$file" \
+        && grep -q 'data-field="color"' "$file" \
+        && grep -q 'data-field="spacing"' "$file" \
+        && grep -q 'quillmd-modify-preview' "$file" \
+        && grep -q 'overridesToCss' "$file" \
+        && grep -q 'draftFromOverride' "$file" \
+        && grep -q 'Reset style' "$file" \
+        && grep -q 'Reset all' "$file" \
+        && grep -q 'onApply' "$file"; then
+        pass "style-modify ModifyStyleDialog: fields + live preview + reset flows"
+    else
+        fail "style-modify ModifyStyleDialog: fields + live preview + reset flows"
+    fi
+}
+test_stylemodify_rust_commands() {
+    note "style-modify Rust read/write_style_overrides (app config dir JSON)"
+    if grep -q 'pub fn read_style_overrides' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'pub fn write_style_overrides' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'style-overrides.json' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'pub fn read_overrides_file' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'pub fn write_overrides_file' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'fn overrides_write_roundtrips' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'fn overrides_write_rejects_non_object_payloads' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'commands::read_style_overrides' "$ROOT/src-tauri/src/lib.rs" \
+        && grep -q 'commands::write_style_overrides' "$ROOT/src-tauri/src/lib.rs"; then
+        pass "style-modify Rust read/write_style_overrides (app config dir JSON)"
+    else
+        fail "style-modify Rust read/write_style_overrides (app config dir JSON)"
+    fi
+}
+test_stylemodify_menu_wiring() {
+    note "style-modify menu.rs Format > Styles > Modify item"
+    if grep -q 'MenuItem::with_id(app, "format-style-modify", "Modify..."' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'styles.separator().item(&modify_style).build()' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "style-modify menu.rs Format > Styles > Modify item"
+    else
+        fail "style-modify menu.rs Format > Styles > Modify item"
+    fi
+}
+test_stylemodify_app_routing() {
+    note "style-modify App.tsx: menu id -> dialog, <style> injection, persistence"
+    if grep -q 'id === MODIFY_STYLE_MENU_ID' "$ROOT/src/App.tsx" \
+        && grep -q 'openModifyStyle()' "$ROOT/src/App.tsx" \
+        && grep -q 'overridesToCss(styleOverrides, \[' "$ROOT/src/App.tsx" \
+        && grep -q '<style>{overridesCss}</style>' "$ROOT/src/App.tsx" \
+        && grep -q '<ModifyStyleDialog' "$ROOT/src/App.tsx" \
+        && grep -q 'loadStyleOverrides()' "$ROOT/src/App.tsx" \
+        && grep -q 'saveStyleOverrides(next)' "$ROOT/src/App.tsx" \
+        && grep -q 'saveStyleOverrides({})' "$ROOT/src/App.tsx"; then
+        pass "style-modify App.tsx: menu id -> dialog, <style> injection, persistence"
+    else
+        fail "style-modify App.tsx: menu id -> dialog, <style> injection, persistence"
+    fi
+}
+test_stylemodify_css() {
+    note "style-modify dialog CSS: overlay, fields, live preview pane"
+    if grep -q '.quillmd-modify-overlay' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-modify-dialog' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-modify-fields' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-modify-preview' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-modify-actions' "$ROOT/src/App.css"; then
+        pass "style-modify dialog CSS: overlay, fields, live preview pane"
+    else
+        fail "style-modify dialog CSS: overlay, fields, live preview pane"
+    fi
+}
+test_stylemodify_suites_present() {
+    note "style-modify vitest suite: mapping + validators + AC3 e2e + reset + storage"
+    local suite="$ROOT/src/lib/__tests__/styleOverrides.test.tsx"
+    if [ -f "$suite" ] \
+        && grep -q 'aliases of one markdown construct share its key' "$suite" \
+        && grep -q 'previews the draft live: Georgia 18pt on H2 (AC3 preview)' "$suite" \
+        && grep -q 'AC3: Modify Style on H2 (Georgia, 18pt) restyles every H2 live' "$suite" \
+        && grep -q 'Reset all clears every override' "$suite" \
+        && grep -q 'talks to the Rust commands under Tauri (read/write_style_overrides)' "$suite" \
+        && grep -q 'round-trips through localStorage in browser dev' "$suite"; then
+        pass "style-modify vitest suite: mapping + validators + AC3 e2e + reset + storage"
+    else
+        fail "style-modify vitest suite: mapping + validators + AC3 e2e + reset + storage"
+    fi
+}
+
 # --- p2-font-toolbar: toolbar font family / size selects (issue #49, plan 04 task 4.3) ---
 # The select behavior (family/size apply + Normal clear, "Npt" canonicalization,
 # non-point-count rejection, the Custom… prompt flow, off-list values as dynamic
@@ -2919,6 +3062,16 @@ case "$SUBSET" in
         test_theme_app_routing
         test_theme_suites_present
         ;;
+    p2-style-modify)
+        # Task 5.4 (issue #57): Modify Style + overrides storage
+        test_stylemodify_module
+        test_stylemodify_dialog_component
+        test_stylemodify_rust_commands
+        test_stylemodify_menu_wiring
+        test_stylemodify_app_routing
+        test_stylemodify_css
+        test_stylemodify_suites_present
+        ;;
     shell)
         test_shell_new_bundled
         test_shell_new_menu_wiring
@@ -3094,7 +3247,7 @@ case "$SUBSET" in
         test_fonts_windows_crlf
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac
