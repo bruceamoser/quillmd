@@ -433,20 +433,52 @@ function listItemToTiptap(node: ListItem, source: string): JSONContent | null {
   return { type: "listItem", content: children };
 }
 
+// A GFM cell line break is the `<br>` HTML tag (remark-gfm parses it as an
+// inline html node, which the general inline pass would keep as literal
+// text). It maps to the editor's hardBreak so WYSIWYG shows the break;
+// tableToMdast maps it back to `<br>` — a `break` node would serialize to a
+// space inside a table cell (plan 06 task 6.1, issue #61).
+const CELL_BR_RE = /^<br\s*\/?>$/i;
+
+function tableCellToTiptap(cell: TableCell): JSONContent {
+  const content = inlineChildren(cell.children).map((node) =>
+    node.type === "text" && CELL_BR_RE.test((node.text ?? "").trim())
+      ? { type: "hardBreak" }
+      : node,
+  );
+  return { type: "paragraph", content };
+}
+
 function tableToTiptap(node: Table): JSONContent {
   const rows: JSONContent[] = [];
+  let width = 0;
   node.children.forEach((row: TableRow, rowIndex: number) => {
+    width = Math.max(width, row.children.length);
     const cells: JSONContent[] = [];
     for (const cell of row.children) {
       const isHeader = rowIndex === 0;
       cells.push({
         type: isHeader ? "tableHeader" : "tableCell",
-        content: [{ type: "paragraph", content: inlineChildren(cell.children) }],
+        content: [tableCellToTiptap(cell)],
       });
     }
     rows.push({ type: "tableRow", content: cells });
   });
-  return { type: "table", content: rows };
+  // The per-column alignment spec rides on the table node (declared by the
+  // GfmTable extension in Editor.tsx) so an edited table re-serializes its
+  // `:---` delimiter row instead of dropping the alignment.
+  return { type: "table", attrs: { align: tableAlignOf(node, width) }, content: rows };
+}
+
+// Normalizes a parsed alignment spec to the table's column count (missing or
+// unknown entries are null = no alignment).
+function tableAlignOf(node: Table, width: number): Table["align"] {
+  const align: NonNullable<Table["align"]> = [];
+  for (let i = 0; i < width; i += 1) {
+    const a = node.align?.[i];
+    align.push(a === "left" || a === "center" || a === "right" ? a : null);
+  }
+  return align;
 }
 
 function inlineChildren(children: PhrasingContent[]): JSONContent[] {
@@ -721,19 +753,46 @@ function tiptapListItems(node: JSONContent): ListItem[] {
   return items;
 }
 
+// The table node's align attribute (written by tableToTiptap) back into the
+// mdast alignment spec, normalized to the table's column count.
+function tableAlignOfAttr(value: unknown, width: number): Table["align"] {
+  const align: NonNullable<Table["align"]> = [];
+  for (let i = 0; i < width; i += 1) {
+    const a = Array.isArray(value) ? value[i] : null;
+    align.push(a === "left" || a === "center" || a === "right" ? a : null);
+  }
+  return align;
+}
+
+// GFM cells hold phrasing content only. A TipTap cell may hold several blocks
+// (pasted text); GFM has no multi-line cell, so the blocks collapse to one
+// line with literal `<br>` tags between them (documented degradation, plan 06
+// §3). Hard breaks already in the content map to the same tag: a `break` node
+// would serialize to a space inside a table cell.
+function tableCellToMdast(cell: JSONContent): TableCell {
+  const out: PhrasingContent[] = [];
+  for (const block of cell.content ?? []) {
+    const inline = tiptapInline(block).map((child): PhrasingContent =>
+      child.type === "break" ? { type: "html", value: "<br>" } : child,
+    );
+    if (out.length > 0) out.push({ type: "html", value: "<br>" });
+    out.push(...inline);
+  }
+  return { type: "tableCell", children: out };
+}
+
 function tableToMdast(node: JSONContent): Table {
   const rows: TableRow[] = [];
+  let width = 0;
   for (const row of node.content ?? []) {
     const cells: TableCell[] = [];
     for (const cell of row.content ?? []) {
-      cells.push({
-        type: "tableCell",
-        children: tiptapInline(cell.content?.[0] ?? cell),
-      });
+      cells.push(tableCellToMdast(cell));
     }
+    width = Math.max(width, cells.length);
     rows.push({ type: "tableRow", children: cells });
   }
-  return { type: "table", children: rows, align: [] };
+  return { type: "table", children: rows, align: tableAlignOfAttr(node.attrs?.align, width) };
 }
 
 function tiptapBlockChildren(node: JSONContent): Array<BlockContent | DefinitionContent> {

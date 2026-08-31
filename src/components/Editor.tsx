@@ -292,6 +292,24 @@ export const AlignedBlockquote = Blockquote.extend({
   },
 });
 
+// GFM tables (plan 06 task 6.1, issue #61): column alignment has no HTML
+// form, so the converter (pm.ts) carries the per-column alignment spec on
+// the table node and serializes it back as the `:---`/`:---:`/`---:`
+// delimiter row. HTML parse/render stay inert: GFM tables only enter through
+// the markdown converter, and pasted HTML tables carry no alignment.
+export const GfmTable = Table.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      align: {
+        default: null,
+        parseHTML: () => null,
+        renderHTML: () => [],
+      },
+    };
+  },
+});
+
 // Read-only verbatim leaf for constructs the PM schema cannot represent
 // (definition lists). The clean-path pipeline owns their bytes; WYSIWYG shows
 // them as a styled, non-editable block.
@@ -698,7 +716,7 @@ export default function Editor({
       TaskItem.configure({ nested: true }),
       Subscript,
       Superscript,
-      Table.configure({ resizable: false }),
+      GfmTable.configure({ resizable: false }),
       TableRow,
       TableCell,
       TableHeader,
