@@ -370,6 +370,11 @@ function flowToTiptap(node: FlowNode, source: string): JSONContent | null {
           }
         }
       }
+      // A canonical merged/width-carrying table (plan 06 task 6.6, issue
+      // #66) parses back into a live TipTap table; any other <table> block
+      // stays opaque HTML below.
+      const merged = parseMergedTableHtml(node.value);
+      if (merged) return merged;
       return {
         type: "codeBlock",
         attrs: { language: "html" },
@@ -781,7 +786,13 @@ function tableCellToMdast(cell: JSONContent): TableCell {
   return { type: "tableCell", children: out };
 }
 
-function tableToMdast(node: JSONContent): Table {
+function tableToMdast(node: JSONContent): Table | { type: "html"; value: string } {
+  // GFM has no colspan/rowspan and cannot encode column widths: a table
+  // with merged cells or dragged column widths takes the canonical HTML
+  // form (plan 06 task 6.6, issue #66) instead of the pipe syntax.
+  if (tableNeedsHtmlForm(node)) {
+    return { type: "html", value: renderMergedTableHtml(node) };
+  }
   const rows: TableRow[] = [];
   let width = 0;
   for (const row of node.content ?? []) {
@@ -793,6 +804,333 @@ function tableToMdast(node: JSONContent): Table {
     rows.push({ type: "tableRow", children: cells });
   }
   return { type: "table", children: rows, align: tableAlignOfAttr(node.attrs?.align, width) };
+}
+
+// --- Merged + width-carrying tables (plan 06 task 6.6, issue #66) ----------
+//
+// GFM has no colspan/rowspan and cannot encode column widths, so a table
+// with merged cells or user-set column widths (a dragged divider)
+// serializes as a canonical HTML <table> block instead of GFM pipes
+// (documented degradation, plan 06 §3 scope 4/7):
+//
+//   <table>
+//   <colgroup>
+//   <col style="width: 200px; text-align: center">
+//   <col>
+//   </colgroup>
+//   <tr>
+//   <th colspan="2">A</th>
+//   <td>B</td>
+//   </tr>
+//   </table>
+//
+// One tag per line and no blank lines, so the block stays a single "html"
+// block in the block model (markdown.ts) and splices like any other block.
+// The <colgroup> carries the per-column state GFM cannot express: widths
+// (one <col style="width: Npx"> per column, a bare <col> when unset) and
+// non-left alignment (a spanning cell has no unambiguous per-column home
+// for the GFM per-column spec). Cell content is the same markdown phrasing
+// a GFM cell holds, embedded verbatim — strict GFM consumers see literal
+// markup (documented), QuillMD re-parses it through the shared inline
+// path on load. Parsing accepts the canonical shape exactly; anything else
+// stays opaque HTML (the norm-002 passthrough).
+
+// A table needs the HTML form when any cell is merged (colspan/rowspan
+// beyond one) or any column carries a user-set width (a dragged divider
+// writes the colwidth arrays; prosemirror-tables normalizes them to zero
+// for columns the user never touched, so only positive entries count).
+function tableNeedsHtmlForm(node: JSONContent): boolean {
+  for (const row of node.content ?? []) {
+    for (const cell of row.content ?? []) {
+      if (cellSpanOf(cell, "colspan") > 1 || cellSpanOf(cell, "rowspan") > 1) return true;
+      const cw = cell.attrs?.colwidth;
+      if (Array.isArray(cw) && cw.some((w) => typeof w === "number" && w > 0)) return true;
+    }
+  }
+  return false;
+}
+
+function cellSpanOf(cell: JSONContent, name: "colspan" | "rowspan"): number {
+  const v = cell.attrs?.[name];
+  return typeof v === "number" && v > 1 ? v : 1;
+}
+
+// The table's column count: the widest row in span units (every well-formed
+// row spans exactly the table width; the max guards against a ragged one).
+function tableColumnCount(node: JSONContent): number {
+  let width = 0;
+  for (const row of node.content ?? []) {
+    let n = 0;
+    for (const cell of row.content ?? []) n += cellSpanOf(cell, "colspan");
+    width = Math.max(width, n);
+  }
+  return width;
+}
+
+// The per-column widths: the first positive colwidth entry any cell reports
+// for a column (prosemirror-tables' fixTables keeps every cell's colwidth
+// consistent after a resize, so any cell answers).
+function tableColumnWidths(node: JSONContent): Array<number | null> {
+  const width = tableColumnCount(node);
+  const widths: Array<number | null> = new Array(width).fill(null);
+  for (const row of node.content ?? []) {
+    let col = 0;
+    for (const cell of row.content ?? []) {
+      const span = cellSpanOf(cell, "colspan");
+      const cw = cell.attrs?.colwidth;
+      for (let j = 0; j < span && col + j < width; j += 1) {
+        if (
+          widths[col + j] === null &&
+          Array.isArray(cw) &&
+          typeof cw[j] === "number" &&
+          cw[j] > 0
+        ) {
+          widths[col + j] = cw[j];
+        }
+        col += 1;
+      }
+    }
+  }
+  return widths;
+}
+
+// The canonical HTML block for a merged/width-carrying table: fixed tag
+// order, one tag per line, only non-default attributes, so the block is
+// byte-stable across save -> reopen -> save.
+function renderMergedTableHtml(node: JSONContent): string {
+  const width = tableColumnCount(node);
+  const align = tableAlignOfAttr(node.attrs?.align, width) ?? [];
+  const widths = tableColumnWidths(node);
+  const lines: string[] = ["<table>", "<colgroup>"];
+  for (let i = 0; i < width; i += 1) {
+    const parts: string[] = [];
+    if (widths[i] !== null) parts.push(`width: ${widths[i]}px`);
+    const a = align[i];
+    if (a === "center" || a === "right") parts.push(`text-align: ${a}`);
+    lines.push(parts.length > 0 ? `<col style="${parts.join("; ")}">` : "<col>");
+  }
+  lines.push("</colgroup>");
+  for (const row of node.content ?? []) {
+    lines.push("<tr>");
+    for (const cell of row.content ?? []) {
+      const tag = cell.type === "tableHeader" ? "th" : "td";
+      const attrs: string[] = [];
+      const colspan = cellSpanOf(cell, "colspan");
+      const rowspan = cellSpanOf(cell, "rowspan");
+      if (colspan > 1) attrs.push(`colspan="${colspan}"`);
+      if (rowspan > 1) attrs.push(`rowspan="${rowspan}"`);
+      const content = phrasingToLine(tableCellToMdast(cell).children);
+      lines.push(`<${tag}${attrs.length > 0 ? ` ${attrs.join(" ")}` : ""}>${content}</${tag}>`);
+    }
+    lines.push("</tr>");
+  }
+  lines.push("</table>");
+  return lines.join("\n");
+}
+
+// The canonical single-line markdown form of a cell's phrasing content —
+// the same content a GFM cell holds, so the embedded line re-parses through
+// the shared inline path (the serializer escapes every block-introducing
+// sequence, so the line is always one paragraph).
+function phrasingToLine(children: PhrasingContent[]): string {
+  if (children.length === 0) return "";
+  return serializeAst({
+    type: "root",
+    children: [{ type: "paragraph", children }] as RootContent[],
+  }).replace(/\n+$/, "");
+}
+
+const MERGED_COL_RE = /^<col(?: style="([^"]*)")?>$/;
+const MERGED_CELL_RE = /^<(th|td)((?: colspan="\d+"| rowspan="\d+")*)>(.*)<\/\1>$/;
+
+// The per-column style of a canonical <col> line: width (px) and/or
+// non-left text-align. The canonical emit order is width, then text-align;
+// both orders are accepted (a hand-touched table stays editable), unknown
+// keys or duplicates reject the table (it then stays opaque HTML).
+function parseColStyle(
+  style: string | undefined,
+): { width: number | null; align: "left" | "center" | "right" } | null {
+  let width: number | null = null;
+  let align: "left" | "center" | "right" = "left";
+  if (style !== undefined) {
+    for (const part of style.split(";")) {
+      const idx = part.indexOf(":");
+      if (idx === -1) return null;
+      const key = part.slice(0, idx).trim();
+      const val = part.slice(idx + 1).trim();
+      if (val === "") return null;
+      if (key === "width") {
+        if (width !== null) return null;
+        const m = /^(\d+)px$/.exec(val);
+        if (!m) return null;
+        width = Number(m[1]);
+      } else if (key === "text-align") {
+        if (val !== "left" && val !== "center" && val !== "right") return null;
+        align = val;
+      } else {
+        return null;
+      }
+    }
+  }
+  return { width, align };
+}
+
+// The colspan/rowspan of a canonical cell line's attribute string (any
+// order, at most one of each); null when an attribute is malformed or
+// duplicated.
+function mergedCellSpan(
+  attrStr: string,
+  name: "colspan" | "rowspan",
+): number | null {
+  let value: number | null = null;
+  for (const m of attrStr.matchAll(new RegExp(` ${name}="(\\d+)"`, "g"))) {
+    if (value !== null) return null;
+    value = Number(m[1]);
+  }
+  if (value !== null && value < 1) return null;
+  return value ?? 1;
+}
+
+// The phrasing content of a canonical cell line, re-parsed through the
+// shared markdown path (one line of phrasing always parses as a single
+// paragraph; anything else rejects the table).
+function cellLineToPhrasing(line: string): PhrasingContent[] | null {
+  if (line === "") return [];
+  const root = parseToAst(line);
+  if (root.children.length !== 1 || root.children[0].type !== "paragraph") return null;
+  return (root.children[0] as { children: PhrasingContent[] }).children;
+}
+
+// The TipTap table JSON for a canonical merged-table HTML block, or null
+// when the value is not the canonical shape (then it stays opaque HTML —
+// foreign <table> blocks are untouched, the norm-002 passthrough).
+export function parseMergedTableHtml(value: string): JSONContent | null {
+  const lines = value.split("\n");
+  if (lines[0] !== "<table>") return null;
+  let i = 1;
+  const cols: Array<{ width: number | null; align: "left" | "center" | "right" }> = [];
+  if (lines[i] === "<colgroup>") {
+    i += 1;
+    let sawCol = false;
+    while (lines[i] !== "</colgroup>") {
+      const m = MERGED_COL_RE.exec(lines[i] ?? "");
+      const style = m ? parseColStyle(m[1]) : null;
+      if (!m || style === null) return null;
+      cols.push(style);
+      sawCol = true;
+      i += 1;
+    }
+    if (!sawCol) return null;
+    i += 1;
+  }
+  const rows: JSONContent[] = [];
+  while (lines[i] === "<tr>") {
+    i += 1;
+    const cells: JSONContent[] = [];
+    let sawCell = false;
+    while (lines[i] !== "</tr>") {
+      const m = MERGED_CELL_RE.exec(lines[i] ?? "");
+      if (!m) return null;
+      const colspan = mergedCellSpan(m[2] ?? "", "colspan");
+      const rowspan = mergedCellSpan(m[2] ?? "", "rowspan");
+      if (colspan === null || rowspan === null) return null;
+      const phrasing = cellLineToPhrasing(m[3] ?? "");
+      if (phrasing === null) return null;
+      cells.push({
+        type: m[1] === "th" ? "tableHeader" : "tableCell",
+        attrs: { colspan, rowspan, colwidth: null },
+        // tableCellToTiptap returns the cell's single paragraph (a cell must
+        // hold block content, never bare phrasing).
+        content: [tableCellToTiptap({ type: "tableCell", children: phrasing } as TableCell)],
+      });
+      sawCell = true;
+      i += 1;
+    }
+    if (!sawCell) return null;
+    i += 1;
+    rows.push({ type: "tableRow", content: cells });
+  }
+  if (rows.length === 0 || lines[i] !== "</table>" || i + 1 !== lines.length) return null;
+
+  const height = rows.length;
+  const spanOf = (r: number, k: number): { colspan: number; rowspan: number } => {
+    const cell = (rows[r].content ?? [])[k];
+    return {
+      colspan: typeof cell?.attrs?.colspan === "number" ? cell.attrs.colspan : 1,
+      rowspan: typeof cell?.attrs?.rowspan === "number" ? cell.attrs.rowspan : 1,
+    };
+  };
+  // The column count (prosemirror-tables' findWidth): a row's own spans plus
+  // the columns its rowspanning neighbours claim from above.
+  let width = 0;
+  let hasRowSpan = false;
+  for (let r = 0; r < height; r += 1) {
+    let rowWidth = 0;
+    if (hasRowSpan) {
+      for (let j = 0; j < r; j += 1) {
+        for (let k = 0; k < (rows[j].content ?? []).length; k += 1) {
+          const { rowspan, colspan } = spanOf(j, k);
+          if (j + rowspan > r) rowWidth += colspan;
+        }
+      }
+    }
+    for (const cell of rows[r].content ?? []) {
+      rowWidth += typeof cell.attrs?.colspan === "number" ? cell.attrs.colspan : 1;
+    }
+    width = Math.max(width, rowWidth);
+    hasRowSpan =
+      hasRowSpan ||
+      (rows[r].content ?? []).some(
+        (cell) => (typeof cell.attrs?.rowspan === "number" ? cell.attrs.rowspan : 1) > 1,
+      );
+  }
+  // Which absolute columns each cell covers (rowspanning cells claim their
+  // columns in the rows below, so a row's cells tile over the unclaimed
+  // columns only — prosemirror-tables' map construction).
+  const claimed: Array<Array<boolean>> = rows.map(() => new Array<boolean>(width).fill(false));
+  const cellCols: Array<Array<Array<number>>> = [];
+  for (let r = 0; r < height; r += 1) {
+    const rowCols: Array<Array<number>> = [];
+    let col = 0;
+    for (let k = 0; k < (rows[r].content ?? []).length; k += 1) {
+      while (col < width && claimed[r][col]) col += 1;
+      const { colspan, rowspan } = spanOf(r, rowCols.length);
+      const covered: number[] = [];
+      for (let j = 0; j < colspan; j += 1) {
+        covered.push(col + j);
+        for (let h = 1; h < rowspan; h += 1) {
+          if (r + h < height) claimed[r + h][col + j] = true;
+        }
+      }
+      rowCols.push(covered);
+      col += colspan;
+    }
+    cellCols.push(rowCols);
+  }
+
+  // The per-column spec back from the <colgroup> (a missing colgroup is all
+  // unset: no widths, left alignment).
+  const align: Array<"left" | "center" | "right" | null> = [];
+  const widths: Array<number | null> = [];
+  for (let c = 0; c < width; c += 1) {
+    const a = cols[c]?.align ?? "left";
+    align.push(a === "left" ? null : a);
+    widths.push(cols[c]?.width ?? null);
+  }
+  // The per-column widths, re-attached as each cell's colwidth array (one
+  // entry per covered column, zero for a column the user never touched) so
+  // the WYSIWYG divider and the <colgroup> render the saved widths.
+  for (let r = 0; r < height; r += 1) {
+    const row = rows[r];
+    for (let k = 0; k < (row.content ?? []).length; k += 1) {
+      const cw = cellCols[r][k].map((c) => widths[c] ?? 0);
+      (row.content as JSONContent[])[k].attrs = {
+        ...(row.content as JSONContent[])[k].attrs,
+        colwidth: cw.every((w) => w === 0) ? null : cw,
+      };
+    }
+  }
+  return { type: "table", attrs: { align }, content: rows };
 }
 
 function tiptapBlockChildren(node: JSONContent): Array<BlockContent | DefinitionContent> {

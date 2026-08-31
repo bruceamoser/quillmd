@@ -312,6 +312,11 @@ export const GfmTable = Table.extend({
   },
 });
 
+// The minimum column width (px) for the resizable divider (plan 06 task
+// 6.6, issue #66): matches the CSS min-width on th/td so the WYSIWYG
+// colgroup and the stylesheet agree on the narrowest a column may drag to.
+export const TABLE_CELL_MIN_WIDTH = 40;
+
 // Read-only verbatim leaf for constructs the PM schema cannot represent
 // (definition lists). The clean-path pipeline owns their bytes; WYSIWYG shows
 // them as a styled, non-editable block.
@@ -740,7 +745,11 @@ export default function Editor({
       TaskItem.configure({ nested: true }),
       Subscript,
       Superscript,
-      GfmTable.configure({ resizable: false }),
+      // Resizable (plan 06 task 6.6, issue #66): the drag divider writes the
+      // per-column colwidth onto the cells; pm.ts serializes those as the
+      // canonical <colgroup> in the saved table and re-attaches them on
+      // load. Inert in read-only views (the plugin only activates editable).
+      GfmTable.configure({ resizable: true, cellMinWidth: TABLE_CELL_MIN_WIDTH }),
       TableRow,
       TableCell,
       TableHeader,
