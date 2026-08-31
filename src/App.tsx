@@ -40,6 +40,7 @@ import {
   ZOOM_STEP,
   clampZoom,
   dispatchEditorCommand,
+  fontMenuCommand,
   isLineSpacingValue,
   registerImageEditDialogListener,
   registerImageInsertListener,
@@ -1393,6 +1394,19 @@ export default function App() {
         stepZoom(-ZOOM_STEP);
       } else if (id === "view-zoom-reset") {
         changeZoom(ZOOM_DEFAULT);
+      } else if (id === "format-font-family-custom") {
+        // Free-text family (plan 04 §2.1): the native menu has no input
+        // field, so the pick prompts and then dispatches the same fontFamily
+        // command the toolbar's Custom… option uses.
+        const name = window.prompt("Custom font family") ?? "";
+        if (name.trim() !== "") dispatchEditorCommand("fontFamily", name);
+      } else if (id.startsWith("format-font-") || id.startsWith("format-highlight-color-")) {
+        // Format > Font submenu (plan 04 task 4.4, issue #50): every family,
+        // size, and color swatch is its own menu id; fontMenuCommand resolves
+        // it back to the (registry command, param) pair so the menu dispatches
+        // the identical commands the toolbar font cluster does.
+        const action = fontMenuCommand(id);
+        if (action) dispatchEditorCommand(action.command, action.param);
       } else if (MENU_TO_COMMAND[id]) {
         dispatchEditorCommand(MENU_TO_COMMAND[id]);
       } else if (id === "help-about") {

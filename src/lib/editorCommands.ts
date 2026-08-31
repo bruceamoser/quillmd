@@ -295,6 +295,54 @@ export const FONT_SIZES: readonly number[] = [
 // The family select's free-text option value (not a real family name).
 export const FONT_FAMILY_CUSTOM = "__custom__";
 
+// The family-name slug used in the format-font-family-<slug> menu ids
+// (plan 04 task 4.4, issue #50): lowercase, every run of non-alphanumerics
+// collapsed to a single "-". Must stay byte-identical to family_slug in
+// src-tauri/src/menu.rs, which derives the ids from the same family list.
+export function fontFamilySlug(family: string): string {
+  return family
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "");
+}
+
+// Format > Font submenu ids (plan 04 task 4.4, issue #50). The native menu
+// carries no parameters, so every family, size, and color swatch is its own
+// menu id; this maps an id back to the (registry command, param) pair the
+// toolbar font cluster dispatches, so the menu, the toolbar, and the (P3)
+// context menu all run the identical commands. Returns null for ids that are
+// not Font submenu picks — including "format-font-family-custom" (the prompt
+// is owned by the dispatching surface) and anything off the curated lists.
+export function fontMenuCommand(
+  id: string,
+): { command: EditorCommandId; param: EditorCommandParam } | null {
+  if (id === "format-font-family-normal") return { command: "fontFamily", param: null };
+  if (id.startsWith("format-font-family-")) {
+    const slug = id.slice("format-font-family-".length);
+    const family = FONT_FAMILIES.find((f) => fontFamilySlug(f) === slug);
+    return family ? { command: "fontFamily", param: family } : null;
+  }
+  if (id === "format-font-size-normal") return { command: "fontSize", param: null };
+  if (id.startsWith("format-font-size-")) {
+    const size = Number(id.slice("format-font-size-".length));
+    return Number.isInteger(size) && size > 0 ? { command: "fontSize", param: size } : null;
+  }
+  if (id === "format-font-color-auto") return { command: "fontColor", param: null };
+  if (id.startsWith("format-font-color-")) {
+    const color = `#${id.slice("format-font-color-".length)}`;
+    return normalizeColor(color) ? { command: "fontColor", param: color } : null;
+  }
+  if (id === "format-highlight-color-auto") return { command: "highlightColor", param: null };
+  if (id.startsWith("format-highlight-color-")) {
+    const color = `#${id.slice("format-highlight-color-".length)}`;
+    return normalizeColor(color) ? { command: "highlightColor", param: color } : null;
+  }
+  if (id === "format-font-underline") return { command: "underline", param: null };
+  if (id === "format-font-clear") return { command: "clearFormatting", param: null };
+  return null;
+}
+
 // Runs a font attribute command (fontFamily / fontSize): `null` is "Normal"
 // (clear the attribute back to the document default). A family is a
 // non-empty (trimmed) name; a size is a positive point count given as a
