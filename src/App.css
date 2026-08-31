@@ -1984,6 +1984,22 @@ button.quillmd-status-spellcheck:hover {
   padding: 0;
 }
 
+/* Mermaid diagrams in preview (plan 11 task 11.4, issue #103): the shared
+   render service's SVG replaces the fence in place. Wide diagrams fit by
+   mermaid's width="100%" viewBox scaling; overflow-x is the scroll
+   fallback (same behavior as the WYSIWYG card). A failed render leaves the
+   fence as a plain code block, styled by the pre/code rules above. */
+.quillmd-preview-content .quillmd-mermaid-preview {
+  margin: 0.8em 0;
+  overflow-x: auto;
+}
+
+.quillmd-preview-content .quillmd-mermaid-preview svg {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+}
+
 .quillmd-preview-content blockquote {
   border-left: 3px solid var(--accent);
   margin-left: 0;

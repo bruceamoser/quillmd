@@ -1941,7 +1941,10 @@ export default function App() {
         );
         break;
       case "preview":
-        editorView = <PreviewView value={currentText} />;
+        // The theme drives the mermaid SVGs (plan 11 task 11.4, issue #103):
+        // preview fences render through the shared render service with the
+        // mapped light/dark theme, like the WYSIWYG cards.
+        editorView = <PreviewView value={currentText} theme={activeTheme} />;
         break;
       default:
         editorView = (
