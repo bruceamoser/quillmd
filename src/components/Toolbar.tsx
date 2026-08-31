@@ -82,6 +82,22 @@ const GLYPHS: Partial<Record<EditorCommandId, string>> = {
   alignLeft: "L",
   alignCenter: "C",
   alignRight: "R",
+  // Table editing commands (plan 06 task 6.2, issue #62): rendered by the
+  // floating table toolbar (task 6.4, issue #64). The cell-alignment glyphs
+  // mirror the block-alignment group — same meaning, table context.
+  rowInsertAbove: "Row \u2191",
+  rowInsertBelow: "Row \u2193",
+  rowDelete: "Row \u2715",
+  colInsertLeft: "Col \u2190",
+  colInsertRight: "Col \u2192",
+  colDelete: "Col \u2715",
+  cellAlignLeft: "L",
+  cellAlignCenter: "C",
+  cellAlignRight: "R",
+  headerRowToggle: "Hdr",
+  cellMerge: "Merge",
+  cellClear: "Clear",
+  tableDelete: "\u2715 Table",
   indent: "\u21E5",
   outdent: "\u21E4",
 };
@@ -90,6 +106,39 @@ function title(cmdId: EditorCommandId): string {
   const cmd = CMD.get(cmdId);
   if (!cmd) return "";
   return cmd.shortcut ? `${cmd.label} (${cmd.shortcut})` : cmd.label;
+}
+
+// The shared toolbar button renderer (plan 06 task 6.4, issue #64): the
+// registry-driven button the main toolbar and the floating table toolbar
+// both render — glyph, title (label + shortcut), and the active state all
+// come from the command registry, so every surface shows the same control
+// for the same command and dispatches the same command. With keepSelection
+// (the floating table toolbar) the mousedown is swallowed so the editor
+// keeps its selection — a CellSelection included — while the click runs the
+// command.
+export function ToolbarButton({
+  editor,
+  id,
+  keepSelection = false,
+  disabled = false,
+}: {
+  editor: CoreEditor;
+  id: EditorCommandId;
+  keepSelection?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      title={title(id)}
+      className={editorCommandActive(editor, id) ? "quillmd-toolbar-active" : ""}
+      disabled={disabled}
+      onMouseDown={keepSelection ? (e) => e.preventDefault() : undefined}
+      onClick={() => runEditorCommand(editor, id)}
+    >
+      {GLYPHS[id] ?? id}
+    </button>
+  );
 }
 
 export default function Toolbar({ editor }: ToolbarProps) {
@@ -154,16 +203,10 @@ export default function Toolbar({ editor }: ToolbarProps) {
     editorCommandActive(editor, id),
   );
 
+  // The shared renderer (ToolbarButton) — the same control the floating
+  // table toolbar (plan 06 task 6.4, issue #64) uses.
   const renderButton = (id: EditorCommandId) => (
-    <button
-      key={id}
-      type="button"
-      title={title(id)}
-      className={editorCommandActive(editor, id) ? "quillmd-toolbar-active" : ""}
-      onClick={() => runEditorCommand(editor, id)}
-    >
-      {GLYPHS[id] ?? id}
-    </button>
+    <ToolbarButton key={id} editor={editor} id={id} />
   );
 
   // Font cluster (plan 04 task 4.3, issue #49): the family and size selects

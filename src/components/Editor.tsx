@@ -43,6 +43,7 @@ import { DecorationSet } from "@tiptap/pm/view";
 import type { EditorView } from "@tiptap/pm/view";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import Toolbar from "./Toolbar";
+import TableToolbar from "./TableToolbar";
 
 // Strikethrough is bound to Ctrl+Shift+X per spec §2.6 (the default Mod-Shift-s
 // collides with Save As).
@@ -892,6 +893,10 @@ export default function Editor({
           <div className="quillmd-placeholder">{placeholder}</div>
         )}
         <EditorContent editor={editor} />
+        {/* Floating table toolbar (plan 06 task 6.4, issue #64): rendered
+            inside the scroll container so it tracks the table in document
+            space; shows only while the selection is inside a table. */}
+        {!readOnly && <TableToolbar editor={editor} />}
       </div>
       {!readOnly && slash && (
         <div
