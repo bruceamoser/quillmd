@@ -41,6 +41,7 @@
     "@uiw/react-codemirror": "^4.25.11",
     "mdast-util-gfm": "^3.1.0",
     "mdast-util-to-markdown": "^2.1.2",
+    "mermaid": "^11.17.2",
     "micromark": "^4.0.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
