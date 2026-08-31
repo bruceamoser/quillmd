@@ -1936,6 +1936,7 @@ export default function App() {
             value={currentText}
             onChange={setActiveText}
             settings={activeDoc.settings}
+            theme={activeTheme}
           />
         );
         break;
@@ -1950,6 +1951,7 @@ export default function App() {
             settings={activeDoc.settings}
             missingImages={missingImages}
             onReLinkImage={stableReLinkImage}
+            theme={activeTheme}
           />
         );
         break;
