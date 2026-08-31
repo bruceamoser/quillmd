@@ -6,11 +6,15 @@ import { javascript } from "@codemirror/lang-javascript";
 import { css } from "@codemirror/lang-css";
 import { LanguageDescription } from "@codemirror/language";
 import { registerSourceFindView, sourceFindExtensions } from "../lib/sourceFind";
+import { mermaidCodeLanguage } from "../lib/mermaidHighlight";
 
 const codeLanguages: LanguageDescription[] = [
   LanguageDescription.of({ name: "html", support: html(), load: async () => html() }),
   LanguageDescription.of({ name: "javascript", support: javascript(), load: async () => javascript() }),
   LanguageDescription.of({ name: "css", support: css(), load: async () => css() }),
+  // Mermaid (plan 11 task 11.4, issue #103): lightweight keyword highlight
+  // for ```mermaid fences — the fence body is colored in place.
+  mermaidCodeLanguage,
 ];
 
 interface SourceViewProps {

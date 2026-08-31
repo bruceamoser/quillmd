@@ -1,10 +1,12 @@
-import { useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import remarkRehype from "remark-rehype";
 import rehypeStringify from "rehype-stringify";
 import { middleClickLinkHref, openLinkUrl } from "../lib/links";
+import { renderMermaid } from "../lib/mermaidRender";
+import type { ThemeId } from "../lib/theme";
 
 function markdownToHtml(markdown: string): string {
   const file = unified()
@@ -18,15 +20,97 @@ function markdownToHtml(markdown: string): string {
 
 interface PreviewViewProps {
   value: string;
+  // The active document theme (plan 11 task 11.4, issue #103): mermaid
+  // fences render with the mapped light/dark mermaid theme, the same mapping
+  // the WYSIWYG card uses (plan 11 AC3 — preview re-renders on theme switch).
+  theme?: ThemeId;
 }
 
-export default function PreviewView({ value }: PreviewViewProps) {
+export default function PreviewView({ value, theme = "quill" }: PreviewViewProps) {
   const html = useMemo(() => markdownToHtml(value), [value]);
+  const articleRef = useRef<HTMLElement | null>(null);
+  // The diagram source of every rendered holder. The holder replaces the
+  // fence in the DOM, so a later pass (a theme switch on the same document)
+  // needs the source back to re-render it. The map lives in a ref: it
+  // survives re-renders, and its entries are collected with their holders
+  // when the document HTML is replaced.
+  const holderSources = useRef(new WeakMap<HTMLElement, string>());
+  // Bumped on every render pass: in-flight renders from a superseded pass
+  // (doc or theme changed) are dropped, so a stale SVG can never land on the
+  // fresh document.
+  const renderSeq = useRef(0);
+
+  // The document HTML is applied by hand, and only when it changes (value).
+  // dangerouslySetInnerHTML would re-apply on every re-render — including a
+  // theme-only re-render — wiping the mermaid holders and forcing a full
+  // re-render (a visible flicker). Applying it only on value changes lets the
+  // holders persist so a theme switch re-renders them in place. A layout
+  // effect (not a passive one) keeps the content present before first paint,
+  // matching the original dangerouslySetInnerHTML timing.
+  useLayoutEffect(() => {
+    const article = articleRef.current;
+    if (article) article.innerHTML = html;
+  }, [html]);
+
+  // Mermaid fences (plan 11 task 11.4, issue #103): remark/rehype emit a
+  // plain <pre><code class="language-mermaid">. Once the HTML is in the DOM,
+  // each fence renders through the shared render service — the same one the
+  // WYSIWYG card and the PNG export use — and the fence is swapped in place
+  // for the SVG (a view artifact; the document bytes are never touched). A
+  // failed render leaves the fence as plain code: the source stays visible
+  // and the preview never breaks. Already-rendered holders re-render on a
+  // theme switch, so the preview follows the mapped light/dark theme.
+  useEffect(() => {
+    const article = articleRef.current;
+    if (!article) return;
+    // Bump before collecting jobs so any in-flight render from a superseded
+    // pass is dropped even when this pass has nothing to do.
+    const seq = ++renderSeq.current;
+    const sources = holderSources.current;
+    const jobs: { target: HTMLElement; source: string }[] = [];
+    for (const code of Array.from(
+      article.querySelectorAll<HTMLElement>("pre > code.language-mermaid"),
+    )) {
+      const source = code.textContent ?? "";
+      jobs.push({ target: code, source });
+    }
+    for (const holder of Array.from(
+      article.querySelectorAll<HTMLElement>(".quillmd-mermaid-preview"),
+    )) {
+      const source = sources.get(holder);
+      if (source !== undefined) jobs.push({ target: holder, source });
+    }
+    if (jobs.length === 0) return;
+    for (const { target, source } of jobs) {
+      void renderMermaid(source, theme).then((result) => {
+        if (seq !== renderSeq.current) return;
+        if (result.svg === null) {
+          // Error: keep the fence as plain code (the source stays visible).
+          return;
+        }
+        if (target.classList.contains("quillmd-mermaid-preview")) {
+          if (article.contains(target)) target.innerHTML = result.svg;
+          return;
+        }
+        const pre = target.parentElement;
+        if (pre?.tagName !== "PRE" || !article.contains(pre)) return;
+        const holder = document.createElement("div");
+        holder.className = "quillmd-mermaid-preview";
+        holder.innerHTML = result.svg;
+        sources.set(holder, source);
+        pre.replaceWith(holder);
+      });
+    }
+  }, [html, theme]);
+
   return (
     <div className="quillmd-preview">
       <article
+        ref={articleRef}
         className="quillmd-preview-content"
-        dangerouslySetInnerHTML={{ __html: html }}
+        // The HTML is applied in the effect above (only on value changes), so
+        // the mermaid holders added to this subtree persist across theme-only
+        // re-renders and re-render in place.
         // Middle-click on a link (plan 08 task 8.5, issue #80, AC7): open it
         // through plugin-opener (system browser for http/https, OS handler
         // for file://) instead of the webview's default navigation.
