@@ -19,6 +19,7 @@ import {
 } from "./editorFont";
 
 export type EditorCommandId =
+  | "paragraph"
   | "h1"
   | "h2"
   | "h3"
@@ -585,6 +586,33 @@ function inList(editor: CoreEditor): boolean {
 }
 
 export const EDITOR_COMMANDS: EditorCommand[] = [
+  {
+    id: "paragraph",
+    label: "Paragraph",
+    // Plan 05 task 5.1 (issue #54): the styles registry needs a Normal-text
+    // command ("Normal" / "No Spacing" styles). Word's "Normal" returns the
+    // block to a plain paragraph, lifting out of a list item or one quote
+    // level first — setParagraph alone cannot convert a list item's inner
+    // paragraph. Only the applicable lift variant is chained, and the result
+    // is the document comparison (same as runListSinkOrLift): chain().run()
+    // ANDs the per-command results, and a lift + setParagraph pair can report
+    // false even though the document changed.
+    run: (editor) => {
+      const before = editor.state.doc;
+      const chain = editor.chain().focus();
+      if (editor.isActive("taskItem")) {
+        chain.liftListItem("taskItem");
+      } else if (editor.isActive("listItem")) {
+        chain.liftListItem("listItem");
+      }
+      if (editor.isActive("blockquote")) {
+        chain.lift("blockquote");
+      }
+      chain.setParagraph().run();
+      return !before.eq(editor.state.doc);
+    },
+    active: (editor) => editor.isActive("paragraph"),
+  },
   headingCmd(1),
   headingCmd(2),
   headingCmd(3),
