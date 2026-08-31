@@ -111,6 +111,15 @@
     #                       editorCommands.ts, and the Toolbar rendering the
     #                       family + size selects as the font cluster next to the
     #                       color/highlight pickers
+    #           p2-font-menu -> plan 04 task 4.4 acceptance gate (issue #50): the
+    #                       Format > Font submenu (family/size/color/highlight/
+    #                       underline/clear) in menu.rs with per-pick menu ids,
+    #                       the fontMenuCommand id -> (registry command, param)
+    #                       resolver + fontFamilySlug in editorCommands.ts (the
+    #                       Rust family_slug contract), App.tsx routing the ids
+    #                       through the shared registry (incl. the Custom…
+    #                       prompt), and the fontmenu.test.tsx AC6 suite presence
+    #                       (menu path vs toolbar path document text)
     #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -1897,6 +1906,78 @@ test_fonttoolbar_suites_present() {
     fi
 }
 
+# --- p2-font-menu: Format > Font submenu (issue #50, plan 04 task 4.4) ----------
+# The pick behavior (id -> (command, param) resolution, the menu path vs
+# toolbar path document text parity per plan 04 AC6, the Custom… prompt flow,
+# and the menu-event e2e through the full App) is covered by the vitest suite
+# (src/lib/__tests__/fontmenu.test.tsx); this section checks the wiring the
+# GUI driver cannot reach headlessly: the Format > Font submenu in menu.rs
+# (per-pick menu ids, no accelerator on the submenu Underline), the
+# fontMenuCommand + fontFamilySlug resolvers in editorCommands.ts, and the
+# App.tsx routing of the ids through the shared registry.
+test_fontmenu_submenu_wiring() {
+    note "font-menu Format > Font submenu (family/size/color/highlight/underline/clear)"
+    if grep -q 'SubmenuBuilder::new(app, "Font")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'SubmenuBuilder::new(app, "Font family")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'SubmenuBuilder::new(app, "Font size")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'SubmenuBuilder::new(app, "Font color")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'SubmenuBuilder::new(app, "Highlight color")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"format-font-family-normal"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"format-font-family-custom"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"format-font-size-normal"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"format-font-color-auto"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"format-highlight-color-auto"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"format-font-underline"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"format-font-clear"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "format-font-underline", "Underline", true, None::<&str>)' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '.item(&font)' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "font-menu Format > Font submenu (family/size/color/highlight/underline/clear)"
+    else
+        fail "font-menu Format > Font submenu (family/size/color/highlight/underline/clear)"
+    fi
+}
+test_fontmenu_resolvers() {
+    note "font-menu fontMenuCommand + fontFamilySlug resolvers in editorCommands.ts"
+    if grep -q 'export function fontFamilySlug' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export function fontMenuCommand' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'id === "format-font-family-normal"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'id === "format-font-size-normal"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'id === "format-font-color-auto"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'id === "format-highlight-color-auto"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'id === "format-font-underline"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'id === "format-font-clear"' "$ROOT/src/lib/editorCommands.ts"; then
+        pass "font-menu fontMenuCommand + fontFamilySlug resolvers in editorCommands.ts"
+    else
+        fail "font-menu fontMenuCommand + fontFamilySlug resolvers in editorCommands.ts"
+    fi
+}
+test_fontmenu_app_routing() {
+    note "font-menu App.tsx routes the Font submenu ids through the shared registry"
+    if grep -q 'id.startsWith("format-font-")' "$ROOT/src/App.tsx" \
+        && grep -q 'id.startsWith("format-highlight-color-")' "$ROOT/src/App.tsx" \
+        && grep -q 'dispatchEditorCommand(action.command, action.param)' "$ROOT/src/App.tsx" \
+        && grep -q 'id === "format-font-family-custom"' "$ROOT/src/App.tsx" \
+        && grep -q 'window.prompt("Custom font family")' "$ROOT/src/App.tsx" \
+        && grep -q 'dispatchEditorCommand("fontFamily", name)' "$ROOT/src/App.tsx"; then
+        pass "font-menu App.tsx routes the Font submenu ids through the shared registry"
+    else
+        fail "font-menu App.tsx routes the Font submenu ids through the shared registry"
+    fi
+}
+test_fontmenu_suites_present() {
+    note "font-menu vitest suite: id resolution + Rust/TS list sync + AC6 parity"
+    if [ -f "$ROOT/src/lib/__tests__/fontmenu.test.tsx" ] \
+        && grep -q 'maps every curated family to its name via the slug' "$ROOT/src/lib/__tests__/fontmenu.test.tsx" \
+        && grep -q 'mirrors the frontend family/size/color lists (menu offers the same picks)' "$ROOT/src/lib/__tests__/fontmenu.test.tsx" \
+        && grep -q 'every menu id dispatches the same registry command the toolbar does' "$ROOT/src/lib/__tests__/fontmenu.test.tsx" \
+        && grep -q 'a family menu pick writes the same span the toolbar pick does (AC6)' "$ROOT/src/lib/__tests__/fontmenu.test.tsx" \
+        && grep -q 'Custom… prompts for a free-text family and applies it (AC6)' "$ROOT/src/lib/__tests__/fontmenu.test.tsx"; then
+        pass "font-menu vitest suite: id resolution + Rust/TS list sync + AC6 parity"
+    else
+        fail "font-menu vitest suite: id resolution + Rust/TS list sync + AC6 parity"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -2083,6 +2164,12 @@ case "$SUBSET" in
         test_fonttoolbar_toolbar_wiring
         test_fonttoolbar_suites_present
         ;;
+    p2-font-menu)
+        test_fontmenu_submenu_wiring
+        test_fontmenu_resolvers
+        test_fontmenu_app_routing
+        test_fontmenu_suites_present
+        ;;
     shell)
         test_shell_new_bundled
         test_shell_new_menu_wiring
@@ -2236,9 +2323,13 @@ case "$SUBSET" in
         test_fonttoolbar_registry_commands
         test_fonttoolbar_toolbar_wiring
         test_fonttoolbar_suites_present
+        test_fontmenu_submenu_wiring
+        test_fontmenu_resolvers
+        test_fontmenu_app_routing
+        test_fontmenu_suites_present
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac

@@ -72,6 +72,60 @@ pub const TEMPLATES: &[(&str, &str)] = &[
     ("proposal-skeleton", "Proposal Skeleton"),
 ];
 
+// Font submenu lists (plan 04 task 4.4, issue #50). These mirror the
+// frontend constants — src/lib/editorCommands.ts FONT_FAMILIES / FONT_SIZES
+// and src/lib/colors.ts COLOR_PALETTE — so the native menu offers exactly the
+// same families, sizes, and swatches the toolbar font cluster does; the
+// vitest suite (src/lib/__tests__/fontmenu.test.tsx) asserts the two stay in
+// sync, the same contract as TEMPLATES above. The colors are the palette
+// hex digits without the leading "#"; the menu ids carry the bare digits and
+// the frontend re-adds the "#" when it dispatches the color command.
+pub const FONT_FAMILIES: &[&str] = &[
+    "Arial",
+    "Arial Black",
+    "Book Antiqua",
+    "Brush Script MT",
+    "Calibri",
+    "Cambria",
+    "Century Gothic",
+    "Comic Sans MS",
+    "Consolas",
+    "Courier New",
+    "Franklin Gothic Medium",
+    "Garamond",
+    "Georgia",
+    "Impact",
+    "Lucida Console",
+    "MS Gothic",
+    "MS Mincho",
+    "Palatino Linotype",
+    "Segoe UI",
+    "Tahoma",
+    "Times New Roman",
+    "Trebuchet MS",
+    "Verdana",
+];
+pub const FONT_SIZES: &[u8] = &[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48];
+pub const FONT_COLORS: &[&str] = &[
+    "000000", "7f0000", "9c5700", "7f6000", "375623", "1f4e79",
+    "595959", "c00000", "ed7d31", "ffc000", "70ad47", "4472c4",
+    "a6a6a6", "ff6b6b", "f4b183", "ffd966", "a9d18e", "9dc3e6",
+    "d9d9d9", "ffc7ce", "fbe2d5", "fff2cc", "e2efda", "ddebf7",
+];
+
+// The family-name slug used in the format-font-family-<slug> menu ids:
+// lowercase, every run of non-alphanumerics collapsed to a single "-". Must
+// stay byte-identical to fontFamilySlug in src/lib/editorCommands.ts, which
+// resolves the id back to the family name on the frontend.
+fn family_slug(family: &str) -> String {
+    let mapped: String = family
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    mapped.split('-').filter(|s| !s.is_empty()).collect::<Vec<_>>().join("-")
+}
+
 fn build_file_menu<R: Runtime>(
     app: &AppHandle<R>,
     recent: &[String],
@@ -288,15 +342,66 @@ fn build_format_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
     let outdent = MenuItem::with_id(app, "format-outdent", "Outdent", true, Some("Ctrl+BracketLeft"))?;
 
     // Word parity (plan 02 §2.5): the Paragraph group carries alignment plus
-    // indent/outdent (list nesting and quote levels) on Ctrl+]/Ctrl+[.
+    // indent/outdent (list nesting and quote levels) on Ctrl+]/Ctrl+['.
     let mut paragraph = SubmenuBuilder::new(app, "Paragraph");
     paragraph = paragraph.text("format-align-left", "Align Left");
     paragraph = paragraph.text("format-align-center", "Align Center");
     paragraph = paragraph.text("format-align-right", "Align Right");
     let paragraph = paragraph.separator().item(&indent).item(&outdent).build()?;
 
+    // Font submenu (plan 04 task 4.4, issue #50): family list, size list,
+    // color, highlight, underline, and clear. The native menu carries no
+    // parameters, so every family, size, and swatch is its own menu id;
+    // App.tsx resolves the ids back to (registry command, param) through
+    // fontMenuCommand in src/lib/editorCommands.ts and dispatches the same
+    // commands the toolbar font cluster uses. "Custom…" prompts on the
+    // frontend; the submenu Underline carries no accelerator (Ctrl+U stays
+    // on the top-level item).
+    let mut family = SubmenuBuilder::new(app, "Font family");
+    family = family.text("format-font-family-normal", "Normal (document default)");
+    for name in FONT_FAMILIES {
+        family = family.text(format!("format-font-family-{}", family_slug(name)), *name);
+    }
+    family = family.text("format-font-family-custom", "Custom\u{2026}");
+    let family = family.build()?;
+
+    let mut size = SubmenuBuilder::new(app, "Font size");
+    size = size.text("format-font-size-normal", "Normal");
+    for n in FONT_SIZES {
+        size = size.text(format!("format-font-size-{n}"), format!("{n}"));
+    }
+    let size = size.build()?;
+
+    let mut font_color = SubmenuBuilder::new(app, "Font color");
+    font_color = font_color.text("format-font-color-auto", "Auto");
+    for color in FONT_COLORS {
+        font_color = font_color.text(format!("format-font-color-{color}"), format!("#{color}"));
+    }
+    let font_color = font_color.build()?;
+
+    let mut highlight_color = SubmenuBuilder::new(app, "Highlight color");
+    highlight_color = highlight_color.text("format-highlight-color-auto", "Auto");
+    for color in FONT_COLORS {
+        highlight_color =
+            highlight_color.text(format!("format-highlight-color-{color}"), format!("#{color}"));
+    }
+    let highlight_color = highlight_color.build()?;
+
+    let font_underline =
+        MenuItem::with_id(app, "format-font-underline", "Underline", true, None::<&str>)?;
+    let font_clear =
+        MenuItem::with_id(app, "format-font-clear", "Clear Formatting", true, None::<&str>)?;
+
+    let font = SubmenuBuilder::new(app, "Font")
+        .items(&[&family, &size, &font_color, &highlight_color])
+        .separator()
+        .items(&[&font_underline, &font_clear])
+        .build()?;
+
     let format = SubmenuBuilder::new(app, "Format")
         .items(&[&bold, &italic, &underline, &strike, &code, &highlight, &subscript, &superscript])
+        .separator()
+        .item(&font)
         .separator()
         .item(&paragraph)
         .separator()
@@ -313,4 +418,48 @@ fn build_help_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> 
         .items(&[&about, &shortcuts])
         .build()?;
     Ok(help)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The format-font-family-<slug> ids must be unique, otherwise two menu
+    // items would emit the same menu-event id and the frontend could not tell
+    // the families apart.
+    #[test]
+    fn font_family_slugs_are_unique_and_nonempty() {
+        let mut seen = std::collections::HashSet::new();
+        for family in FONT_FAMILIES {
+            let slug = family_slug(family);
+            assert!(!slug.is_empty(), "empty slug for {family}");
+            assert!(seen.insert(slug.clone()), "duplicate slug {slug}");
+        }
+    }
+
+    // The frontend mirrors these lists (fontmenu.test.tsx asserts the sync);
+    // a duplicate entry would produce a duplicate menu id or a dead swatch.
+    #[test]
+    fn font_menu_lists_are_nonempty_and_unique() {
+        assert!(!FONT_FAMILIES.is_empty());
+        let mut sizes = FONT_SIZES.to_vec();
+        sizes.sort_unstable();
+        sizes.dedup();
+        assert_eq!(sizes.len(), FONT_SIZES.len());
+        let mut colors = FONT_COLORS.to_vec();
+        colors.sort_unstable();
+        colors.dedup();
+        assert_eq!(colors.len(), FONT_COLORS.len());
+        for color in FONT_COLORS {
+            assert_eq!(color.len(), 6, "swatch {color} is not 6 hex digits");
+            assert!(color.bytes().all(|b| b.is_ascii_hexdigit()));
+        }
+    }
+
+    #[test]
+    fn family_slug_lowercases_and_collapses_separators() {
+        assert_eq!(family_slug("Comic Sans MS"), "comic-sans-ms");
+        assert_eq!(family_slug("Arial Black"), "arial-black");
+        assert_eq!(family_slug("Georgia"), "georgia");
+    }
 }
