@@ -51,6 +51,8 @@ export type EditorCommandId =
   | "zoom"
   | "spellcheck"
   | "pasteAsText"
+  | "fontFamily"
+  | "fontSize"
   | "fontColor"
   | "highlightColor"
   | "undo"
@@ -60,9 +62,12 @@ export type EditorCommandId =
 // Parameters for the view-level commands that take one. `lineSpacing` takes a
 // spacing preset, `zoom` takes a step (or an explicit percent), `pasteAsText`
 // takes the plain-text payload (the clipboard read is owned by the caller:
-// menu events, paste key handlers, tests), and the color commands
-// (`fontColor` / `highlightColor`) take the picked color — a hex string for a
-// swatch or custom color, or `null` for "auto" (inherit / no color).
+// menu events, paste key handlers, tests), the font attribute commands
+// (`fontFamily` / `fontSize`) take the picked value (a family name, or a
+// point size as a number or "Npt" string) or `null` for "Normal" (the
+// document default), and the color commands (`fontColor` / `highlightColor`)
+// take the picked color — a hex string for a swatch or custom color, or
+// `null` for "auto" (inherit / no color).
 export type EditorCommandParam =
   | LineSpacingValue
   | ZoomParam
@@ -230,6 +235,97 @@ export function fontColorOf(editor: CoreEditor): string | null {
 export function highlightColorOf(editor: CoreEditor): string | null {
   const color = editor.getAttributes("highlight").color;
   return typeof color === "string" && color !== "" ? color : null;
+}
+
+// --- font attribute command helpers (plan 04 task 4.3, issue #49) ---------
+//
+// The toolbar's family and size selects dispatch the fontFamily / fontSize
+// commands below. These helpers read the attributes at the selection so a
+// select can show the current value; they report null for "Normal" (the
+// document default, no attribute).
+
+// The font family of the mark at the selection, or null when the selection
+// carries no font family (Normal / document default).
+export function fontFamilyOf(editor: CoreEditor): string | null {
+  const family = editor.getAttributes("fontFamily").fontFamily;
+  return typeof family === "string" && family !== "" ? family : null;
+}
+
+// The font size of the mark at the selection in its canonical "Npt" form, or
+// null when the selection carries no font size (Normal / inherit).
+export function fontSizeOf(editor: CoreEditor): string | null {
+  const size = editor.getAttributes("fontSize").fontSize;
+  return typeof size === "string" && size !== "" ? size : null;
+}
+
+// The curated cross-platform family list (plan 04 §2.1): ~24 families that
+// ship with Windows, macOS, and Linux out of the box. The select offers this
+// list plus "Normal" (clear) and "Custom…" (free text).
+export const FONT_FAMILIES: readonly string[] = [
+  "Arial",
+  "Arial Black",
+  "Book Antiqua",
+  "Brush Script MT",
+  "Calibri",
+  "Cambria",
+  "Century Gothic",
+  "Comic Sans MS",
+  "Consolas",
+  "Courier New",
+  "Franklin Gothic Medium",
+  "Garamond",
+  "Georgia",
+  "Impact",
+  "Lucida Console",
+  "MS Gothic",
+  "MS Mincho",
+  "Palatino Linotype",
+  "Segoe UI",
+  "Tahoma",
+  "Times New Roman",
+  "Trebuchet MS",
+  "Verdana",
+];
+
+// Word's standard point sizes (plan 04 §2.2), rendered as `font-size: Npt`.
+export const FONT_SIZES: readonly number[] = [
+  8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48,
+];
+
+// The family select's free-text option value (not a real family name).
+export const FONT_FAMILY_CUSTOM = "__custom__";
+
+// Runs a font attribute command (fontFamily / fontSize): `null` is "Normal"
+// (clear the attribute back to the document default). A family is a
+// non-empty (trimmed) name; a size is a positive point count given as a
+// number or an "N"/"Npt" string, canonicalized to "Npt".
+function runFontAttrCommand(
+  editor: CoreEditor,
+  mark: "fontFamily" | "fontSize",
+  param: EditorCommandParam | undefined,
+): boolean {
+  if (param === null) {
+    return editor.chain().focus().unsetMark(mark).run();
+  }
+  let value: string | null = null;
+  if (typeof param === "number" && Number.isInteger(param) && param > 0) {
+    value = `${param}pt`;
+  } else if (typeof param === "string") {
+    const trimmed = param.trim();
+    if (trimmed === "") return false;
+    if (mark === "fontSize") {
+      // A point count given as an "Npt" string or a bare count ("14").
+      const size = /^(\d+)(pt)?$/.exec(trimmed);
+      if (!size) return false;
+      const n = Number(size[1]);
+      if (!Number.isInteger(n) || n <= 0) return false;
+      value = `${n}pt`;
+    } else {
+      value = trimmed;
+    }
+  }
+  if (value === null) return false;
+  return editor.chain().focus().setMark(mark, { [mark]: value }).run();
 }
 
 // Runs a color command: `null` is "auto" (clear the color), a string is a
@@ -471,6 +567,24 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
     label: "Highlight",
     run: (editor) => editor.chain().focus().toggleHighlight().run(),
     active: (editor) => editor.isActive("highlight"),
+  },
+  {
+    id: "fontFamily",
+    label: "Font family",
+    // Plan 04 task 4.3 (issue #49): the family select's pick. A family name
+    // sets the fontFamily mark (the quillmd-font span's font-family
+    // attribute); "Normal" (null) clears it back to the document default.
+    run: (editor, param) => runFontAttrCommand(editor, "fontFamily", param),
+    active: (editor) => editor.isActive("fontFamily"),
+  },
+  {
+    id: "fontSize",
+    label: "Font size",
+    // Plan 04 task 4.3 (issue #49): the size select's pick. A point count
+    // (number or "Npt" string) sets the fontSize mark (font-size: Npt);
+    // "Normal" (null) clears it back to inherit.
+    run: (editor, param) => runFontAttrCommand(editor, "fontSize", param),
+    active: (editor) => editor.isActive("fontSize"),
   },
   {
     id: "fontColor",

@@ -770,7 +770,10 @@ button.quillmd-status-spellcheck:hover {
   cursor: pointer;
 }
 
-.quillmd-heading-select {
+/* The paragraph (heading) select and the font cluster's family/size selects
+   (plan 04 task 4.3, issue #49) share one compact <select> look. */
+.quillmd-heading-select,
+.quillmd-font-select {
   height: 28px;
   border: 1px solid var(--border);
   background: var(--bg-elevated);
@@ -778,6 +781,12 @@ button.quillmd-status-spellcheck:hover {
   border-radius: 4px;
   font-size: 13px;
   padding: 0 4px;
+}
+
+/* Family names run long ("Franklin Gothic Medium"); clip rather than let
+   the select blow out the toolbar row. */
+.quillmd-font-select {
+  max-width: 160px;
 }
 
 /* --- WYSIWYG editor body ------------------------------------------------- */
