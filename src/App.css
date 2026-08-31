@@ -716,6 +716,56 @@ button.quillmd-status-spellcheck:hover {
   background: var(--bg-active);
 }
 
+/* Table size picker (plan 06 task 6.3, issue #63): the 10x10 hover grid the
+   Table button's main half opens, Word/Docs style. Cells are a fixed 10px
+   grid; the active rectangle (rows from the top edge, cols from the left
+   edge of the hovered cell) is filled, and the readout shows the size. The
+   anchor reuses the dropdown's positioning (below the split button). */
+.quillmd-toolbar-picker-anchor {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 60;
+}
+
+.quillmd-table-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.quillmd-table-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 10px);
+  grid-template-rows: repeat(10, 10px);
+  gap: 1px;
+}
+
+.quillmd-table-picker-cell {
+  width: 10px;
+  height: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.quillmd-table-picker-cell.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.quillmd-table-picker-readout {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: center;
+  min-width: 44px;
+}
+
 /* Color palette (plan 04 task 4.2, issue #48): the shared popover behind the
    font color and highlight color pickers. The trigger shows the current pick
    as a bar under its glyph; the popover is an "Auto" cell, the 24 swatches in
@@ -2016,6 +2066,62 @@ button.quillmd-status-spellcheck:hover {
 .quillmd-image-button.primary:hover:not(:disabled) {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
+}
+
+/* --- insert table dialog (plan 06 task 6.3, issue #63) -------------------
+   The precise-size variant: rows/columns fields (1..99) plus a header-row
+   checkbox. Reuses the image dialog's field/input/button classes; only the
+   overlay, panel, title, field row, and checkbox are new. */
+
+.quillmd-table-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quillmd-table-dialog {
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  padding: 14px 16px 12px;
+}
+
+.quillmd-table-dialog-title {
+  color: var(--text-bright);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.quillmd-table-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.quillmd-table-dialog-fields {
+  display: flex;
+  gap: 10px;
+}
+
+.quillmd-table-dialog-fields > * {
+  flex: 1 1 0;
+}
+
+.quillmd-table-dialog-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
 }
 
 /* --- Modify Style dialog (plan 05 task 5.4, issue #57) -------------------- */

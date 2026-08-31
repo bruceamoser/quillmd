@@ -397,7 +397,10 @@ fn build_insert_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
     image = image.text("insert-image-from-file", "From file...");
     image = image.text("insert-image-from-url", "From URL...");
     let image = image.build()?;
-    let table = MenuItem::with_id(app, "insert-table", "Table", true, None::<&str>)?;
+    // Plan 06 task 6.3 (issue #63): the menu item opens the "Insert table…"
+    // dialog (the toolbar's Table button carries the hover size-picker
+    // popover, which cannot be anchored to a native menu item).
+    let table = MenuItem::with_id(app, "insert-table", "Insert Table...", true, None::<&str>)?;
     let codeblock = MenuItem::with_id(app, "insert-codeblock", "Code Block", true, None::<&str>)?;
     let hr = MenuItem::with_id(app, "insert-hr", "Horizontal Rule", true, None::<&str>)?;
     let footnote = MenuItem::with_id(app, "insert-footnote", "Footnote", true, None::<&str>)?;
