@@ -130,6 +130,18 @@
     #                       through the shared registry (incl. the Custom…
     #                       prompt), and the fontmenu.test.tsx AC6 suite presence
     #                       (menu path vs toolbar path document text)
+    #           p2-styles -> plan 05 task 5.1 acceptance gate (issue #54): the
+    #                       style registry (styles.ts: the QuillStyle data
+    #                       model, the built-in style set of >=12 styles each
+    #                       aliasing an existing registry command, the
+    #                       apply/active helpers), the paragraph registry
+    #                       command (Word "Normal": lift list/quote +
+    #                       setParagraph), the StyleGallery popover component
+    #                       (top-6 preview swatches, More styles list grouped
+    #                       by kind with the markdown mapping, active-state
+    #                       highlight), the gallery CSS, and the
+    #                       styles.test.tsx suite presence (Heading 2 -> h2,
+    #                       selection state follows the cursor)
     #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -1865,6 +1877,111 @@ test_colors_suites_present() {
     fi
 }
 
+# --- p2-styles: style registry + gallery popover (issue #54, plan 05 task 5.1) ---
+# The registry behavior (the built-in set of >=12 styles, every style an
+# alias of an existing registry command so no new markdown meaning, applying
+# "Heading 2" on a paragraph setting H2 via registry command h2, the
+# Intense Quote blockquote+bold composition, the active-state tracking that
+# follows the cursor, and the gallery popover UI: top-6 preview swatches,
+# the More styles list grouped by kind with the markdown mapping, the
+# active-style highlight) is covered by the vitest suite
+# (src/lib/__tests__/styles.test.tsx); this section checks the wiring the
+# GUI driver cannot reach headlessly: the QuillStyle data model + built-in
+# set + helpers in styles.ts, the paragraph registry command, the
+# StyleGallery component, the gallery CSS, and the vitest suite presence.
+test_styles_registry_module() {
+    note "styles registry: QuillStyle model + built-in set + apply/active helpers"
+    if [ -f "$ROOT/src/lib/styles.ts" ] \
+        && grep -q 'export interface QuillStyle' "$ROOT/src/lib/styles.ts" \
+        && grep -q 'export type StyleKind' "$ROOT/src/lib/styles.ts" \
+        && grep -q 'export const BUILT_IN_STYLES' "$ROOT/src/lib/styles.ts" \
+        && grep -q 'export const TOP_GALLERY_STYLES' "$ROOT/src/lib/styles.ts" \
+        && grep -q 'export function applyStyle' "$ROOT/src/lib/styles.ts" \
+        && grep -q 'export function activeStyles' "$ROOT/src/lib/styles.ts" \
+        && grep -q 'export function styleActive' "$ROOT/src/lib/styles.ts" \
+        && grep -q 'from "./editorCommands"' "$ROOT/src/lib/styles.ts"; then
+        pass "styles registry: QuillStyle model + built-in set + apply/active helpers"
+    else
+        fail "styles registry: QuillStyle model + built-in set + apply/active helpers"
+    fi
+}
+test_styles_builtin_set() {
+    note "styles built-in set: >=12 styles aliasing existing registry commands"
+    local file="$ROOT/src/lib/styles.ts"
+    # Count the style rows: one "id:" per built-in style.
+    local count
+    count=$(grep -c '    id: "' "$file")
+    if [ "$count" -ge 12 ] \
+        && grep -q 'id: "normal"' "$file" \
+        && grep -q 'id: "title"' "$file" \
+        && grep -q 'id: "heading1"' "$file" \
+        && grep -q 'id: "heading2"' "$file" \
+        && grep -q 'id: "quote"' "$file" \
+        && grep -q 'id: "intense-quote"' "$file" \
+        && grep -q 'id: "list-paragraph"' "$file" \
+        && grep -q 'id: "no-spacing"' "$file" \
+        && grep -q 'id: "source-code"' "$file" \
+        && grep -q 'id: "subtitle"' "$file" \
+        && grep -q 'id: "emphasis"' "$file" \
+        && grep -q 'id: "strong"' "$file" \
+        && grep -q 'command: "h2"' "$file" \
+        && grep -q 'command: "blockquote"' "$file"; then
+        pass "styles built-in set: >=12 styles aliasing existing registry commands"
+    else
+        fail "styles built-in set: >=12 styles aliasing existing registry commands (found $count)"
+    fi
+}
+test_styles_paragraph_command() {
+    note "styles paragraph registry command (Word Normal: lift list/quote)"
+    if grep -q 'id: "paragraph"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'liftListItem("listItem")' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'setParagraph().run()' "$ROOT/src/lib/editorCommands.ts"; then
+        pass "styles paragraph registry command (Word Normal: lift list/quote)"
+    else
+        fail "styles paragraph registry command (Word Normal: lift list/quote)"
+    fi
+}
+test_styles_gallery_component() {
+    note "styles StyleGallery: top-6 swatches + More styles + active highlight"
+    if [ -f "$ROOT/src/components/StyleGallery.tsx" ] \
+        && grep -q 'quillmd-style-grid' "$ROOT/src/components/StyleGallery.tsx" \
+        && grep -q 'More styles' "$ROOT/src/components/StyleGallery.tsx" \
+        && grep -q 'data-style-id' "$ROOT/src/components/StyleGallery.tsx" \
+        && grep -q 'quillmd-style-active' "$ROOT/src/components/StyleGallery.tsx" \
+        && grep -q 'applyStyle(editor, style)' "$ROOT/src/components/StyleGallery.tsx" \
+        && grep -q 'activeStyles(editor)' "$ROOT/src/components/StyleGallery.tsx" \
+        && grep -q 'useEditorState' "$ROOT/src/components/StyleGallery.tsx"; then
+        pass "styles StyleGallery: top-6 swatches + More styles + active highlight"
+    else
+        fail "styles StyleGallery: top-6 swatches + More styles + active highlight"
+    fi
+}
+test_styles_gallery_css() {
+    note "styles gallery CSS: popover, swatch grid, active highlight"
+    if grep -q '.quillmd-styles-popover' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-style-grid' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-style-preview' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-style-group' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-style-active' "$ROOT/src/App.css"; then
+        pass "styles gallery CSS: popover, swatch grid, active highlight"
+    else
+        fail "styles gallery CSS: popover, swatch grid, active highlight"
+    fi
+}
+test_styles_suites_present() {
+    note "styles vitest suite: Heading 2 -> h2 + selection state follows cursor"
+    if [ -f "$ROOT/src/lib/__tests__/styles.test.tsx" ] \
+        && grep -q 'toBeGreaterThanOrEqual(12)' "$ROOT/src/lib/__tests__/styles.test.tsx" \
+        && grep -q 'styleById("heading2")' "$ROOT/src/lib/__tests__/styles.test.tsx" \
+        && grep -q '"## Hello world\\n"' "$ROOT/src/lib/__tests__/styles.test.tsx" \
+        && grep -q 'quillmd-style-active' "$ROOT/src/lib/__tests__/styles.test.tsx" \
+        && grep -q 'More styles' "$ROOT/src/lib/__tests__/styles.test.tsx"; then
+        pass "styles vitest suite: Heading 2 -> h2 + selection state follows cursor"
+    else
+        fail "styles vitest suite: Heading 2 -> h2 + selection state follows cursor"
+    fi
+}
+
 # --- p2-font-toolbar: toolbar font family / size selects (issue #49, plan 04 task 4.3) ---
 # The select behavior (family/size apply + Normal clear, "Npt" canonicalization,
 # non-point-count rejection, the Custom… prompt flow, off-list values as dynamic
@@ -2476,6 +2593,15 @@ case "$SUBSET" in
         test_editorfont_app_routing
         test_clearformat_suites_present
         ;;
+    p2-styles)
+        # Task 5.1 (issue #54): style registry + gallery popover
+        test_styles_registry_module
+        test_styles_builtin_set
+        test_styles_paragraph_command
+        test_styles_gallery_component
+        test_styles_gallery_css
+        test_styles_suites_present
+        ;;
     shell)
         test_shell_new_bundled
         test_shell_new_menu_wiring
@@ -2651,7 +2777,7 @@ case "$SUBSET" in
         test_fonts_windows_crlf
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac

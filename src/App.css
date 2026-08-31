@@ -770,6 +770,160 @@ button.quillmd-status-spellcheck:hover {
   cursor: pointer;
 }
 
+/* Style gallery (plan 05 task 5.1, issue #54): the Word-style popover over
+   the style registry. The top row is a grid of large preview swatches (the
+   sample line rendered in each style's previewCSS); "More styles" swaps the
+   grid for the full list grouped by kind with each style's markdown
+   equivalent. The preview CSS is inline on the swatch spans only — it never
+   reaches the document, so it can't touch the round-trip. */
+.quillmd-styles {
+  position: relative;
+  display: inline-flex;
+}
+
+.quillmd-styles-trigger {
+  line-height: 1;
+}
+
+.quillmd-styles-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 430px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.quillmd-style-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.quillmd-style-grid > button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  color: var(--text);
+  cursor: pointer;
+  padding: 8px;
+  text-align: left;
+}
+
+.quillmd-style-grid > button:hover {
+  background: var(--bg-active);
+}
+
+/* The sample line: each swatch previews the style in its own CSS. */
+.quillmd-style-preview {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  color: var(--text-bright);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.quillmd-style-name {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* The "More styles" / "All styles" switcher row. */
+.quillmd-style-more {
+  align-self: flex-start;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 6px;
+}
+
+.quillmd-style-more:hover {
+  background: var(--bg-active);
+  color: var(--text);
+}
+
+/* The full list, grouped by kind. */
+.quillmd-style-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.quillmd-style-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 4px 6px 2px;
+}
+
+.quillmd-style-group > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 5px 6px;
+  text-align: left;
+}
+
+.quillmd-style-group > button:hover {
+  background: var(--bg-active);
+}
+
+.quillmd-style-row-preview {
+  display: inline-block;
+  width: 90px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 3px;
+  color: var(--text-bright);
+  text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.quillmd-style-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.quillmd-style-row-md {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* The style(s) active at the cursor (aliases of one block highlight
+   together). */
+.quillmd-style-active {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
 /* The paragraph (heading) select and the font cluster's family/size selects
    (plan 04 task 4.3, issue #49) share one compact <select> look. */
 .quillmd-heading-select,
