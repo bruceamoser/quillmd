@@ -121,6 +121,32 @@ pub const FONT_COLORS: &[&str] = &[
     "d9d9d9", "ffc7ce", "fbe2d5", "fff2cc", "e2efda", "ddebf7",
 ];
 
+// Styles submenu (plan 05 task 5.2, issue #55). These mirror the frontend's
+// built-in style registry — src/lib/styles.ts BUILT_IN_STYLES, as (id, label)
+// pairs — so the native menu offers exactly the styles the toolbar's style
+// gallery shows; the vitest suite (src/lib/__tests__/stylemenu.test.tsx)
+// asserts the two stay in sync, the same contract as the Font submenu lists.
+// The ids are the stable style ids the frontend resolves with styleById.
+pub const STYLES: &[(&str, &str)] = &[
+    ("normal", "Normal"),
+    ("title", "Title"),
+    ("heading1", "Heading 1"),
+    ("heading2", "Heading 2"),
+    ("heading3", "Heading 3"),
+    ("heading4", "Heading 4"),
+    ("heading5", "Heading 5"),
+    ("heading6", "Heading 6"),
+    ("subtitle", "Subtitle"),
+    ("quote", "Quote"),
+    ("intense-quote", "Intense Quote"),
+    ("list-paragraph", "List Paragraph"),
+    ("no-spacing", "No Spacing"),
+    ("source-code", "Source Code"),
+    ("code", "Code"),
+    ("emphasis", "Emphasis"),
+    ("strong", "Strong"),
+];
+
 // The family-name slug used in the format-font-family-<slug> menu ids:
 // lowercase, every run of non-alphanumerics collapsed to a single "-". Must
 // stay byte-identical to fontFamilySlug in src/lib/editorCommands.ts, which
@@ -428,9 +454,22 @@ fn build_format_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
         .items(&[&font_underline, &font_clear])
         .build()?;
 
+    // Styles submenu (plan 05 task 5.2, issue #55): every built-in style is
+    // its own menu id (the native menu carries no parameters, same contract
+    // as the Font submenu above); App.tsx resolves the ids back to the style
+    // registry (src/lib/styles.ts) through styleMenuCommand and dispatches
+    // the style's registry command — the identical path the toolbar's style
+    // gallery takes, so menu and gallery apply the same styles.
+    let mut styles = SubmenuBuilder::new(app, "Styles");
+    for (id, label) in STYLES {
+        styles = styles.text(format!("format-style-{id}"), *label);
+    }
+    let styles = styles.build()?;
+
     let format = SubmenuBuilder::new(app, "Format")
         .items(&[&bold, &italic, &underline, &strike, &code, &highlight, &subscript, &superscript])
         .separator()
+        .item(&styles)
         .item(&font)
         .separator()
         .item(&paragraph)
@@ -491,6 +530,19 @@ mod tests {
         assert_eq!(family_slug("Comic Sans MS"), "comic-sans-ms");
         assert_eq!(family_slug("Arial Black"), "arial-black");
         assert_eq!(family_slug("Georgia"), "georgia");
+    }
+
+    // Styles submenu (plan 05 task 5.2, issue #55); the frontend mirrors the
+    // list (stylemenu.test.tsx asserts the sync). A duplicate or empty id
+    // would produce a duplicate menu id the frontend could not resolve.
+    #[test]
+    fn style_menu_ids_are_nonempty_and_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for (id, label) in STYLES {
+            assert!(!id.is_empty(), "empty style id");
+            assert!(!label.is_empty(), "empty label for {id}");
+            assert!(seen.insert(*id), "duplicate id {id}");
+        }
     }
 
     // Editor-chrome font lists (plan 04 task 4.5, issue #51); the frontend
