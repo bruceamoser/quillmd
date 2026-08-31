@@ -9,6 +9,11 @@ import type { Node as PmNode } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection, type EditorState } from "@tiptap/pm/state";
 import { CellSelection, cellAround, findCell } from "@tiptap/pm/tables";
 import { FRONTMATTER_LANG } from "./pm";
+import {
+  mermaidCardModeAt,
+  requestMermaidCardMode,
+  type MermaidCardMode,
+} from "./mermaidCardMode";
 import { insertTableAt, type TableInsertSpec } from "./tables";
 import type { DocSettings } from "./docSettings";
 import { normalizeColor } from "./colors";
@@ -62,6 +67,10 @@ export type EditorCommandId =
   | "tableDelete"
   | "codeBlock"
   | "diagram"
+  | "diagramEdit"
+  | "diagramPreview"
+  | "diagramCopyCode"
+  | "diagramDelete"
   | "hr"
   | "footnote"
   | "frontmatter"
@@ -853,6 +862,52 @@ function cellClearRun(editor: CoreEditor): boolean {
   return true;
 }
 
+// --- diagram node helpers (plan 11 task 11.6, issue #105) ------------------
+
+// The canonical fenced form of a mermaid source: the same bytes the
+// converter (pm.ts) serializes a mermaidBlock to, so a copied fence re-pasted
+// here — or into GitHub / Obsidian / Notion — round-trips to the same
+// diagram.
+export function mermaidFenceOf(source: string): string {
+  return "```mermaid\n" + source + "\n```";
+}
+
+// The mermaidBlock under the selection — a NodeSelection on the diagram, or
+// any cursor / text selection whose $from sits inside one — plus the doc
+// position of the node. Null when the selection is not in a diagram.
+export function diagramNodeOf(
+  editor: CoreEditor,
+): { pos: number; node: PmNode } | null {
+  const sel = editor.state.selection;
+  if (isNodeSelection(sel)) {
+    if (sel.node.type.name !== "mermaidBlock") return null;
+    return { pos: sel.from, node: sel.node };
+  }
+  const $from = sel.$from;
+  for (let d = $from.depth; d > 0; d -= 1) {
+    if ($from.node(d).type.name === "mermaidBlock") {
+      return { pos: $from.before(d), node: $from.node(d) };
+    }
+  }
+  return null;
+}
+
+// Whether the selection is inside a diagram (every diagram command's
+// applicability — the same shape as inTable for the table commands).
+export function inDiagram(editor: CoreEditor): boolean {
+  return diagramNodeOf(editor) !== null;
+}
+
+// The display mode of the diagram under the selection, reported by the
+// mounted card through the mode channel (mermaidCardMode.ts). Null when the
+// selection is not in a diagram or no card is mounted (the mode is a view
+// state that only exists in the WYSIWYG card).
+export function diagramModeOf(editor: CoreEditor): MermaidCardMode | null {
+  const target = diagramNodeOf(editor);
+  if (!target) return null;
+  return mermaidCardModeAt(target.pos);
+}
+
 export const EDITOR_COMMANDS: EditorCommand[] = [
   {
     id: "paragraph",
@@ -1221,6 +1276,75 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
         .run();
     },
     active: (editor) => editor.isActive("mermaidBlock"),
+  },
+  // Diagram node commands (plan 11 task 11.6, issue #105): the actions behind
+  // the diagram node's context-menu item set (Edit diagram / Preview diagram
+  // / Copy diagram code / Delete diagram). The item set itself — labels,
+  // order, enabled/checked/danger state — is the pure builder in
+  // diagramMenu.ts; plan 03 (#38) renders it through the shared ContextMenu
+  // and dispatches these four commands, so the context menu runs the
+  // identical behavior every other surface does (plan 03 AC1: 1:1 command
+  // mapping).
+  {
+    id: "diagramEdit",
+    label: "Edit diagram",
+    // Requests the mounted card to switch to edit mode through the mode
+    // channel (mermaidCardMode.ts) — the document bytes are untouched (the
+    // mode is a view state). A no-op when the selection is not in a diagram
+    // or no card is mounted for it (source/preview view, read-only).
+    run: (editor) => {
+      const target = diagramNodeOf(editor);
+      if (!target) return false;
+      return requestMermaidCardMode(target.pos, "edit");
+    },
+    active: (editor) => diagramModeOf(editor) === "edit",
+  },
+  {
+    id: "diagramPreview",
+    label: "Preview diagram",
+    // The same request for preview mode.
+    run: (editor) => {
+      const target = diagramNodeOf(editor);
+      if (!target) return false;
+      return requestMermaidCardMode(target.pos, "preview");
+    },
+    active: (editor) => diagramModeOf(editor) === "preview",
+  },
+  {
+    id: "diagramCopyCode",
+    label: "Copy diagram code",
+    // Copies the diagram's fenced source — the portable ```mermaid form, the
+    // same bytes the converter (pm.ts) writes — to the system clipboard. No
+    // document change.
+    run: (editor) => {
+      const target = diagramNodeOf(editor);
+      if (!target) return false;
+      if (typeof navigator === "undefined" || !navigator.clipboard) return false;
+      const source = target.node.textBetween(0, target.node.content.size);
+      void navigator.clipboard.writeText(mermaidFenceOf(source));
+      return true;
+    },
+    active: inDiagram,
+  },
+  {
+    id: "diagramDelete",
+    label: "Delete diagram",
+    // Deletes the mermaidBlock under the selection (the fence leaves the
+    // document) and drops the cursor where the block stood. A plain
+    // ProseMirror delete, so undo restores the prior fence text exactly
+    // (plan 11 AC7). Plan 03 renders this item as the destructive one
+    // (danger styling) and gates it on its native confirm dialog.
+    run: (editor) => {
+      const target = diagramNodeOf(editor);
+      if (!target) return false;
+      const { state } = editor;
+      const { pos, node } = target;
+      const tr = state.tr.delete(pos, pos + node.nodeSize);
+      tr.setSelection(TextSelection.near(tr.doc.resolve(pos)));
+      editor.view.dispatch(tr);
+      return true;
+    },
+    active: inDiagram,
   },
   {
     id: "hr",
