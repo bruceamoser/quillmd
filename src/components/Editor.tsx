@@ -44,6 +44,22 @@ const Strikethrough = Strike.extend({
   },
 });
 
+// Link with a title attribute (plan 08 task 8.1, issue #76): the tooltip
+// field of the link dialog round-trips through this mark attribute as the
+// markdown [text](url "title") title. pm.ts parses/serializes it directly;
+// parseHTML picks it up for HTML pasted into the editor.
+export const LinkWithTitle = Link.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      title: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.getAttribute("title"),
+      },
+    };
+  },
+});
+
 // Text alignment (task 2.3): a textAlign node attribute parsed/serialized as
 // the quillmd-align-* class. pm.ts maps it to/from the HTML wrapper block.
 function parseAlign(element: HTMLElement): string | null {
@@ -474,7 +490,7 @@ export default function Editor({
       CodeBlockWithLang,
       Underline,
       Highlight,
-      Link.configure({ openOnClick: false, autolink: true }),
+      LinkWithTitle.configure({ openOnClick: false, autolink: true }),
       Image,
       TaskList,
       TaskItem.configure({ nested: true }),

@@ -387,11 +387,10 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
     id: "link",
     label: "Link",
     shortcut: "Ctrl+K",
-    run: (editor) => {
-      const url = window.prompt("Link URL") ?? "";
-      if (!url) return editor.chain().focus().unsetLink().run();
-      return editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
-    },
+    // Plan 08 task 8.1 (issue #76): the link command no longer prompts — it
+    // requests the in-app link dialog (App.tsx renders it). Toolbar, Insert
+    // menu, Ctrl+K, and the slash menu all reach this one command.
+    run: (editor) => requestLinkDialog(editor),
     active: (editor) => editor.isActive("link"),
   },
   {
@@ -713,5 +712,28 @@ export function registerEditorCommandListener(fn: CommandListener): () => void {
 export function dispatchEditorCommand(id: EditorCommandId, param?: EditorCommandParam): boolean {
   if (!commandListener) return false;
   commandListener(id, param);
+  return true;
+}
+
+// Link dialog plumbing (plan 08 task 8.1, issue #76). The link command
+// cannot render UI itself, so it requests the dialog and the app shell
+// (App.tsx) renders it: the request carries the live editor so the dialog
+// can prefill from the caret and apply the result to the same instance.
+type LinkDialogListener = (editor: CoreEditor) => void;
+let linkDialogListener: LinkDialogListener | null = null;
+
+export function registerLinkDialogListener(fn: LinkDialogListener): () => void {
+  linkDialogListener = fn;
+  return () => {
+    if (linkDialogListener === fn) linkDialogListener = null;
+  };
+}
+
+// Requests the link dialog for the given editor. Returns false (no-op) when
+// no renderer is registered — e.g. outside WYSIWYG where there is no TipTap
+// instance to edit.
+export function requestLinkDialog(editor: CoreEditor): boolean {
+  if (!linkDialogListener) return false;
+  linkDialogListener(editor);
   return true;
 }

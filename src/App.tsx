@@ -41,8 +41,17 @@ import {
   clampZoom,
   dispatchEditorCommand,
   isLineSpacingValue,
+  registerLinkDialogListener,
 } from "./lib/editorCommands";
 import type { EditorCommandId, LineSpacingValue } from "./lib/editorCommands";
+import {
+  applyLink,
+  openLinkUrl,
+  readLinkPrefill,
+  removeLink,
+} from "./lib/links";
+import type { LinkPayload, LinkPrefill } from "./lib/links";
+import type { Editor as CoreEditor } from "@tiptap/core";
 import { loadDocSettings, saveDocSettings } from "./lib/docSettings";
 import type { DocSettings } from "./lib/docSettings";
 import { readClipboardText } from "./lib/clipboard";
@@ -88,6 +97,7 @@ import Explorer from "./components/Explorer";
 import type { ExplorerHandle } from "./components/Explorer";
 import FindReplacePanel from "./components/FindReplacePanel";
 import type { FindPanelMode, FindPanelOption, FindPanelResult } from "./components/FindReplacePanel";
+import LinkDialog from "./components/LinkDialog";
 import { loadViewMode, saveViewMode } from "./components/viewModes";
 import type { ViewMode } from "./components/viewModes";
 import "./App.css";
@@ -206,6 +216,14 @@ export default function App() {
   const [infoLoading, setInfoLoading] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [findPanel, setFindPanel] = useState<FindPanelState>(FIND_PANEL_INITIAL);
+  // Link dialog (plan 08 task 8.1, issue #76): the registry link command
+  // (toolbar button, Insert > Link, Ctrl+K, /link) requests the dialog; the
+  // editor the request came from is kept so the dialog prefills from the
+  // caret and applies its result to the same instance.
+  const [linkDialog, setLinkDialog] = useState<{
+    editor: CoreEditor;
+    prefill: LinkPrefill;
+  } | null>(null);
   // Find panel position setting (plan 07 task 7.5, issue #73): a global
   // top/bottom preference persisted in localStorage; the panel docks via its
   // root class and the toggle lives on the panel itself.
@@ -757,6 +775,52 @@ export default function App() {
     saveFindPanelPosition(next);
     setFindPanelPos(next);
   }, [findPanelPos]);
+
+  // --- link dialog (plan 08 task 8.1, issue #76) ---------------------------
+  //
+  // The registry link command requests the dialog; this listener is the
+  // single renderer. The prefill (link under the caret, or the plain
+  // selection) is read at request time so a tab switch while the dialog is
+  // open can never prefill from the wrong document.
+
+  useEffect(() => {
+    return registerLinkDialogListener((editor) => {
+      setLinkDialog({ editor, prefill: readLinkPrefill(editor) });
+    });
+  }, []);
+
+  // The dialog edits a specific TipTap instance, which unmounts on a tab
+  // switch or a view-mode change — close it so it never talks to a dead
+  // editor.
+  useEffect(() => {
+    setLinkDialog(null);
+  }, [activePath, viewMode]);
+
+  const closeLinkDialog = useCallback(() => {
+    setLinkDialog(null);
+  }, []);
+
+  const applyLinkDialog = useCallback(
+    (payload: LinkPayload) => {
+      if (!linkDialog) return;
+      applyLink(linkDialog.editor, payload);
+      setLinkDialog(null);
+    },
+    [linkDialog],
+  );
+
+  const removeLinkDialog = useCallback(() => {
+    if (!linkDialog) return;
+    removeLink(linkDialog.editor);
+    setLinkDialog(null);
+  }, [linkDialog]);
+
+  // "Open": launch the destination in the system browser, then close (Word
+  // parity — following the link dismisses the edit dialog).
+  const openLinkDialogUrl = useCallback(async (href: string) => {
+    await openLinkUrl(href);
+    setLinkDialog(null);
+  }, []);
 
   // Per-doc term memory (plan 07 task 7.5, issue #73): writes the panel's
   // term + options to the active doc's memory. Only the active doc is
@@ -1459,6 +1523,15 @@ export default function App() {
                   onReplaceAll={doReplaceAll}
                   onClose={closeFindPanel}
                   onPositionToggle={toggleFindPanelPos}
+                />
+              )}
+              {linkDialog && (
+                <LinkDialog
+                  prefill={linkDialog.prefill}
+                  onApply={applyLinkDialog}
+                  onRemove={removeLinkDialog}
+                  onOpen={(href) => void openLinkDialogUrl(href)}
+                  onClose={closeLinkDialog}
                 />
               )}
             </div>

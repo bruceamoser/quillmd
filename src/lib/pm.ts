@@ -250,7 +250,12 @@ function inlineToTiptap(node: PhrasingContent): JSONContent | null {
     case "footnoteReference":
       return { type: "footnoteRef", attrs: { label: node.label ?? node.identifier } };
     case "link":
-      return markWrapped(node.children, "link", { href: node.url });
+      // The title round-trips through the link mark attribute (plan 08
+      // task 8.1): [text](url "title") must survive an edit of its block.
+      return markWrapped(node.children, "link", {
+        href: node.url,
+        title: typeof node.title === "string" ? node.title : null,
+      });
     case "image":
       return {
         type: "image",
@@ -488,7 +493,8 @@ function tiptapTextWithMarks(text: string, marks: NonNullable<JSONContent["marks
       current = [{ type: "inlineCode", value: joined }];
     } else if (type === "link") {
       const url = typeof mark.attrs?.href === "string" ? mark.attrs.href : "";
-      current = [{ type: "link", url, children: current }];
+      const title = typeof mark.attrs?.title === "string" ? mark.attrs.title : null;
+      current = [{ type: "link", url, title, children: current }];
     } else if (type === "subscript") {
       const joined = current.map(plainTextOf).join("");
       current = [{ type: "text", value: `~${joined}~` }];
