@@ -20,6 +20,7 @@
 //     tooltip (replace only applies within a single text block).
 
 import { useEffect, useRef } from "react";
+import type { FindPanelPosition } from "../lib/findMemory";
 
 export type FindPanelMode = "find" | "replace";
 
@@ -43,6 +44,9 @@ export interface FindReplacePanelProps {
   matchCase: boolean;
   wholeWord: boolean;
   useRegex: boolean;
+  // Docking edge of the panel (plan 07 task 7.5, issue #73): "top" (the
+  // default) or "bottom". A global persisted setting, not per-doc state.
+  position: FindPanelPosition;
   result: FindPanelResult;
   onTermChange: (term: string) => void;
   onReplaceTermChange: (term: string) => void;
@@ -53,6 +57,8 @@ export interface FindReplacePanelProps {
   onReplace: () => void;
   onReplaceAll: () => void;
   onClose: () => void;
+  // Flips the persisted panel position (top <-> bottom).
+  onPositionToggle: () => void;
 }
 
 const CROSS_BLOCK_TOOLTIP =
@@ -65,6 +71,7 @@ export default function FindReplacePanel({
   matchCase,
   wholeWord,
   useRegex,
+  position,
   result,
   onTermChange,
   onReplaceTermChange,
@@ -75,6 +82,7 @@ export default function FindReplacePanel({
   onReplace,
   onReplaceAll,
   onClose,
+  onPositionToggle,
 }: FindReplacePanelProps) {
   const termRef = useRef<HTMLInputElement>(null);
 
@@ -166,8 +174,17 @@ export default function FindReplacePanel({
     </button>
   );
 
+  // Panel position (plan 07 task 7.5, issue #73): the "bottom" class docks
+  // the bar at the lower edge of the content area (App.css). The glyph points
+  // at the edge the click will move the panel to.
+  const positionGlyph = position === "top" ? "\u25BE" : "\u25B4";
+
   return (
-    <div className="quillmd-find-panel" role="search" onKeyDown={handleKeyDown}>
+    <div
+      className={`quillmd-find-panel${position === "bottom" ? " bottom" : ""}`}
+      role="search"
+      onKeyDown={handleKeyDown}
+    >
       <div className="quillmd-find-row">
         <input
           ref={termRef}
@@ -219,6 +236,22 @@ export default function FindReplacePanel({
           onClick={() => onModeChange(mode === "find" ? "replace" : "find")}
         >
           {mode === "find" ? "Replace \u25BE" : "Hide \u25B4"}
+        </button>
+        <button
+          type="button"
+          className="quillmd-find-mode"
+          title={
+            position === "top"
+              ? "Move panel to the bottom (setting)"
+              : "Move panel to the top (setting)"
+          }
+          aria-label={
+            position === "top" ? "Move find panel to bottom" : "Move find panel to top"
+          }
+          onMouseDown={keepFocus}
+          onClick={onPositionToggle}
+        >
+          {positionGlyph}
         </button>
         <button
           type="button"

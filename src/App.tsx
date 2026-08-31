@@ -60,6 +60,13 @@ import {
 } from "./lib/find";
 import type { SearchState } from "./lib/find";
 import {
+  loadFindMemory,
+  loadFindPanelPosition,
+  saveFindMemory,
+  saveFindPanelPosition,
+} from "./lib/findMemory";
+import type { FindMemory, FindPanelPosition } from "./lib/findMemory";
+import {
   currentSourceFindView,
   replaceAllSourceMatches,
   replaceSourceActiveMatch,
@@ -98,8 +105,10 @@ interface DocState {
 // Find & replace panel state (plan 07 task 7.2, issue #70). App owns the
 // panel; the search engine (task 7.1) runs in the effect below against the
 // live WYSIWYG doc and the outcome is kept in `findState`. The term and
-// options survive closing the panel (Word behavior); per-doc term memory is
-// task 7.5.
+// options survive closing the panel (Word behavior) and are remembered per
+// doc (plan 07 task 7.5, issue #73): on a tab switch the active doc's last
+// search is restored from findMemory, and every edit to the term/options
+// persists back to that doc's memory.
 interface FindPanelState {
   open: boolean;
   mode: FindPanelMode;
@@ -197,6 +206,12 @@ export default function App() {
   const [infoLoading, setInfoLoading] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [findPanel, setFindPanel] = useState<FindPanelState>(FIND_PANEL_INITIAL);
+  // Find panel position setting (plan 07 task 7.5, issue #73): a global
+  // top/bottom preference persisted in localStorage; the panel docks via its
+  // root class and the toggle lives on the panel itself.
+  const [findPanelPos, setFindPanelPos] = useState<FindPanelPosition>(() =>
+    loadFindPanelPosition(),
+  );
   const [findState, setFindState] = useState<SearchState | null>(null);
   const findStateRef = useRef<SearchState | null>(null);
   const findQueryRef = useRef("");
@@ -735,17 +750,63 @@ export default function App() {
     setFindPanel((p) => ({ ...p, open: false }));
   }, []);
 
-  const setFindTerm = useCallback((term: string) => {
-    setFindPanel((p) => ({ ...p, term }));
-  }, []);
+  // Flips the persisted panel position (plan 07 task 7.5, issue #73). The
+  // setting is global (not per-doc) and survives reloads via localStorage.
+  const toggleFindPanelPos = useCallback(() => {
+    const next: FindPanelPosition = findPanelPos === "top" ? "bottom" : "top";
+    saveFindPanelPosition(next);
+    setFindPanelPos(next);
+  }, [findPanelPos]);
+
+  // Per-doc term memory (plan 07 task 7.5, issue #73): writes the panel's
+  // term + options to the active doc's memory. Only the active doc is
+  // written; there is no doc (welcome screen) => no-op.
+  const persistFindMemory = useCallback(
+    (patch: Partial<FindMemory>) => {
+      if (!activePath) return;
+      const memory: FindMemory = {
+        term: findPanel.term,
+        matchCase: findPanel.matchCase,
+        wholeWord: findPanel.wholeWord,
+        useRegex: findPanel.useRegex,
+        ...patch,
+      };
+      saveFindMemory(activePath, memory);
+    },
+    [
+      activePath,
+      findPanel.term,
+      findPanel.matchCase,
+      findPanel.wholeWord,
+      findPanel.useRegex,
+    ],
+  );
+
+  const setFindTerm = useCallback(
+    (term: string) => {
+      setFindPanel((p) => ({ ...p, term }));
+      persistFindMemory({ term });
+    },
+    [persistFindMemory],
+  );
 
   const setFindReplaceTerm = useCallback((term: string) => {
     setFindPanel((p) => ({ ...p, replaceTerm: term }));
   }, []);
 
-  const toggleFindOption = useCallback((option: FindPanelOption) => {
-    setFindPanel((p) => ({ ...p, [option]: !p[option] }));
-  }, []);
+  const toggleFindOption = useCallback(
+    (option: FindPanelOption) => {
+      const next = { ...findPanel, [option]: !findPanel[option] };
+      setFindPanel(next);
+      persistFindMemory({
+        term: next.term,
+        matchCase: next.matchCase,
+        wholeWord: next.wholeWord,
+        useRegex: next.useRegex,
+      });
+    },
+    [findPanel, persistFindMemory],
+  );
 
   const setFindMode = useCallback((mode: FindPanelMode) => {
     setFindPanel((p) => ({ ...p, mode }));
@@ -804,6 +865,17 @@ export default function App() {
     findPanel.useRegex,
     findPanel.replaceTerm,
   ]);
+
+  // Per-doc term memory restore (plan 07 task 7.5, issue #73): when the active
+  // tab changes, load that doc's remembered term + options into the panel. The
+  // outgoing doc's term was already persisted by the change handlers above, so
+  // restoring the incoming doc's memory here loses nothing. Runs only on a tab
+  // switch (dep: activePath), so it never fights the live search effect.
+  useEffect(() => {
+    if (!activePath) return;
+    const memory = loadFindMemory(activePath);
+    setFindPanel((p) => ({ ...p, ...memory }));
+  }, [activePath]);
 
   // Runs the search engine for the open panel against the engine of the active
   // view (findEngine): the WYSIWYG doc (task 7.1) or the CodeMirror source doc
@@ -1375,6 +1447,7 @@ export default function App() {
                   matchCase={findPanel.matchCase}
                   wholeWord={findPanel.wholeWord}
                   useRegex={findPanel.useRegex}
+                  position={findPanelPos}
                   result={findPanelResult}
                   onTermChange={setFindTerm}
                   onReplaceTermChange={setFindReplaceTerm}
@@ -1385,6 +1458,7 @@ export default function App() {
                   onReplace={doReplace}
                   onReplaceAll={doReplaceAll}
                   onClose={closeFindPanel}
+                  onPositionToggle={toggleFindPanelPos}
                 />
               )}
             </div>

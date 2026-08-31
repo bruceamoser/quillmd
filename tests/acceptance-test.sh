@@ -20,6 +20,13 @@
 #                       Edit menu + Ctrl+Shift+V wiring (#36), Ctrl+1..6
 #                       heading shortcuts + Help > Shortcuts dialog + plan 02
 #                       test-suite presence (#37)
+#           p1-find -> plan 07 task 7.5 menu + shortcuts: Edit menu Find /
+#                       Find and Replace / Find Next / Find Previous +
+#                       accelerators (#73), App.tsx menu-id + window
+#                       F3/Shift+F3/Ctrl+F/H/Esc routing, per-doc search-term
+#                       memory + global panel-position persistence
+#                       (findMemory.ts), panel top/bottom toggle + CSS, and the
+#                       plan 07 task 7.5 vitest-suite presence
 #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -840,6 +847,90 @@ test_editor_suites_present() {
     fi
 }
 
+# --- p1-find: menu + shortcuts + per-doc memory + panel position (plan 07 task 7.5, issue #73) ---
+# The search engine, the panel UI/keyboard model, the per-doc memory + position
+# persistence, and the full App-level shortcut wiring are covered by the vitest
+# suites (find.test.ts, findPanel.test.tsx, findMemory.test.ts,
+# findWiring.test.tsx); this section checks the app-level wiring the GUI driver
+# cannot reach headlessly: the native Edit menu carries Find / Find and Replace
+# / Find Next / Find Previous with their accelerators, App.tsx routes their ids
+# and the window-level F3 / Shift+F3 / Ctrl+F / Ctrl+H / Esc shortcuts, the
+# per-doc term memory + global panel position persist through findMemory.ts,
+# and the panel + CSS implement the top/bottom docking.
+test_find_menu_wiring() {
+    note "find.menu Edit menu Find/Replace/Next/Prev + accelerators present"
+    if grep -q 'MenuItem::with_id(app, "edit-find", "Find", true, Some("Ctrl+F"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "edit-find-replace", "Find and Replace", true, Some("Ctrl+H"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "edit-find-next", "Find Next", true, Some("F3"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "edit-find-prev", "Find Previous", true, Some("Shift+F3"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '.items(&\[&find, &find_replace, &find_next, &find_prev\])' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "find.menu Edit menu Find/Replace/Next/Prev + accelerators present"
+    else
+        fail "find.menu Edit menu Find/Replace/Next/Prev + accelerators present"
+    fi
+}
+test_find_app_routing() {
+    note "find.shortcuts App.tsx routes the menu ids + window F3/Shift+F3/Ctrl+F/H/Esc"
+    if grep -q 'id === "edit-find"' "$ROOT/src/App.tsx" \
+        && grep -q 'openFindPanel("find")' "$ROOT/src/App.tsx" \
+        && grep -q 'id === "edit-find-replace"' "$ROOT/src/App.tsx" \
+        && grep -q 'openFindPanel("replace")' "$ROOT/src/App.tsx" \
+        && grep -q 'id === "edit-find-next"' "$ROOT/src/App.tsx" \
+        && grep -q 'id === "edit-find-prev"' "$ROOT/src/App.tsx" \
+        && grep -q 'e.key === "F3"' "$ROOT/src/App.tsx" \
+        && grep -q 'e.key === "Escape" && findPanel.open' "$ROOT/src/App.tsx" \
+        && grep -q 'key === "f" && !e.shiftKey' "$ROOT/src/App.tsx" \
+        && grep -q 'key === "h" && !e.shiftKey' "$ROOT/src/App.tsx"; then
+        pass "find.shortcuts App.tsx routes the menu ids + window F3/Shift+F3/Ctrl+F/H/Esc"
+    else
+        fail "find.shortcuts App.tsx routes the menu ids + window F3/Shift+F3/Ctrl+F/H/Esc"
+    fi
+}
+test_find_memory_module() {
+    note "find.memory findMemory.ts per-doc term + panel position persistence present"
+    if [ -f "$ROOT/src/lib/findMemory.ts" ] \
+        && grep -q 'export function loadFindMemory' "$ROOT/src/lib/findMemory.ts" \
+        && grep -q 'export function saveFindMemory' "$ROOT/src/lib/findMemory.ts" \
+        && grep -q 'export function loadFindPanelPosition' "$ROOT/src/lib/findMemory.ts" \
+        && grep -q 'export function saveFindPanelPosition' "$ROOT/src/lib/findMemory.ts" \
+        && grep -q 'from "./lib/findMemory"' "$ROOT/src/App.tsx" \
+        && grep -q 'loadFindMemory(activePath)' "$ROOT/src/App.tsx" \
+        && grep -q 'saveFindMemory(activePath, memory)' "$ROOT/src/App.tsx" \
+        && grep -q 'loadFindPanelPosition()' "$ROOT/src/App.tsx" \
+        && grep -q 'saveFindPanelPosition(next)' "$ROOT/src/App.tsx"; then
+        pass "find.memory findMemory.ts per-doc term + panel position persistence present"
+    else
+        fail "find.memory findMemory.ts per-doc term + panel position persistence present"
+    fi
+}
+test_find_panel_position() {
+    note "find.position panel top/bottom toggle + CSS docking present"
+    if grep -q 'position: FindPanelPosition' "$ROOT/src/components/FindReplacePanel.tsx" \
+        && grep -q 'onPositionToggle' "$ROOT/src/components/FindReplacePanel.tsx" \
+        && grep -q 'quillmd-find-panel${position' "$ROOT/src/components/FindReplacePanel.tsx" \
+        && grep -q '.quillmd-find-panel.bottom' "$ROOT/src/App.css" \
+        && grep -q 'position={findPanelPos}' "$ROOT/src/App.tsx" \
+        && grep -q 'onPositionToggle={toggleFindPanelPos}' "$ROOT/src/App.tsx"; then
+        pass "find.position panel top/bottom toggle + CSS docking present"
+    else
+        fail "find.position panel top/bottom toggle + CSS docking present"
+    fi
+}
+test_find_suites_present() {
+    note "find.suites plan 07 task 7.5 vitest suites present"
+    if [ -f "$ROOT/src/lib/__tests__/findMemory.test.ts" ] \
+        && grep -q 'find panel position setting' "$ROOT/src/lib/__tests__/findMemory.test.ts" \
+        && [ -f "$ROOT/src/lib/__tests__/findPanel.test.tsx" ] \
+        && grep -q 'find panel position' "$ROOT/src/lib/__tests__/findPanel.test.tsx" \
+        && [ -f "$ROOT/src/lib/__tests__/findWiring.test.tsx" ] \
+        && grep -q 'remembers the search term per document' "$ROOT/src/lib/__tests__/findWiring.test.tsx" \
+        && grep -q 'F3 / Shift+F3 move through' "$ROOT/src/lib/__tests__/findWiring.test.tsx"; then
+        pass "find.suites plan 07 task 7.5 vitest suites present"
+    else
+        fail "find.suites plan 07 task 7.5 vitest suites present"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -912,6 +1003,13 @@ case "$SUBSET" in
         test_editor_headings_keydown
         test_editor_shortcuts_dialog
         test_editor_suites_present
+        ;;
+    p1-find)
+        test_find_menu_wiring
+        test_find_app_routing
+        test_find_memory_module
+        test_find_panel_position
+        test_find_suites_present
         ;;
     shell)
         test_shell_new_bundled
@@ -1001,9 +1099,14 @@ case "$SUBSET" in
         test_editor_headings_keydown
         test_editor_shortcuts_dialog
         test_editor_suites_present
+        test_find_menu_wiring
+        test_find_app_routing
+        test_find_memory_module
+        test_find_panel_position
+        test_find_suites_present
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac
