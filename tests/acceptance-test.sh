@@ -97,8 +97,15 @@
   #                       font-styled.md fixture contract, and the
   #                       fontmarks.test.tsx AC1/AC3/AC5 vitest-suite
   #                       presence (compose bold+italic+font+color, per-attr
-  #                       toggle-off, highlight color + ==text== compat)
-  #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
+   #                       toggle-off, highlight color + ==text== compat)
+   #           p2-colors -> plan 04 task 4.2 acceptance gate (issue #48): the
+   #                       shared 24-swatch palette + normalize in colors.ts,
+   #                       the fontColor / highlightColor registry commands +
+   #                       color readers in editorCommands.ts, the shared
+   #                       ColorPalette popover component (24-grid + auto +
+   #                       custom), and the Toolbar rendering both pickers
+   #                       through that one component
+   #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
 #           dragdrop -> p0-shell drag & drop open (issue #27)
@@ -1760,6 +1767,79 @@ test_fonts_suites_present() {
     fi
 }
 
+# --- p2-colors: shared color palette component (issue #48, plan 04 task 4.2) ---
+# The palette data (24 swatches, rows of 6, auto, normalize) and the picker
+# behavior (fontColor / highlightColor registry commands, the shared popover,
+# the toolbar wiring for both pickers) are covered by the vitest suite
+# (src/lib/__tests__/colorpalette.test.tsx); this section checks the wiring the
+# GUI driver cannot reach headlessly: the shared palette constant, the two
+# registry color commands + color readers, the ColorPalette component, and the
+# toolbar rendering both pickers through that one component.
+test_colors_palette_data() {
+    note "colors shared 24-swatch palette + normalize in colors.ts"
+    if [ -f "$ROOT/src/lib/colors.ts" ] \
+        && grep -q 'export const COLOR_PALETTE' "$ROOT/src/lib/colors.ts" \
+        && grep -q 'COLOR_PALETTE_COLUMNS = 6' "$ROOT/src/lib/colors.ts" \
+        && grep -q 'export const COLOR_AUTO' "$ROOT/src/lib/colors.ts" \
+        && grep -q 'export function normalizeColor' "$ROOT/src/lib/colors.ts"; then
+        pass "colors shared 24-swatch palette + normalize in colors.ts"
+    else
+        fail "colors shared 24-swatch palette + normalize in colors.ts"
+    fi
+}
+test_colors_registry_commands() {
+    note "colors fontColor + highlightColor registry commands + readers present"
+    if grep -q 'id: "fontColor"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'id: "highlightColor"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export function fontColorOf' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export function highlightColorOf' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'from "./colors"' "$ROOT/src/lib/editorCommands.ts"; then
+        pass "colors fontColor + highlightColor registry commands + readers present"
+    else
+        fail "colors fontColor + highlightColor registry commands + readers present"
+    fi
+}
+test_colors_palette_component() {
+    note "colors ColorPalette component: 24-grid + auto + custom popover"
+    if [ -f "$ROOT/src/components/ColorPalette.tsx" ] \
+        && grep -q 'COLOR_PALETTE.map' "$ROOT/src/components/ColorPalette.tsx" \
+        && grep -q 'COLOR_PALETTE_COLUMNS' "$ROOT/src/components/ColorPalette.tsx" \
+        && grep -q 'type="color"' "$ROOT/src/components/ColorPalette.tsx" \
+        && grep -q 'Auto' "$ROOT/src/components/ColorPalette.tsx" \
+        && grep -q 'onPick' "$ROOT/src/components/ColorPalette.tsx"; then
+        pass "colors ColorPalette component: 24-grid + auto + custom popover"
+    else
+        fail "colors ColorPalette component: 24-grid + auto + custom popover"
+    fi
+}
+test_colors_toolbar_wiring() {
+    note "colors Toolbar renders both pickers through the shared palette"
+    if grep -q 'import ColorPalette' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'title="Font color"' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'title="Highlight color"' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'runEditorCommand(editor, "fontColor"' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'runEditorCommand(editor, "highlightColor"' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'fontColorOf(editor)' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'highlightColorOf(editor)' "$ROOT/src/components/Toolbar.tsx"; then
+        pass "colors Toolbar renders both pickers through the shared palette"
+    else
+        fail "colors Toolbar renders both pickers through the shared palette"
+    fi
+}
+test_colors_suites_present() {
+    note "colors vitest suite: 24 swatches + auto + custom + toolbar pickers"
+    if [ -f "$ROOT/src/lib/__tests__/colorpalette.test.tsx" ] \
+        && grep -q 'toHaveLength(24)' "$ROOT/src/lib/__tests__/colorpalette.test.tsx" \
+        && grep -q 'title="Font color"' "$ROOT/src/lib/__tests__/colorpalette.test.tsx" \
+        && grep -q 'title="Highlight color"' "$ROOT/src/lib/__tests__/colorpalette.test.tsx" \
+        && grep -q 'runEditorCommand(e, "fontColor"' "$ROOT/src/lib/__tests__/colorpalette.test.tsx" \
+        && grep -q 'runEditorCommand(e, "highlightColor"' "$ROOT/src/lib/__tests__/colorpalette.test.tsx"; then
+        pass "colors vitest suite: 24 swatches + auto + custom + toolbar pickers"
+    else
+        fail "colors vitest suite: 24 swatches + auto + custom + toolbar pickers"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -1934,6 +2014,13 @@ case "$SUBSET" in
         test_fonts_roundtrip_fixture
         test_fonts_suites_present
         ;;
+    p2-colors)
+        test_colors_palette_data
+        test_colors_registry_commands
+        test_colors_palette_component
+        test_colors_toolbar_wiring
+        test_colors_suites_present
+        ;;
     shell)
         test_shell_new_bundled
         test_shell_new_menu_wiring
@@ -2079,9 +2166,14 @@ case "$SUBSET" in
         test_fonts_pm_fixed_attr_order
         test_fonts_roundtrip_fixture
         test_fonts_suites_present
+        test_colors_palette_data
+        test_colors_registry_commands
+        test_colors_palette_component
+        test_colors_toolbar_wiring
+        test_colors_suites_present
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac

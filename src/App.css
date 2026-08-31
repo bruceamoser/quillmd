@@ -641,6 +641,135 @@ button.quillmd-status-spellcheck:hover {
   background: var(--bg-active);
 }
 
+/* Color palette (plan 04 task 4.2, issue #48): the shared popover behind the
+   font color and highlight color pickers. The trigger shows the current pick
+   as a bar under its glyph; the popover is an "Auto" cell, the 24 swatches in
+   a 6-column grid, and a custom row backed by the native color input. The
+   swatch colors are inline styles, so the generic toolbar hover background
+   (below) never clobbers them. */
+.quillmd-color {
+  position: relative;
+  display: inline-flex;
+}
+
+.quillmd-color > button {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.quillmd-color-trigger {
+  line-height: 1;
+}
+
+.quillmd-color-bar {
+  width: 16px;
+  height: 3px;
+  border-radius: 1px;
+}
+
+.quillmd-color-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+/* The "Auto" cell (inherit / no color). */
+.quillmd-color-popover > button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 140px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.quillmd-color-popover > button:hover {
+  background: var(--bg-active);
+}
+
+/* The Auto cell's swatch: white with a red slash (no color). */
+.quillmd-color-auto-swatch {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background:
+    linear-gradient(
+      to top left,
+      transparent 46%,
+      #d00 46%,
+      #d00 54%,
+      transparent 54%
+    ),
+    #fff;
+}
+
+.quillmd-color-grid {
+  display: grid;
+  gap: 3px;
+}
+
+.quillmd-color-grid button {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  border: 1px solid rgba(128, 128, 128, 0.45);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.quillmd-color-grid button:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The swatch / cell that matches the color at the caret. */
+.quillmd-color-active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.quillmd-color-custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.quillmd-color-custom input {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+}
+
 .quillmd-heading-select {
   height: 28px;
   border: 1px solid var(--border);

@@ -21,6 +21,7 @@ import type {
   TableRow,
   Text,
 } from "mdast";
+import { normalizeColor } from "./colors";
 import { parseFrontMatter, parseToAst, serializeAst } from "./markdown";
 
 // Front matter is represented as a fenced code block with this marker language
@@ -153,20 +154,6 @@ export interface FontSpanStyle {
 
 const SPAN_OPEN_RE = /^<span\b([^>]*?)>$/i;
 const SPAN_CLOSE = "</span>";
-
-// A #rrggbb hex color (any case) or a browser-normalized rgb(r, g, b)
-// (DOM paste hands us the CSSOM form). Canonical output is lowercase hex.
-function normalizeColor(value: string): string | null {
-  const hex = /^#([0-9a-fA-F]{6})$/.exec(value);
-  if (hex) return `#${hex[1].toLowerCase()}`;
-  const rgb = /^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/.exec(value);
-  if (rgb) {
-    const nums = rgb.slice(1).map(Number);
-    if (nums.some((n) => n > 255)) return null;
-    return `#${nums.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
-  }
-  return null;
-}
 
 interface SpanOpen {
   kind: "font" | "highlight";

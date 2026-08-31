@@ -8,6 +8,7 @@ import type { Editor as CoreEditor } from "@tiptap/core";
 import type { Node as PmNode } from "@tiptap/pm/model";
 import { FRONTMATTER_LANG } from "./pm";
 import type { DocSettings } from "./docSettings";
+import { normalizeColor } from "./colors";
 
 export type EditorCommandId =
   | "h1"
@@ -50,19 +51,24 @@ export type EditorCommandId =
   | "zoom"
   | "spellcheck"
   | "pasteAsText"
+  | "fontColor"
+  | "highlightColor"
   | "undo"
   | "redo"
   | "clearFormatting";
 
 // Parameters for the view-level commands that take one. `lineSpacing` takes a
-// spacing preset, `zoom` takes a step (or an explicit percent), and
-// `pasteAsText` takes the plain-text payload (the clipboard read is owned by
-// the caller: menu events, paste key handlers, tests).
+// spacing preset, `zoom` takes a step (or an explicit percent), `pasteAsText`
+// takes the plain-text payload (the clipboard read is owned by the caller:
+// menu events, paste key handlers, tests), and the color commands
+// (`fontColor` / `highlightColor`) take the picked color — a hex string for a
+// swatch or custom color, or `null` for "auto" (inherit / no color).
 export type EditorCommandParam =
   | LineSpacingValue
   | ZoomParam
   | string
-  | number;
+  | number
+  | null;
 
 export interface EditorCommand {
   id: EditorCommandId;
@@ -203,6 +209,42 @@ function setZoomPercent(editor: CoreEditor, percent: number): void {
 // "false" the editor used to hard-code.
 export function spellcheckOf(editor: CoreEditor): boolean {
   return editorDom(editor).getAttribute(SPELLCHECK_ATTR) === "true";
+}
+
+// --- color command helpers (plan 04 task 4.2, issue #48) --------------------
+//
+// The font color and highlight color pickers share the same palette
+// (colors.ts) and dispatch the fontColor / highlightColor commands below.
+// These helpers read the color under the caret so a palette can mark its
+// active cell; they report null for "auto" (no color / inherit).
+
+// The font color of the mark at the selection, or null when the selection
+// carries no font color (auto / inherit).
+export function fontColorOf(editor: CoreEditor): string | null {
+  const color = editor.getAttributes("fontColor").color;
+  return typeof color === "string" && color !== "" ? color : null;
+}
+
+// The highlight color of the mark at the selection, or null when the
+// selection is not highlighted or the highlight is the colorless default.
+export function highlightColorOf(editor: CoreEditor): string | null {
+  const color = editor.getAttributes("highlight").color;
+  return typeof color === "string" && color !== "" ? color : null;
+}
+
+// Runs a color command: `null` is "auto" (clear the color), a string is a
+// picked swatch or custom color (normalized before it touches the mark).
+function runColorCommand(
+  editor: CoreEditor,
+  mark: string,
+  param: EditorCommandParam | undefined,
+): boolean {
+  if (param === null) {
+    return editor.chain().focus().unsetMark(mark).run();
+  }
+  const color = typeof param === "string" ? normalizeColor(param) : null;
+  if (!color) return false;
+  return editor.chain().focus().setMark(mark, { color }).run();
 }
 
 // Node types that carry per-block alignment (plan 02 §2.2). The textAlign
@@ -428,6 +470,26 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
     id: "highlight",
     label: "Highlight",
     run: (editor) => editor.chain().focus().toggleHighlight().run(),
+    active: (editor) => editor.isActive("highlight"),
+  },
+  {
+    id: "fontColor",
+    label: "Font color",
+    // Plan 04 task 4.2 (issue #48): the shared color palette's font half.
+    // A swatch/custom hex sets the fontColor mark (the quillmd-font span's
+    // color attribute); "auto" (null) clears it back to the document default.
+    run: (editor, param) => runColorCommand(editor, "fontColor", param),
+    active: (editor) => editor.isActive("fontColor"),
+  },
+  {
+    id: "highlightColor",
+    label: "Highlight color",
+    // Plan 04 task 4.2 (issue #48): the shared color palette's highlight half.
+    // A swatch/custom hex sets the highlight's color attribute (the
+    // quillmd-highlight span); "auto" (null) removes the highlight entirely
+    // (Word's "no color"), which also drops a colored highlight back to
+    // nothing rather than to ==text==.
+    run: (editor, param) => runColorCommand(editor, "highlight", param),
     active: (editor) => editor.isActive("highlight"),
   },
   {
