@@ -91,6 +91,17 @@ if [ "$FORCE" -eq 1 ] && [ -n "${STATE_PR:-}" ]; then
   gh pr close "$STATE_PR" --repo "$REPO" --comment "superseded by re-run of issue #$ISSUE" >/dev/null 2>&1 || true
 fi
 if [ -d "$WT" ]; then
+  # Recovery net: if a prior (possibly OOM-killed) run left uncommitted work,
+  # commit it as a WIP safety-net on the existing branch before discarding the
+  # worktree, so the work is never irrecoverably lost. The re-run still starts
+  # from a fresh origin/main (below); the WIP commit is reachable via the
+  # branch's reflog if you need to cherry-pick it back.
+  if [ -n "$(git -C "$WT" status --porcelain 2>/dev/null)" ]; then
+    git -C "$WT" add -A >/dev/null 2>&1
+    if git -C "$WT" commit -q -m "wip(#${ISSUE}): salvage uncommitted work from prior run" 2>/dev/null; then
+      log "salvaged uncommitted work from prior run as WIP commit (see branch reflog)"
+    fi
+  fi
   git -C "$REPO_DIR" worktree remove --force "$WT" >/dev/null 2>&1 || rm -rf "$WT"
 fi
 

@@ -118,6 +118,16 @@ and closes the worktree, leaving the branch pushed for inspection):
 - **Merging is opt-in (`--merge`).** Default runs stop at a green PR and
   leave merging to a human. With `--merge` (the mode for the full
   74-issue run), each passing PR is squash-merged immediately.
+- **Memory guard:** before each issue the pipeline checks
+  `MemAvailable`; below 6 GiB it waits (60s polls) instead of starting a
+  new opencode run. This box is shared with llama-server (which also
+  serves the agent and the chat), and a run started on thin headroom can
+  be OOM-killed mid-issue.
+- **Salvage net:** if a worktree is found with uncommitted work from a
+  prior killed run, `issue-run.sh` commits it as a `wip(#N)` safety-net
+  before discarding the worktree. The re-run still starts from a fresh
+  `origin/main`; the WIP commit survives in the branch reflog for
+  cherry-pick if it was real work.
 
 ## 6. Usage
 

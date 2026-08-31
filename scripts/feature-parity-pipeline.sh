@@ -137,6 +137,22 @@ if [ -n "$FORCE_ISSUE" ]; then
   exit ${PIPESTATUS[0]}
 fi
 
+# --- memory guard --------------------------------------------------------------
+# This box is shared with llama-server (which also serves the opencode agent
+# and the chat). When RAM+swap headroom is thin, a new opencode run can
+# trigger an OOM kill mid-issue (lost uncommitted work). Wait for headroom
+# before dispatching each issue.
+MIN_FREE_KB=6291456   # 6 GiB
+wait_for_memory() {
+  local free_kb
+  free_kb="$(awk '/MemAvailable/ {print $2}' /proc/meminfo)"
+  while [ "$free_kb" -lt "$MIN_FREE_KB" ]; do
+    log "low memory ($((free_kb / 1048576))MiB free) — waiting 60s (need $((MIN_FREE_KB / 1048576))MiB)"
+    sleep 60
+    free_kb="$(awk '/MemAvailable/ {print $2}' /proc/meminfo)"
+  done
+}
+
 # --- main loop ----------------------------------------------------------------
 log "=== pipeline start (milestone: $MILESTONE, pause=$PAUSE, wave=${WAVE_ONLY:-all}) ==="
 cur_wave=0
@@ -162,6 +178,7 @@ for entry in "${WORK_SORTED[@]}"; do
     continue
   fi
   log "RUN issue #$num (plan $plan.$task)"
+  wait_for_memory
   if bash "$ISSUE_RUN" "$num" ${MERGE:+--merge} 2>&1 | tee -a "$LOG"; then
     TOTAL_RUN=$((TOTAL_RUN + 1))
   else
