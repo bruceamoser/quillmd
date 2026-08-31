@@ -68,6 +68,7 @@ body {
 }
 
 .quillmd-content {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -913,6 +914,127 @@ button.quillmd-status-spellcheck:hover {
 
 .quillmd-prosemirror .quillmd-find-current {
   background: rgba(255, 140, 0, 0.6);
+}
+
+/* --- find & replace panel (plan 07, issue #70) --------------------------- */
+
+.quillmd-find-panel {
+  position: absolute;
+  top: 0;
+  left: 16px;
+  z-index: 90;
+  width: 360px;
+  max-width: calc(100% - 32px);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quillmd-find-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.quillmd-find-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+.quillmd-find-input:focus {
+  border-color: var(--accent);
+}
+
+/* Error states (plan 07 §1): invalid regex and no-results turn the term
+   input red; the counter mirrors the state. */
+.quillmd-find-input.error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.quillmd-find-counter {
+  flex: 0 0 auto;
+  min-width: 56px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.quillmd-find-counter.error {
+  color: var(--danger);
+}
+
+.quillmd-find-nav,
+.quillmd-find-toggle,
+.quillmd-find-mode,
+.quillmd-find-close,
+.quillmd-find-action {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 4px 6px;
+}
+
+.quillmd-find-nav:hover:not(:disabled),
+.quillmd-find-toggle:hover,
+.quillmd-find-mode:hover,
+.quillmd-find-close:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.quillmd-find-nav:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.quillmd-find-toggle.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+
+.quillmd-find-close {
+  font-size: 14px;
+}
+
+.quillmd-find-error {
+  color: var(--danger);
+  font-size: 12px;
+  padding: 0 2px;
+}
+
+.quillmd-find-action {
+  border-color: var(--border);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.quillmd-find-action:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+
+.quillmd-find-action:disabled {
+  color: var(--text-faint);
+  cursor: default;
 }
 
 /* --- slash menu ---------------------------------------------------------- */

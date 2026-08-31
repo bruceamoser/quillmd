@@ -149,13 +149,22 @@ fn build_edit_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> 
     let paste_as_text =
         MenuItem::with_id(app, "edit-paste-as-text", "Paste as Text", true, Some("Ctrl+Shift+V"))?;
     let find = MenuItem::with_id(app, "edit-find", "Find", true, Some("Ctrl+F"))?;
+    // Find & replace panel (plan 07 task 7.2, issue #70): Ctrl+F opens the
+    // panel in find mode, Ctrl+H in replace mode; Find Next / Find Previous
+    // cycle the active match (F3 / Shift+F3, the frontend no-ops them without
+    // a match).
+    let find_replace =
+        MenuItem::with_id(app, "edit-find-replace", "Find and Replace", true, Some("Ctrl+H"))?;
+    let find_next = MenuItem::with_id(app, "edit-find-next", "Find Next", true, Some("F3"))?;
+    let find_prev =
+        MenuItem::with_id(app, "edit-find-prev", "Find Previous", true, Some("Shift+F3"))?;
 
     let edit = SubmenuBuilder::new(app, "Edit")
         .items(&[&undo, &redo])
         .separator()
         .items(&[&cut, &copy, &paste, &paste_as_text])
         .separator()
-        .item(&find)
+        .items(&[&find, &find_replace, &find_next, &find_prev])
         .build()?;
     Ok(edit)
 }
