@@ -1,10 +1,13 @@
-// Image insert logic (plan 08 task 8.2, issue #77): URL validation for the
-// "From URL" dialog, the image node insert, and the src computation behind
-// the "From file" picker. Pure over the TipTap editor so the registry
-// commands, the toolbar split button, the Insert menu, and the tests all
-// share one behavior (the same shape as links.ts).
+// Image logic (plan 08 task 8.2/8.4, issues #77/#79): URL validation for the
+// "From URL" dialog, the image node insert, the src computation behind the
+// "From file" picker, and the image edit dialog (URL/alt/width). Pure over
+// the TipTap editor so the registry commands, the toolbar split button, the
+// Insert menu, the image click handler, and the tests all share one behavior
+// (the same shape as links.ts).
 
 import type { Editor as CoreEditor } from "@tiptap/core";
+import type { Node as PmNode } from "@tiptap/pm/model";
+import { NodeSelection } from "@tiptap/pm/state";
 import { baseName, isAbsolutePath } from "./fileIo";
 
 // What the From-URL dialog submits: the image destination and the alt text
@@ -103,4 +106,126 @@ export function imageSrcForPickedFile(docPath: string, filePath: string): string
   const folder = docFolderOf(docPath);
   if (folder === "") return baseName(filePath);
   return relativePath(folder, filePath);
+}
+
+// --- image edit dialog (plan 08 task 8.4, issue #79) ------------------------
+
+// What the edit dialog submits: the destination, the alt text, the width,
+// and the title (carried through unedited when the dialog has no title
+// field, so an edit never silently drops one).
+export interface ImageEditPayload {
+  src: string;
+  alt: string;
+  width: string;
+  title: string;
+}
+
+// The dialog's opening state: the image under the caret (isEditing) or the
+// empty values for a fresh insert.
+export interface ImageEditPrefill extends ImageEditPayload {
+  isEditing: boolean;
+}
+
+// Width (plan 08 §2.5): empty (no width), a pixel number ("320", "320px"),
+// or a percentage ("50%"). The normalized form is what the HTML width
+// attribute carries: the bare number for pixels, the percent sign for
+// percentages. Returns null for anything else.
+export function normalizeImageWidth(input: string): string | null {
+  const width = input.trim();
+  if (width === "") return "";
+  const px = /^(\d+(?:\.\d+)?)(?:px)?$/i.exec(width);
+  if (px) return px[1];
+  const pct = /^(\d+(?:\.\d+)?)%$/.exec(width);
+  if (pct) return `${pct[1]}%`;
+  return null;
+}
+
+// The error message for a width the dialog refuses, or null when acceptable.
+export function validateImageWidth(input: string): string | null {
+  if (normalizeImageWidth(input) !== null) return null;
+  return "Width must be pixels (e.g. 320) or a percent (e.g. 50%)";
+}
+
+// The image node the edit dialog should act on (plan 08 §2.5): the node
+// selection when the caret sits over an image, otherwise the first image in
+// the selection range, otherwise the inline image directly before or after a
+// collapsed caret (clicking an inline image places the caret on its
+// boundary).
+export function imageAtCaret(
+  editor: CoreEditor,
+): { pos: number; node: PmNode } | null {
+  const { state } = editor;
+  const sel = state.selection;
+  if (sel instanceof NodeSelection && sel.node.type.name === "image") {
+    return { pos: sel.from, node: sel.node };
+  }
+  const { from, to } = sel;
+  let found: { pos: number; node: PmNode } | null = null;
+  state.doc.nodesBetween(from, to, (node, pos) => {
+    if (!found && node.type.name === "image") {
+      found = { pos, node };
+      return false;
+    }
+    return true;
+  });
+  if (found) return found;
+  const $pos = state.doc.resolve(from);
+  const before = $pos.nodeBefore;
+  if (before?.type.name === "image") {
+    return { pos: from - before.nodeSize, node: before };
+  }
+  const after = $pos.nodeAfter;
+  if (after?.type.name === "image") {
+    return { pos: from, node: after };
+  }
+  return null;
+}
+
+// The values the dialog opens with (plan 08 §2.5): the image's src, alt,
+// width, and title when the caret is on an image, otherwise empty values
+// with isEditing false (the dialog then acts as an insert at the caret).
+export function readImagePrefill(editor: CoreEditor): ImageEditPrefill {
+  const target = imageAtCaret(editor);
+  if (!target) {
+    return { src: "", alt: "", title: "", width: "", isEditing: false };
+  }
+  const attrs = target.node.attrs;
+  return {
+    src: typeof attrs.src === "string" ? attrs.src : "",
+    alt: typeof attrs.alt === "string" ? attrs.alt : "",
+    title: typeof attrs.title === "string" ? attrs.title : "",
+    width: typeof attrs.width === "string" ? attrs.width : "",
+    isEditing: true,
+  };
+}
+
+// Applies the dialog's result to the image under the caret (plan 08 task
+// 8.4): the src/alt/width attributes are (re)set and the title is preserved.
+// The width is normalized first ("320px" -> "320"); an empty width clears
+// the attribute so the image serializes back to markdown syntax. When no
+// image is at the caret the payload inserts a new one (the dialog reached
+// here through a caret with no image, e.g. a future context menu).
+export function applyImageEdit(editor: CoreEditor, payload: ImageEditPayload): boolean {
+  const src = payload.src.trim();
+  if (validateImageUrl(src) !== null) return false;
+  const width = normalizeImageWidth(payload.width);
+  if (width === null) return false;
+  const alt = payload.alt.trim();
+  const title = payload.title.trim();
+  const target = imageAtCaret(editor);
+  if (target) {
+    const { state } = editor;
+    const tr = state.tr;
+    tr.setNodeMarkup(target.pos, null, {
+      ...target.node.attrs,
+      src,
+      alt: alt === "" ? null : alt,
+      title: title === "" ? null : title,
+      width: width === "" ? null : width,
+    });
+    tr.setSelection(NodeSelection.create(tr.doc, target.pos));
+    editor.view.dispatch(tr);
+    return true;
+  }
+  return insertImage(editor, { src, alt });
 }

@@ -50,6 +50,15 @@
  #                       bridge, from-file src pipeline), App.tsx routing the
  #                       from-file picker through the pipeline, and the
  #                       assets.test.ts vitest suite presence
+ #           p1-imageedit -> plan 08 task 8.4 acceptance gate (issue #79):
+ #                       the image edit dialog (click image -> dialog,
+ #                       URL/alt/width fields), the <img> HTML width
+ #                       serialization in pm.ts (parse + canonical render),
+ #                       the ImageWithWidth node attribute in Editor.tsx,
+ #                       the imageEdit registry command + App.tsx wiring,
+ #                       the width/apply/prefill logic in images.ts, and the
+ #                       AC8 round-trip fixture (links + 1 relative image +
+ #                       1 HTML-width image) + images.test.tsx suite presence
 #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -1132,7 +1141,7 @@ test_media_images_module() {
         && grep -q 'export type ImageInsertSource = "url" | "file"' "$ROOT/src/lib/editorCommands.ts" \
         && grep -q 'export function requestImageInsert' "$ROOT/src/lib/editorCommands.ts" \
         && [ -f "$ROOT/src/components/ImageDialog.tsx" ] \
-        && grep -q 'Image.configure({ inline: true })' "$ROOT/src/components/Editor.tsx"; then
+        && grep -q 'ImageWithWidth.configure({ inline: true })' "$ROOT/src/components/Editor.tsx"; then
         pass "media.module images.ts validation/insert/src + IMAGE_FILTER + inline image"
     else
         fail "media.module images.ts validation/insert/src + IMAGE_FILTER + inline image"
@@ -1220,6 +1229,109 @@ test_assets_suites_present() {
         pass "assets.suites plan 08 task 8.3 vitest suite present"
     else
         fail "assets.suites plan 08 task 8.3 vitest suite present"
+    fi
+}
+
+# --- p1-imageedit: image edit dialog (plan 08 task 8.4, issue #79) ------------
+# The width normalization, the <img> parse/serialize, the prefill read, the
+# apply, the registry split, the dialog's keyboard model, and the AC8
+# round-trip fixture are covered by the vitest suite (images.test.tsx) that
+# `npm test` runs; this section checks the app-level wiring a GUI driver
+# cannot reach headlessly: the ImageWithWidth node attribute + image click
+# handler in Editor.tsx, the <img> HTML parse/render in pm.ts, the
+# URL/alt/width logic module in images.ts, the imageEdit registry command,
+# and the App.tsx dialog routing + render.
+test_imageedit_node_and_click() {
+    note "imageedit.node ImageWithWidth width attr + click requests edit dialog"
+    if grep -q 'export const ImageWithWidth = Image.extend({' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'width: {' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'parseHTML: (element: HTMLElement) => element.getAttribute("width")' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'ImageWithWidth.configure({ inline: true })' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'if (node.type.name === "image") {' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'requestImageEditDialog(active);' "$ROOT/src/components/Editor.tsx"; then
+        pass "imageedit.node ImageWithWidth width attr + click requests edit dialog"
+    else
+        fail "imageedit.node ImageWithWidth width attr + click requests edit dialog"
+    fi
+}
+test_imageedit_pm_img_html() {
+    note "imageedit.pm pm.ts parses + renders the <img> HTML width form"
+    if grep -q 'export function parseImgHtml(value: string): ImgAttrs | null {' "$ROOT/src/lib/pm.ts" \
+        && grep -q 'export function renderImgHtml(attrs: {' "$ROOT/src/lib/pm.ts" \
+        && grep -q 'renderImgHtml({ src, alt, title, width })' "$ROOT/src/lib/pm.ts" \
+        && grep -q 'if (img) {' "$ROOT/src/lib/pm.ts" \
+        && grep -q 'const img = parseImgHtml(node.value);' "$ROOT/src/lib/pm.ts"; then
+        pass "imageedit.pm pm.ts parses + renders the <img> HTML width form"
+    else
+        fail "imageedit.pm pm.ts parses + renders the <img> HTML width form"
+    fi
+}
+test_imageedit_module() {
+    note "imageedit.module images.ts width validate/normalize + prefill + apply"
+    if [ -f "$ROOT/src/lib/images.ts" ] \
+        && grep -q 'export interface ImageEditPayload {' "$ROOT/src/lib/images.ts" \
+        && grep -q 'export interface ImageEditPrefill extends ImageEditPayload {' "$ROOT/src/lib/images.ts" \
+        && grep -q 'export function normalizeImageWidth(input: string): string | null {' "$ROOT/src/lib/images.ts" \
+        && grep -q 'export function validateImageWidth(input: string): string | null {' "$ROOT/src/lib/images.ts" \
+        && grep -q 'export function imageAtCaret(' "$ROOT/src/lib/images.ts" \
+        && grep -q 'export function readImagePrefill(editor: CoreEditor): ImageEditPrefill {' "$ROOT/src/lib/images.ts" \
+        && grep -q 'export function applyImageEdit(editor: CoreEditor, payload: ImageEditPayload): boolean {' "$ROOT/src/lib/images.ts"; then
+        pass "imageedit.module images.ts width validate/normalize + prefill + apply"
+    else
+        fail "imageedit.module images.ts width validate/normalize + prefill + apply"
+    fi
+}
+test_imageedit_registry() {
+    note "imageedit.registry imageEdit command + dialog listener/request"
+    if grep -q '| "imageEdit"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'id: "imageEdit",' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'run: (editor) => requestImageEditDialog(editor),' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export function registerImageEditDialogListener(fn: ImageEditDialogListener): () => void {' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export function requestImageEditDialog(editor: CoreEditor): boolean {' "$ROOT/src/lib/editorCommands.ts"; then
+        pass "imageedit.registry imageEdit command + dialog listener/request"
+    else
+        fail "imageedit.registry imageEdit command + dialog listener/request"
+    fi
+}
+test_imageedit_app_routing() {
+    note "imageedit.app App.tsx registers listener, applies edit, renders dialog"
+    if grep -q 'import ImageEditDialog from "./components/ImageEditDialog";' "$ROOT/src/App.tsx" \
+        && grep -q 'registerImageEditDialogListener' "$ROOT/src/App.tsx" \
+        && grep -q 'readImagePrefill' "$ROOT/src/App.tsx" \
+        && grep -q 'applyImageEdit' "$ROOT/src/App.tsx" \
+        && grep -q '<ImageEditDialog' "$ROOT/src/App.tsx" \
+        && [ -f "$ROOT/src/components/ImageEditDialog.tsx" ] \
+        && grep -q 'export default function ImageEditDialog' "$ROOT/src/components/ImageEditDialog.tsx" \
+        && grep -q 'validateImageWidth' "$ROOT/src/components/ImageEditDialog.tsx" \
+        && grep -q 'Width' "$ROOT/src/components/ImageEditDialog.tsx"; then
+        pass "imageedit.app App.tsx registers listener, applies edit, renders dialog"
+    else
+        fail "imageedit.app App.tsx registers listener, applies edit, renders dialog"
+    fi
+}
+test_imageedit_fixture() {
+    note "imageedit.fixture AC8 doc (links + relative img + HTML-width img) present"
+    if [ -f "$ROOT/fixtures/clean/images-edit-width.md" ] \
+        && grep -q '!\[Relative\](assets/photo.png)' "$ROOT/fixtures/clean/images-edit-width.md" \
+        && grep -q '<img src="sized.png" alt="Sized" width="320">' "$ROOT/fixtures/clean/images-edit-width.md" \
+        && grep -q '\[Home\](https://example.com)' "$ROOT/fixtures/clean/images-edit-width.md"; then
+        pass "imageedit.fixture AC8 doc (links + relative img + HTML-width img) present"
+    else
+        fail "imageedit.fixture AC8 doc (links + relative img + HTML-width img) present"
+    fi
+}
+test_imageedit_suites_present() {
+    note "imageedit.suites plan 08 task 8.4 vitest suite present"
+    if grep -q 'image edit dialog (plan 08 task 8.4, issue #79)' "$ROOT/src/lib/__tests__/images.test.tsx" \
+        && grep -q 'normalizeImageWidth / validateImageWidth (plan 08 §2.5)' "$ROOT/src/lib/__tests__/images.test.tsx" \
+        && grep -q '<img> HTML serialization (plan 08 §3, issue #79)' "$ROOT/src/lib/__tests__/images.test.tsx" \
+        && grep -q 'applyImageEdit (plan 08 task 8.4, issue #79)' "$ROOT/src/lib/__tests__/images.test.tsx" \
+        && grep -q 'imageEdit registry wiring (issue #79)' "$ROOT/src/lib/__tests__/images.test.tsx" \
+        && grep -q 'ImageEditDialog component' "$ROOT/src/lib/__tests__/images.test.tsx" \
+        && grep -q 'round-trips the task 8.4 fixture through the WYSIWYG converter' "$ROOT/src/lib/__tests__/images.test.tsx"; then
+        pass "imageedit.suites plan 08 task 8.4 vitest suite present"
+    else
+        fail "imageedit.suites plan 08 task 8.4 vitest suite present"
     fi
 }
 
@@ -1324,6 +1436,15 @@ case "$SUBSET" in
         test_assets_module
         test_assets_app_routing
         test_assets_suites_present
+        ;;
+    p1-imageedit)
+        test_imageedit_node_and_click
+        test_imageedit_pm_img_html
+        test_imageedit_module
+        test_imageedit_registry
+        test_imageedit_app_routing
+        test_imageedit_fixture
+        test_imageedit_suites_present
         ;;
     shell)
         test_shell_new_bundled
@@ -1436,9 +1557,16 @@ case "$SUBSET" in
         test_assets_module
         test_assets_app_routing
         test_assets_suites_present
+        test_imageedit_node_and_click
+        test_imageedit_pm_img_html
+        test_imageedit_module
+        test_imageedit_registry
+        test_imageedit_app_routing
+        test_imageedit_fixture
+        test_imageedit_suites_present
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac
