@@ -1136,3 +1136,47 @@ export function requestImageEditDialog(editor: CoreEditor): boolean {
   imageEditDialogListener(editor);
   return true;
 }
+
+// Block-style inspector plumbing (plan 05 task 5.5, issue #58). The status
+// bar (App.tsx) shows the built-in style that owns the block under the
+// cursor; the WYSIWYG Editor is the only surface that knows it (it owns the
+// TipTap selection), so it publishes the current style's label — or null
+// outside WYSIWYG / for a block with no built-in style — on every doc and
+// selection transaction. Single subscriber: at most one WYSIWYG editor is
+// mounted at a time (the active document).
+type BlockStyleListener = (label: string | null) => void;
+let blockStyleListener: BlockStyleListener | null = null;
+
+export function registerBlockStyleListener(fn: BlockStyleListener): () => void {
+  blockStyleListener = fn;
+  return () => {
+    if (blockStyleListener === fn) blockStyleListener = null;
+  };
+}
+
+export function publishBlockStyle(label: string | null): void {
+  if (blockStyleListener) blockStyleListener(label);
+}
+
+// Style-gallery request plumbing (plan 05 task 5.5, issue #58). The
+// status-bar inspector's "jump to style" action opens the toolbar's
+// StyleGallery popover, which is a self-contained component the status bar
+// cannot reach directly — so the request goes through a single-subscriber
+// channel: the mounted StyleGallery registers an opener and the request
+// carries the live editor (the gallery highlights the style active at its
+// selection). A no-op when no gallery is mounted (outside WYSIWYG).
+type StylesGalleryListener = (editor: CoreEditor) => void;
+let stylesGalleryListener: StylesGalleryListener | null = null;
+
+export function registerStylesGalleryListener(fn: StylesGalleryListener): () => void {
+  stylesGalleryListener = fn;
+  return () => {
+    if (stylesGalleryListener === fn) stylesGalleryListener = null;
+  };
+}
+
+export function requestStylesGallery(editor: CoreEditor): boolean {
+  if (!stylesGalleryListener) return false;
+  stylesGalleryListener(editor);
+  return true;
+}

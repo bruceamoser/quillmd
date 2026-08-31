@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useEditorState } from "@tiptap/react";
 import type { Editor as CoreEditor } from "@tiptap/core";
+import { registerStylesGalleryListener } from "../lib/editorCommands";
 import {
   BUILT_IN_STYLES,
   TOP_GALLERY_STYLES,
@@ -142,6 +143,18 @@ export default function StyleGallery({ editor, title = "Styles" }: StyleGalleryP
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [open]);
+
+  // Style inspector (plan 05 task 5.5, issue #58): the status bar's
+  // "jump to style" action requests the gallery through the app-level channel;
+  // the mounted gallery opens its popover (resetting to the top grid) so the
+  // current style is highlighted at the top of the editor.
+  useEffect(() => {
+    if (!editor) return;
+    return registerStylesGalleryListener(() => {
+      setMore(false);
+      setOpen(true);
+    });
+  }, [editor]);
 
   if (!editor) return null;
 

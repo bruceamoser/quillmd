@@ -42,9 +42,11 @@ import {
   dispatchEditorCommand,
   fontMenuCommand,
   isLineSpacingValue,
+  registerBlockStyleListener,
   registerImageEditDialogListener,
   registerImageInsertListener,
   registerLinkDialogListener,
+  requestStylesGallery,
 } from "./lib/editorCommands";
 import { IMAGE_FILTER, pickOpenFile } from "./lib/dialogs";
 import { applyImageEdit, insertImage, readImagePrefill } from "./lib/images";
@@ -251,6 +253,11 @@ export default function App() {
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [explorerWidth, setExplorerWidth] = useState(240);
   const [statusbarVisible, setStatusbarVisible] = useState(true);
+  // Style inspector (plan 05 task 5.5, issue #58): the built-in style that
+  // owns the block under the cursor, published by the WYSIWYG editor (null
+  // outside WYSIWYG or for a block with no built-in style — the indicator is
+  // hidden then). Drives the status-bar block-type readout.
+  const [blockStyleLabel, setBlockStyleLabel] = useState<string | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoData, setInfoData] = useState<DocInfo | null>(null);
   const [infoLoading, setInfoLoading] = useState(false);
@@ -742,6 +749,15 @@ export default function App() {
       }
     }
     setModifyStyleKey(key);
+  }, []);
+
+  // Style inspector (plan 05 task 5.5, issue #58): the status bar's
+  // "jump to style" action opens the toolbar's style gallery, which
+  // highlights the style active at the cursor (the same one the indicator
+  // shows). No-op outside WYSIWYG, where no gallery is mounted.
+  const jumpToStyle = useCallback(() => {
+    const editor = currentFindEditor();
+    if (editor) requestStylesGallery(editor);
   }, []);
 
   // OK in the dialog: persist the edited style's override (an empty override
@@ -1655,6 +1671,14 @@ export default function App() {
     };
   }, []);
 
+  // Style inspector (plan 05 task 5.5, issue #58): the WYSIWYG editor
+  // publishes the built-in style that owns the block under the cursor (null
+  // when it unmounts or the block has no built-in style); the state feeds the
+  // status-bar indicator.
+  useEffect(() => {
+    return registerBlockStyleListener(setBlockStyleLabel);
+  }, []);
+
   // OS dark-mode default (plan 05 task 5.3, issue #56, AC5): while the user
   // has not saved an explicit app-wide theme, follow the OS preference live —
   // Dark when the OS reports dark mode, Quill otherwise. An explicit pick
@@ -2044,6 +2068,8 @@ export default function App() {
                   ? untitledDisplayName(activePath)
                   : activePath
               }
+              blockStyleLabel={blockStyleLabel}
+              onJumpToStyle={jumpToStyle}
               onModeChange={setMode}
               onZoomReset={() => changeZoom(ZOOM_DEFAULT)}
             />
