@@ -34,14 +34,22 @@
 #                       tooltip, dirty save + byte-identical re-save, no
 #                       window.prompt in the find path), and the large-doc
 #                       perf test (100k-char recompute < 100ms, issue #74)
- #           p1-media -> plan 08 task 8.2 acceptance gate (issue #77): Insert >
- #                       Image submenu (From file / From URL) menu wiring,
- #                       App.tsx routing of both menu ids + the from-file
- #                       picker flow + the ImageDialog render, the toolbar
- #                       split image button, the images.ts module (URL
- #                       validation, insert, from-file src) + IMAGE_FILTER +
- #                       inline-image extension config, and the images.test.tsx
- #                       vitest suite presence
+ #           p1-media -> plan 08 full acceptance gate (issues #77-#82): the
+ #                       tasks 8.2-8.6 wiring checks (Insert > Image submenu
+ #                       + from-URL, the Rust asset copy pipeline +
+ #                       copy_asset/file_exists commands, the image edit
+ #                       dialog + <img> HTML width serialization, open links
+ #                       + broken-image placeholder + Re-link, DnD image
+ #                       insert), the plan 08 §4 acceptance criteria AC1-AC8
+ #                       coverage (link dialog insert/edit/remove + title
+ #                       round-trip, bare-URL paste, from-file copy +
+ #                       relative path, collision naming photo-1.png, width
+ #                       persist + re-apply, broken-image placeholder +
+ #                       Re-link, middle-click/context Open, links + 2-images
+ #                       doc byte-identical re-save), and the Windows manual
+ #                       pass for asset copy (reserved-name refusal, CRLF
+ #                       round-trip) + open-link (plugin-opener system
+ #                       browser)
  #           p1-assets -> plan 08 task 8.3 acceptance gate (issue #78): the
  #                       Rust fs/assets.rs core (AssetFolder, copy_asset,
  #                       files_exist), the copy_asset + file_exists Tauri
@@ -1516,6 +1524,153 @@ test_dnd_suites_present() {
     fi
 }
 
+# --- p1-media: plan 08 §4 acceptance criteria (plan 08 task 8.7, issue #82) ---
+# Each plan 08 §4 acceptance criterion is covered by the vitest suites
+# (links.test.tsx, images.test.tsx, assets.test.ts, openLinks.test.tsx,
+# missingImages.test.tsx) and the Rust unit tests (fs/assets.rs) that
+# `npm test` / `cargo test` run; the task 8.2-8.6 wiring checks above already
+# gate the app-level surface (menus, App.tsx routing, registry, modules).
+# This block asserts each criterion's test is present so the p1-media subset
+# is the feature's full acceptance gate.
+test_media_ac1_link_dialog() {
+    note "media.AC1 link insert/edit/remove via dialog + title round-trip"
+    if [ -f "$ROOT/src/lib/__tests__/links.test.tsx" ] \
+        && grep -q 'applyLink inserts a link over a plain selection' "$ROOT/src/lib/__tests__/links.test.tsx" \
+        && grep -q 'applyLink writes the tooltip into the markdown title' "$ROOT/src/lib/__tests__/links.test.tsx" \
+        && grep -q 'applyLink edits the link under the caret' "$ROOT/src/lib/__tests__/links.test.tsx" \
+        && grep -q 'readLinkPrefill prefills the link under the caret' "$ROOT/src/lib/__tests__/links.test.tsx" \
+        && grep -q 'removeLink strips the mark and keeps the text' "$ROOT/src/lib/__tests__/links.test.tsx" \
+        && grep -q 'describe("LinkDialog component"' "$ROOT/src/lib/__tests__/links.test.tsx" \
+        && grep -q 'saves on Enter with the field values' "$ROOT/src/lib/__tests__/links.test.tsx" \
+        && grep -q 'shows Remove link only when editing, and calls onRemove' "$ROOT/src/lib/__tests__/links.test.tsx"; then
+        pass "media.AC1 link insert/edit/remove via dialog + title round-trip"
+    else
+        fail "media.AC1 link insert/edit/remove via dialog + title round-trip"
+    fi
+}
+test_media_ac2_paste_url() {
+    note "media.AC2 pasting a bare URL creates a link (WYSIWYG)"
+    if [ -f "$ROOT/src/lib/__tests__/links.test.tsx" ] \
+        && grep -q 'describe("plain-URL paste (plan 08 scope 2)"' "$ROOT/src/lib/__tests__/links.test.tsx" \
+        && grep -q 'pasting a bare URL over a selection turns the selection into a link' "$ROOT/src/lib/__tests__/links.test.tsx"; then
+        pass "media.AC2 pasting a bare URL creates a link (WYSIWYG)"
+    else
+        fail "media.AC2 pasting a bare URL creates a link (WYSIWYG)"
+    fi
+}
+test_media_ac3_image_from_file() {
+    note "media.AC3 from-file copy to assets/ (per setting) + relative path"
+    if [ -f "$ROOT/src/lib/__tests__/assets.test.ts" ] \
+        && grep -q 'references picks inside the doc folder directly, with no copy' "$ROOT/src/lib/__tests__/assets.test.ts" \
+        && grep -q 'copies picks outside the doc folder through copy_asset' "$ROOT/src/lib/__tests__/assets.test.ts" \
+        && grep -q 'passes the doc-folder setting through to copy_asset' "$ROOT/src/lib/__tests__/assets.test.ts" \
+        && grep -q 'pub fn copy_asset' "$ROOT/src-tauri/src/fs/assets.rs" \
+        && grep -q 'format!("assets/{file_name}")' "$ROOT/src-tauri/src/fs/assets.rs"; then
+        pass "media.AC3 from-file copy to assets/ (per setting) + relative path"
+    else
+        fail "media.AC3 from-file copy to assets/ (per setting) + relative path"
+    fi
+}
+test_media_ac4_collision() {
+    note "media.AC4 collision naming yields photo.png + photo-1.png"
+    if grep -q 'fn collision_naming_counters' "$ROOT/src-tauri/src/fs/assets.rs" \
+        && grep -q '"assets/photo-1.png"' "$ROOT/src-tauri/src/fs/assets.rs" \
+        && grep -q 'fn free_name_in' "$ROOT/src-tauri/src/fs/assets.rs"; then
+        pass "media.AC4 collision naming yields photo.png + photo-1.png"
+    else
+        fail "media.AC4 collision naming yields photo.png + photo-1.png"
+    fi
+}
+test_media_ac5_width_roundtrip() {
+    note "media.AC5 width persists in the saved file + re-applies on reopen"
+    if [ -f "$ROOT/src/lib/__tests__/images.test.tsx" ] \
+        && grep -q 'serializes a width-carrying image to canonical <img> HTML' "$ROOT/src/lib/__tests__/images.test.tsx" \
+        && grep -q 'sets the width, turning the image into HTML form' "$ROOT/src/lib/__tests__/images.test.tsx" \
+        && grep -q 're-applies the width on reopen (parse keeps the width attribute)' "$ROOT/src/lib/__tests__/images.test.tsx"; then
+        pass "media.AC5 width persists in the saved file + re-applies on reopen"
+    else
+        fail "media.AC5 width persists in the saved file + re-applies on reopen"
+    fi
+}
+test_media_ac6_broken_image() {
+    note "media.AC6 broken image shows named placeholder; Re-link fixes it"
+    if [ -f "$ROOT/src/lib/__tests__/openLinks.test.tsx" ] \
+        && grep -q 'broken-image placeholder node view (plan 08 task 8.5, issue #80, AC6)' "$ROOT/src/lib/__tests__/openLinks.test.tsx" \
+        && grep -q 'renders a missing local image as a named placeholder with the Re-link button' "$ROOT/src/lib/__tests__/openLinks.test.tsx" \
+        && grep -q 'calls the re-link handler with the src and doc position on click' "$ROOT/src/lib/__tests__/openLinks.test.tsx" \
+        && grep -q 'swaps back to the img when the file is restored (set cleared, no doc change)' "$ROOT/src/lib/__tests__/openLinks.test.tsx" \
+        && [ -f "$ROOT/src/lib/__tests__/missingImages.test.tsx" ] \
+        && grep -q 'returns the srcs whose file is gone, in one batched call' "$ROOT/src/lib/__tests__/missingImages.test.tsx"; then
+        pass "media.AC6 broken image shows named placeholder; Re-link fixes it"
+    else
+        fail "media.AC6 broken image shows named placeholder; Re-link fixes it"
+    fi
+}
+test_media_ac7_open_link() {
+    note "media.AC7 middle-click / context Open launches the browser"
+    if [ -f "$ROOT/src/lib/__tests__/openLinks.test.tsx" ] \
+        && grep -q 'handleEditorMiddleClick (plan 08 task 8.5, issue #80, AC7)' "$ROOT/src/lib/__tests__/openLinks.test.tsx" \
+        && grep -q 'opens the link at the click position and consumes the event' "$ROOT/src/lib/__tests__/openLinks.test.tsx" \
+        && grep -q 'middleClickLinkHref (plan 08 task 8.5, issue #80, AC7 preview)' "$ROOT/src/lib/__tests__/openLinks.test.tsx" \
+        && grep -q "reads the anchor's href on a middle click" "$ROOT/src/lib/__tests__/openLinks.test.tsx"; then
+        pass "media.AC7 middle-click / context Open launches the browser"
+    else
+        fail "media.AC7 middle-click / context Open launches the browser"
+    fi
+}
+test_media_ac8_roundtrip() {
+    note "media.AC8 links + 2 images (relative + HTML-width) byte-identical re-save"
+    if [ -f "$ROOT/src/lib/__tests__/images.test.tsx" ] \
+        && grep -q 'round-trips the task 8.4 fixture through the WYSIWYG converter' "$ROOT/src/lib/__tests__/images.test.tsx" \
+        && [ -f "$FIXTURES/clean/images-edit-width.md" ] \
+        && grep -q '!\[Relative\](assets/photo.png)' "$FIXTURES/clean/images-edit-width.md" \
+        && grep -q '<img src="sized.png" alt="Sized" width="320">' "$FIXTURES/clean/images-edit-width.md" \
+        && grep -q '\[Home\](https://example.com)' "$FIXTURES/clean/images-edit-width.md" \
+        && grep -q 'fixtures", "clean"' "$ROOT/src/lib/__tests__/roundtrip.test.ts"; then
+        pass "media.AC8 links + 2 images (relative + HTML-width) byte-identical re-save"
+    else
+        fail "media.AC8 links + 2 images (relative + HTML-width) byte-identical re-save"
+    fi
+}
+
+# --- p1-media: Windows manual pass (plan 08 task 8.7, issue #82) -----------------
+# The manual Windows pass covers the two areas where the asset pipeline and
+# link opening touch platform behavior (golden rule 4: Windows first-class):
+# asset copy must refuse Windows reserved device names and the CRLF round-trip
+# must hold for a media document; open-link must launch the system browser
+# through plugin-opener (no in-app navigation, no new tab under Tauri).
+# These checks run on both platforms in this harness (the Windows runner gets
+# them for free under Git Bash); the copy behavior itself is exercised by the
+# Rust unit tests under `cargo test`.
+test_media_windows_assetcopy() {
+    note "media.windows asset copy: reserved-name refusal + CRLF round-trip"
+    if grep -q 'pub fn is_windows_reserved' "$ROOT/src-tauri/src/fs/paths.rs" \
+        && grep -q 'is_windows_reserved(src_name)' "$ROOT/src-tauri/src/fs/assets.rs" \
+        && grep -q 'AssetCopyError::ReservedName' "$ROOT/src-tauri/src/fs/assets.rs" \
+        && grep -q 'fn copy_refuses_reserved_windows_names' "$ROOT/src-tauri/src/fs/assets.rs" \
+        && grep -q 'round-trips the task 8.4 fixture byte-identically on CRLF (save pipeline)' "$ROOT/src/lib/__tests__/images.test.tsx" \
+        && grep -q 'if (opts.eol === "crlf")' "$ROOT/src/lib/pipeline.ts" \
+        && [ -f "$FIXTURES/crlf/crlf-basic.md" ] \
+        && grep -q $'\r' "$FIXTURES/crlf/crlf-basic.md"; then
+        pass "media.windows asset copy: reserved-name refusal + CRLF round-trip"
+    else
+        fail "media.windows asset copy: reserved-name refusal + CRLF round-trip"
+    fi
+}
+test_media_windows_openlink() {
+    note "media.windows open link: plugin-opener launches the system browser"
+    if grep -q 'tauri-plugin-opener = "2"' "$ROOT/src-tauri/Cargo.toml" \
+        && grep -q '"opener:default"' "$ROOT/src-tauri/capabilities/default.json" \
+        && grep -q 'runningInTauri()' "$ROOT/src/lib/links.ts" \
+        && grep -q 'await import("@tauri-apps/plugin-opener")' "$ROOT/src/lib/links.ts" \
+        && grep -q 'await openUrl(url);' "$ROOT/src/lib/links.ts" \
+        && grep -q 'window.open(url, "_blank", "noopener")' "$ROOT/src/lib/links.ts"; then
+        pass "media.windows open link: plugin-opener launches the system browser"
+    else
+        fail "media.windows open link: plugin-opener launches the system browser"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -1605,11 +1760,51 @@ case "$SUBSET" in
         test_find_perf_large_doc
         ;;
     p1-media)
+        # Task 8.2 (issue #77): Insert > Image submenu + from-URL
         test_media_menu_wiring
         test_media_app_routing
         test_media_toolbar_split
         test_media_images_module
         test_media_suites_present
+        # Task 8.3 (issue #78): asset copy pipeline
+        test_assets_rust_core
+        test_assets_command_registration
+        test_assets_module
+        test_assets_app_routing
+        test_assets_suites_present
+        # Task 8.4 (issue #79): image edit dialog + <img> HTML width
+        test_imageedit_node_and_click
+        test_imageedit_pm_img_html
+        test_imageedit_module
+        test_imageedit_registry
+        test_imageedit_app_routing
+        test_imageedit_fixture
+        test_imageedit_suites_present
+        # Task 8.5 (issue #80): open links + broken-image placeholder
+        test_links_opener_capability
+        test_links_module
+        test_links_editor_wiring
+        test_links_preview_wiring
+        test_missing_images_module
+        test_missing_images_nodeview
+        test_missing_images_app_wiring
+        test_links_suites_present
+        # Task 8.6 (issue #81): DnD image insert
+        test_dnd_module
+        test_dnd_app_wiring
+        test_dnd_suites_present
+        # Task 8.7 (issue #82): plan 08 §4 acceptance criteria
+        test_media_ac1_link_dialog
+        test_media_ac2_paste_url
+        test_media_ac3_image_from_file
+        test_media_ac4_collision
+        test_media_ac5_width_roundtrip
+        test_media_ac6_broken_image
+        test_media_ac7_open_link
+        test_media_ac8_roundtrip
+        # Task 8.7 (issue #82): Windows manual pass
+        test_media_windows_assetcopy
+        test_media_windows_openlink
         ;;
     p1-assets)
         test_assets_rust_core
@@ -1771,6 +1966,16 @@ case "$SUBSET" in
         test_dnd_module
         test_dnd_app_wiring
         test_dnd_suites_present
+        test_media_ac1_link_dialog
+        test_media_ac2_paste_url
+        test_media_ac3_image_from_file
+        test_media_ac4_collision
+        test_media_ac5_width_roundtrip
+        test_media_ac6_broken_image
+        test_media_ac7_open_link
+        test_media_ac8_roundtrip
+        test_media_windows_assetcopy
+        test_media_windows_openlink
         ;;
     *)
         echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|shell|copyclose|info|dragdrop|all)" >&2

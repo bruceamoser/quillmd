@@ -100,5 +100,38 @@ video/audio embeds (defer), image compression.
    missing-asset detection + Re-link flow.
 6. **DnD image insert** — drop handler routing image files through the
    from-file flow.
-7. **Acceptance** — `p1-media` harness section; Windows manual pass (asset
-   copy, open-link).
+ 7. **Acceptance** — `p1-media` harness section; Windows manual pass (asset
+    copy, open-link).
+
+## 6. Manual acceptance checklist (Windows box)
+
+The headless suites (`npm test`, `tests\acceptance-test.sh p1-media`) run
+everywhere, but the native file picker, a real NTFS asset copy, and
+launching the system browser can only be observed on a real desktop. After
+`npm run tauri build` on a Windows 10/11 machine, run
+`tests\acceptance-test.sh p1-media` (Git Bash) and then check §4 by hand,
+focusing on the two Windows-specific areas:
+
+- [ ] **AC3/AC4 — Asset copy.** With a document open in `C:\notes`, Insert
+      > Image > From file… and pick a PNG from `C:\Pictures`. The file is
+      copied to `C:\notes\assets\<name>.png` and the markdown contains the
+      forward-slash relative path `![](assets/<name>.png)`; the image
+      renders. Pick the same file again: the copy is `photo-1.png` (the
+      collision counter), and the new image references it. Pick a file that
+      already sits in the doc's folder: it is referenced relatively with no
+      copy. Attempt to insert a file named `con.png` (or `NUL.png`): the
+      insert is refused with the reserved-name error and nothing is written.
+- [ ] **AC3 — Folder move.** Move the whole `C:\notes` folder (doc +
+      `assets\`) to `D:\notes` and reopen the document: every image still
+      renders (relative paths only — no `C:\` in the saved file).
+- [ ] **AC7 — Open link.** Middle-click an http(s) link in the WYSIWYG view
+      and in the preview: the default browser opens the destination in a new
+      tab and the editor stays in the foreground (no in-app navigation, no
+      new app window). A `file://` link opens in the OS handler. The link
+      dialog's "Open" button does the same.
+- [ ] **Golden rule 4 — CRLF.** In a CRLF document (the Windows default),
+      insert an image and save: `git diff` shows only the new image line,
+      and every other line keeps its CRLF ending byte-for-byte.
+- [ ] **AC8 — Regressions.** `npm test` green on the Windows box;
+      `tests\acceptance-test.sh p1-media` green; an untouched document
+      (e.g. `fixtures\clean\images-edit-width.md`) saves byte-identically.
