@@ -1,0 +1,35 @@
+/* Quill theme (plan 05 task 5.3, issue #56): the app's default document look.
+   A theme is a CSS variable sheet scoped to the document content container;
+   it restyles the WYSIWYG and preview surfaces without adding any markup to
+   the markdown. */
+.quillmd-content[data-theme="quill"] {
+  --bg: #1e1e1e;
+  --bg-elevated: #252526;
+  --bg-panel: #2d2d2d;
+  --bg-hover: #2a2d2e;
+  --bg-active: #37373d;
+  --border: #3c3c3c;
+  --text: #d4d4d4;
+  --text-bright: #ffffff;
+  --text-muted: #9d9d9d;
+  --text-faint: #6e6e6e;
+  --accent: #007acc;
+  --accent-hover: #1b8bd6;
+  --accent-soft: rgba(0, 122, 204, 0.18);
+  --font-ui: "Segoe UI", -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  --font-text: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  --quillmd-link: #4fc1ff;
+  --quillmd-code-bg: rgba(128, 128, 128, 0.16);
+  --quillmd-code-text: #f0a070;
+  --quillmd-heading-weight: 600;
+  --quillmd-h1: 2em;
+  --quillmd-h2: 1.6em;
+  --quillmd-h3: 1.3em;
+  --quillmd-h4: 1.1em;
+  --quillmd-h5: 1em;
+  --quillmd-h6: 0.9em;
+  --quillmd-base-size: 15px;
+  --quillmd-line-height: 1.7;
+}

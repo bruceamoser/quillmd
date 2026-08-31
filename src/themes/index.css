@@ -1,0 +1,9 @@
+/* Theme variable sheets (plan 05 task 5.3, issue #56). Each theme is scoped
+   to the document content container through data-theme and only sets CSS
+   variables — it never adds markup to the markdown or changes the save
+   pipeline. */
+@import "./quill.css";
+@import "./minimal.css";
+@import "./serif.css";
+@import "./dark.css";
+@import "./high-contrast.css";

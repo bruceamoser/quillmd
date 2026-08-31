@@ -1,0 +1,34 @@
+/* High Contrast theme (plan 05 task 5.3, issue #56): maximum-contrast
+   document look for accessibility. View-only CSS variable sheet — no markdown
+   is added. */
+.quillmd-content[data-theme="high-contrast"] {
+  --bg: #000000;
+  --bg-elevated: #0a0a0a;
+  --bg-panel: #111111;
+  --bg-hover: #161616;
+  --bg-active: #1f1f1f;
+  --border: #ffffff;
+  --text: #ffffff;
+  --text-bright: #ffffff;
+  --text-muted: #e6e6e6;
+  --text-faint: #bfbfbf;
+  --accent: #ffd400;
+  --accent-hover: #ffe033;
+  --accent-soft: rgba(255, 212, 0, 0.22);
+  --font-ui: "Segoe UI", -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  --font-text: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  --quillmd-link: #ffd400;
+  --quillmd-code-bg: rgba(255, 212, 0, 0.18);
+  --quillmd-code-text: #ffd400;
+  --quillmd-heading-weight: 700;
+  --quillmd-h1: 2.2em;
+  --quillmd-h2: 1.8em;
+  --quillmd-h3: 1.4em;
+  --quillmd-h4: 1.15em;
+  --quillmd-h5: 1em;
+  --quillmd-h6: 0.95em;
+  --quillmd-base-size: 17px;
+  --quillmd-line-height: 1.8;
+}

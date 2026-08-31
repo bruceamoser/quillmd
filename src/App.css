@@ -975,12 +975,14 @@ button.quillmd-status-spellcheck:hover {
      CSS variables on this content container; the fallbacks are the app's
      base text stack at 15px, so an unset variable keeps the default look.
      Cosmetic only — the document's own font spans still override it. */
-  font-family: var(--quillmd-editor-font, var(--font-text));
-  font-size: var(--quillmd-editor-font-size, 15px);
+   font-family: var(--quillmd-editor-font, var(--font-text));
+  /* Theme base size (plan 05 task 5.3, issue #56): the per-app editor size
+     wins, then the active theme's base size, then the app's 15px default. */
+  font-size: var(--quillmd-editor-font-size, var(--quillmd-base-size, 15px));
   /* Line spacing (plan 02 task 2.5): the per-doc preset is applied as the
-     --quillmd-line-spacing CSS variable; the fallback is the "single"
-     default so an unset variable keeps the base look. */
-  line-height: var(--quillmd-line-spacing, 1.7);
+     --quillmd-line-spacing CSS variable; the fallback is the active theme's
+     base line height (or the app's 1.7 default when no theme is active). */
+  line-height: var(--quillmd-line-spacing, var(--quillmd-line-height, 1.7));
   /* Zoom (plan 02 task 2.6, issue #35): the per-doc percent is applied as
      the --quillmd-zoom CSS variable on this content container; the 100
      fallback keeps an unset variable at the default size. */
@@ -1014,37 +1016,39 @@ button.quillmd-status-spellcheck:hover {
 .quillmd-prosemirror h5,
 .quillmd-prosemirror h6 {
   color: var(--text-bright);
-  font-weight: 600;
+  font-weight: var(--quillmd-heading-weight, 600);
   line-height: 1.25;
   margin: 1.2em 0 0.4em;
 }
 
+/* Heading scale (plan 05 task 5.3, issue #56): each level reads the active
+   theme's variable, with the app's current scale as the fallback. */
 .quillmd-prosemirror h1 {
-  font-size: 2em;
+  font-size: var(--quillmd-h1, 2em);
   border-bottom: 1px solid var(--border);
   padding-bottom: 0.3em;
 }
 
 .quillmd-prosemirror h2 {
-  font-size: 1.6em;
+  font-size: var(--quillmd-h2, 1.6em);
   border-bottom: 1px solid var(--border);
   padding-bottom: 0.2em;
 }
 
 .quillmd-prosemirror h3 {
-  font-size: 1.3em;
+  font-size: var(--quillmd-h3, 1.3em);
 }
 
 .quillmd-prosemirror h4 {
-  font-size: 1.1em;
+  font-size: var(--quillmd-h4, 1.1em);
 }
 
 .quillmd-prosemirror h5 {
-  font-size: 1em;
+  font-size: var(--quillmd-h5, 1em);
 }
 
 .quillmd-prosemirror h6 {
-  font-size: 0.9em;
+  font-size: var(--quillmd-h6, 0.9em);
   color: var(--text-muted);
 }
 
@@ -1065,13 +1069,14 @@ button.quillmd-status-spellcheck:hover {
 }
 
 .quillmd-prosemirror a {
-  color: #4fc1ff;
+  /* Theme link color (plan 05 task 5.3, issue #56). */
+  color: var(--quillmd-link, #4fc1ff);
   text-decoration: none;
   border-bottom: 1px solid transparent;
 }
 
 .quillmd-prosemirror a:hover {
-  border-bottom-color: #4fc1ff;
+  border-bottom-color: var(--quillmd-link, #4fc1ff);
 }
 
 .quillmd-prosemirror ul,
@@ -1127,12 +1132,13 @@ button.quillmd-status-spellcheck:hover {
 }
 
 .quillmd-prosemirror code {
-  background: rgba(128, 128, 128, 0.16);
+  /* Theme code colors (plan 05 task 5.3, issue #56). */
+  background: var(--quillmd-code-bg, rgba(128, 128, 128, 0.16));
   border-radius: 4px;
   padding: 1px 5px;
   font-family: var(--font-mono);
   font-size: 0.9em;
-  color: #f0a070;
+  color: var(--quillmd-code-text, #f0a070);
 }
 
 .quillmd-prosemirror pre code {
@@ -1590,8 +1596,9 @@ button.quillmd-status-spellcheck:hover {
   max-width: 860px;
   margin: 0 auto;
   color: var(--text);
-  font-size: 15px;
-  line-height: 1.7;
+  /* Theme base size / line height (plan 05 task 5.3, issue #56). */
+  font-size: var(--quillmd-base-size, 15px);
+  line-height: var(--quillmd-line-height, 1.7);
 }
 
 .quillmd-preview-content h1,
@@ -1607,10 +1614,40 @@ button.quillmd-status-spellcheck:hover {
 .quillmd-preview-content h5,
 .quillmd-preview-content h6 {
   color: var(--text-bright);
+  font-weight: var(--quillmd-heading-weight, 600);
+  line-height: 1.25;
+  margin: 1.2em 0 0.4em;
+}
+
+/* Heading scale (plan 05 task 5.3, issue #56). */
+.quillmd-preview-content h1 {
+  font-size: var(--quillmd-h1, 2em);
+}
+
+.quillmd-preview-content h2 {
+  font-size: var(--quillmd-h2, 1.6em);
+}
+
+.quillmd-preview-content h3 {
+  font-size: var(--quillmd-h3, 1.3em);
+}
+
+.quillmd-preview-content h4 {
+  font-size: var(--quillmd-h4, 1.1em);
+}
+
+.quillmd-preview-content h5 {
+  font-size: var(--quillmd-h5, 1em);
+}
+
+.quillmd-preview-content h6 {
+  font-size: var(--quillmd-h6, 0.9em);
+  color: var(--text-muted);
 }
 
 .quillmd-preview-content a {
-  color: #4fc1ff;
+  /* Theme link color (plan 05 task 5.3, issue #56). */
+  color: var(--quillmd-link, #4fc1ff);
 }
 
 .quillmd-preview-content pre {
@@ -1624,7 +1661,9 @@ button.quillmd-status-spellcheck:hover {
 .quillmd-preview-content code {
   font-family: var(--font-mono);
   font-size: 0.9em;
-  background: rgba(128, 128, 128, 0.16);
+  /* Theme code colors (plan 05 task 5.3, issue #56). */
+  background: var(--quillmd-code-bg, rgba(128, 128, 128, 0.16));
+  color: var(--quillmd-code-text, #f0a070);
   padding: 1px 5px;
   border-radius: 4px;
 }

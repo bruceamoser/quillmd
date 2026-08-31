@@ -1,0 +1,35 @@
+/* Serif / Book theme (plan 05 task 5.3, issue #56): a warm, book-like
+   reading look with serif body text and a tighter heading scale. View-only
+   CSS variable sheet — no markdown is added. */
+.quillmd-content[data-theme="serif"] {
+  --bg: #fbf7ef;
+  --bg-elevated: #f2ecdf;
+  --bg-panel: #e9e1d1;
+  --bg-hover: #efe8da;
+  --bg-active: #e2d8c6;
+  --border: #cfc3ac;
+  --text: #2b241a;
+  --text-bright: #14100a;
+  --text-muted: #6d6353;
+  --text-faint: #998d7a;
+  --accent: #7a5c2e;
+  --accent-hover: #5f481f;
+  --accent-soft: rgba(122, 92, 46, 0.14);
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  --font-text: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman",
+    serif;
+  --quillmd-link: #7a5c2e;
+  --quillmd-code-bg: rgba(122, 92, 46, 0.12);
+  --quillmd-code-text: #5f481f;
+  --quillmd-heading-weight: 700;
+  --quillmd-h1: 1.9em;
+  --quillmd-h2: 1.55em;
+  --quillmd-h3: 1.3em;
+  --quillmd-h4: 1.12em;
+  --quillmd-h5: 1em;
+  --quillmd-h6: 0.95em;
+  --quillmd-base-size: 16px;
+  --quillmd-line-height: 1.75;
+}

@@ -142,7 +142,16 @@
     #                       highlight), the gallery CSS, and the
     #                       styles.test.tsx suite presence (Heading 2 -> h2,
     #                       selection state follows the cursor)
-    #           p2-styles-menu -> plan 05 task 5.2 acceptance gate (issue #55):
+    #           p2-themes -> plan 05 task 5.3 acceptance gate (issue #56): the
+#                       five built-in themes as CSS variable sheets scoped to
+#                       the document content container (theme.ts registry +
+#                       per-app default persistence with the OS-dark first-run
+#                       default, DocSettings.theme per-doc override, the
+#                       src/themes/*.css sheets, the View > Theme + View >
+#                       Default theme submenus in menu.rs, App.tsx rendering
+#                       data-theme without touching the document bytes), and
+#                       the theme.test.tsx vitest suite presence
+#           p2-styles-menu -> plan 05 task 5.2 acceptance gate (issue #55):
     #                       the Format > Styles submenu in menu.rs (the STYLES
     #                       (id, label) list mirroring BUILT_IN_STYLES, one
     #                       menu id per style), the styleMenuCommand id ->
@@ -2071,6 +2080,209 @@ test_stylemenu_suites_present() {
     fi
 }
 
+# --- p2-themes: built-in theme system (issue #56, plan 05 task 5.3) ---------
+
+test_theme_module() {
+    local t="theme_module"
+    local theme_id problems=""
+    local theme_ts="$ROOT/src/lib/theme.ts"
+    [ -f "$theme_ts" ] || problems+="src/lib/theme.ts missing; "
+    if [ -f "$theme_ts" ]; then
+        grep -q 'export type ThemeId = "quill" | "minimal" | "serif" | "dark" | "high-contrast"' "$theme_ts" \
+            || problems+="ThemeId union missing/changed; "
+        grep -q 'export const THEMES' "$theme_ts" \
+            || problems+="THEMES registry missing; "
+        for theme_id in quill minimal serif dark high-contrast; do
+            grep -q "id: \"$theme_id\"" "$theme_ts" \
+                || problems+="THEMES missing id $theme_id; "
+        done
+        grep -q 'export const DEFAULT_THEME: ThemeId = "quill"' "$theme_ts" \
+            || problems+="DEFAULT_THEME missing; "
+        grep -q 'THEME_MENU_ID_PREFIX = "view-theme-"' "$theme_ts" \
+            || problems+="THEME_MENU_ID_PREFIX missing; "
+        grep -q 'THEME_DEFAULT_MENU_ID_PREFIX = "view-theme-default-"' "$theme_ts" \
+            || problems+="THEME_DEFAULT_MENU_ID_PREFIX missing; "
+        grep -q 'THEME_RESET_MENU_ID = "view-theme-reset"' "$theme_ts" \
+            || problems+="THEME_RESET_MENU_ID missing; "
+        grep -q 'export function resolveTheme' "$theme_ts" \
+            || problems+="resolveTheme helper missing; "
+        grep -q 'export function hasSavedThemeDefault' "$theme_ts" \
+            || problems+="hasSavedThemeDefault missing; "
+        grep -q 'export function loadThemeDefault' "$theme_ts" \
+            || problems+="loadThemeDefault missing; "
+        grep -q 'export function saveThemeDefault' "$theme_ts" \
+            || problems+="saveThemeDefault missing; "
+        grep -q 'export function osPrefersDark' "$theme_ts" \
+            || problems+="osPrefersDark helper missing; "
+        grep -q 'quillmd.theme.default' "$theme_ts" \
+            || problems+="app-wide default storage key missing; "
+    fi
+    note "$t"
+    if [ -z "$problems" ]; then
+        pass "theme registry, persistence helpers, menu id scheme, and OS-dark fallback present"
+    else
+        echo "  $problems"
+        fail "$t"
+    fi
+}
+
+test_theme_css_sheets() {
+    local t="theme_css_sheets"
+    local theme_css problems=""
+    for theme_css in quill minimal serif dark high-contrast; do
+        local css="$ROOT/src/themes/$theme_css.css"
+        if [ -f "$css" ]; then
+            grep -q "\.quillmd-content\[data-theme=\"$theme_css\"\]" "$css" \
+                || problems+="src/themes/$theme_css.css missing data-theme scope; "
+            grep -q '\-\-quillmd-base-size' "$css" \
+                || problems+="src/themes/$theme_css.css missing --quillmd-base-size; "
+            grep -q '\-\-quillmd-code-bg' "$css" \
+                || problems+="src/themes/$theme_css.css missing --quillmd-code-bg; "
+            grep -q '\-\-quillmd-heading-weight' "$css" \
+                || problems+="src/themes/$theme_css.css missing --quillmd-heading-weight; "
+        else
+            problems+="src/themes/$theme_css.css missing; "
+        fi
+    done
+    local index_css="$ROOT/src/themes/index.css"
+    if [ -f "$index_css" ]; then
+        for theme_css in quill minimal serif dark high-contrast; do
+            grep -q "@import \"./$theme_css.css\";" "$index_css" \
+                || problems+="src/themes/index.css missing import for $theme_css.css; "
+        done
+    else
+        problems+="src/themes/index.css missing; "
+    fi
+    local app_css="$ROOT/src/App.css"
+    local app_tsx="$ROOT/src/App.tsx"
+    [ -f "$app_css" ] || problems+="src/App.css missing; "
+    [ -f "$app_tsx" ] || problems+="src/App.tsx missing; "
+    if [ -f "$app_css" ]; then
+        grep -q 'var(--quillmd-base-size, 15px)' "$app_css" \
+            || problems+="src/App.css does not consume --quillmd-base-size; "
+        grep -q 'var(--quillmd-link, #4fc1ff)' "$app_css" \
+            || problems+="src/App.css does not consume --quillmd-link; "
+        grep -q 'var(--quillmd-heading-weight, 600)' "$app_css" \
+            || problems+="src/App.css does not consume --quillmd-heading-weight; "
+        grep -q 'var(--quillmd-code-bg, rgba(128, 128, 128, 0.16))' "$app_css" \
+            || problems+="src/App.css does not consume --quillmd-code-bg; "
+    fi
+    if [ -f "$app_tsx" ]; then
+        grep -q 'import "./themes/index.css";' "$app_tsx" \
+            || problems+="App.tsx does not import themes/index.css; "
+        grep -q 'data-theme={activeTheme}' "$app_tsx" \
+            || problems+="App.tsx does not render activeTheme on the content container; "
+    fi
+    note "$t"
+    if [ -z "$problems" ]; then
+        pass "all five CSS variable sheets, index import, App.css consumption, and data-theme rendering present"
+    else
+        echo "  $problems"
+        fail "$t"
+    fi
+}
+
+test_theme_menu_wiring() {
+    local t="theme_menu_wiring"
+    local theme_id problems=""
+    local menu_rs="$ROOT/src-tauri/src/menu.rs"
+    if [ -f "$menu_rs" ]; then
+        for theme_id in quill minimal serif dark high-contrast; do
+            grep -q "\"$theme_id\", \"" "$menu_rs" \
+                || problems+="Rust THEMES missing $theme_id; "
+        done
+        grep -q 'SubmenuBuilder::new(app, "Theme")' "$menu_rs" \
+            || problems+="View > Theme submenu missing; "
+        grep -q 'SubmenuBuilder::new(app, "Default theme")' "$menu_rs" \
+            || problems+="View > Default theme submenu missing; "
+        grep -q 'format!("view-theme-{id}")' "$menu_rs" \
+            || problems+="per-doc theme menu id construction missing; "
+        grep -q 'format!("view-theme-default-{id}")' "$menu_rs" \
+            || problems+="app default theme menu id construction missing; "
+        grep -q '"view-theme-reset"' "$menu_rs" \
+            || problems+="reset per-doc theme menu item missing; "
+        grep -q 'fn theme_menu_ids_are_nonempty_and_unique' "$menu_rs" \
+            || problems+="Rust theme menu id test missing; "
+    else
+        problems+="src-tauri/src/menu.rs missing; "
+    fi
+    note "$t"
+    if [ -z "$problems" ]; then
+        pass "Rust Theme and Default theme submenus match the five-theme registry"
+    else
+        echo "  $problems"
+        fail "$t"
+    fi
+}
+
+test_theme_app_routing() {
+    local t="theme_app_routing"
+    local problems=""
+    local app_tsx="$ROOT/src/App.tsx"
+    if [ -f "$app_tsx" ]; then
+        grep -q 'THEME_DEFAULT_MENU_ID_PREFIX' "$app_tsx" \
+            || problems+="App.tsx does not route app default theme picks; "
+        grep -q 'THEME_RESET_MENU_ID' "$app_tsx" \
+            || problems+="App.tsx does not route reset per-doc theme; "
+        grep -q 'THEME_MENU_ID_PREFIX' "$app_tsx" \
+            || problems+="App.tsx does not route per-doc theme picks; "
+        grep -q 'changeAppTheme' "$app_tsx" \
+            || problems+="changeAppTheme handler missing; "
+        grep -q 'changeDocTheme' "$app_tsx" \
+            || problems+="changeDocTheme handler missing; "
+        grep -q 'patchDocSettings' "$app_tsx" \
+            || problems+="per-doc theme persistence not wired through patchDocSettings; "
+        grep -q 'saveThemeDefault' "$app_tsx" \
+            || problems+="app-wide theme persistence not wired; "
+        grep -q 'loadThemeDefault' "$app_tsx" \
+            || problems+="app-wide theme load not wired; "
+        grep -q 'hasSavedThemeDefault' "$app_tsx" \
+            || problems+="OS-dark tracking guard missing; "
+        grep -q 'matchMedia' "$app_tsx" \
+            || problems+="live OS dark-mode listener missing; "
+    else
+        problems+="src/App.tsx missing; "
+    fi
+    note "$t"
+    if [ -z "$problems" ]; then
+        pass "App.tsx routes theme menu events and persists per-doc/app-wide theme state"
+    else
+        echo "  $problems"
+        fail "$t"
+    fi
+}
+
+test_theme_suites_present() {
+    local t="theme_suites_present"
+    local problems=""
+    local suite="$ROOT/src/lib/__tests__/theme.test.tsx"
+    if [ -f "$suite" ]; then
+        grep -q 'data-theme' "$suite" \
+            || problems+="theme.test.tsx missing data-theme coverage; "
+        grep -q 'THEME_DEFAULT_MENU_ID_PREFIX' "$suite" \
+            || problems+="theme.test.tsx missing app default menu event coverage; "
+        grep -q 'view-theme-reset' "$suite" \
+            || problems+="theme.test.tsx missing reset coverage; "
+        grep -q 'quillmd.theme.default' "$suite" \
+            || problems+="theme.test.tsx missing app-wide persistence coverage; "
+        grep -q 'setOsDark' "$suite" \
+            || problems+="theme.test.tsx missing OS-dark coverage; "
+        grep -q 'themes/${id}.css' "$suite" \
+            || problems+="theme.test.tsx missing CSS variable sheet coverage; "
+        grep -q 'App.css' "$suite" \
+            || problems+="theme.test.tsx missing App.css consumption coverage; "
+    else
+        problems+="theme.test.tsx missing; "
+    fi
+    note "$t"
+    if [ -z "$problems" ]; then
+        pass "theme vitest suite covers registry, persistence, CSS sheets, menu wiring, and App behavior"
+    else
+        echo "  $problems"
+        fail "$t"
+    fi
+}
+
 # --- p2-font-toolbar: toolbar font family / size selects (issue #49, plan 04 task 4.3) ---
 # The select behavior (family/size apply + Normal clear, "Npt" canonicalization,
 # non-point-count rejection, the Custom… prompt flow, off-list values as dynamic
@@ -2699,6 +2911,14 @@ case "$SUBSET" in
         test_stylemenu_toolbar_wiring
         test_stylemenu_suites_present
         ;;
+    p2-themes)
+        # Task 5.3 (issue #56): built-in theme system
+        test_theme_module
+        test_theme_css_sheets
+        test_theme_menu_wiring
+        test_theme_app_routing
+        test_theme_suites_present
+        ;;
     shell)
         test_shell_new_bundled
         test_shell_new_menu_wiring
@@ -2874,7 +3094,7 @@ case "$SUBSET" in
         test_fonts_windows_crlf
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac
