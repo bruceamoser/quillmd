@@ -193,6 +193,17 @@ describe("find.ts search engine (plan 07 task 7.1)", () => {
     expect(matchText(doc, state.matches[0])).toBe("Hello");
   });
 
+  it("a match spanning inline marks in one block is NOT cross-block", () => {
+    // "lo w" runs from the bold "lo" into the italic "w"; both runs live in the
+    // same paragraph, so the range is rewritable as one text node (issue #71).
+    const doc = docOf("Hel**lo** *world* here\n");
+    const state = searchDoc(doc, { term: "lo w" });
+    expect(state.matches).toHaveLength(1);
+    expect(state.matches[0].crossBlock).toBe(false);
+    expect(state.matches[0].block).toBe(0);
+    expect(matchText(doc, state.matches[0])).toBe("lo w");
+  });
+
   it("finds matches inside code blocks", () => {
     const doc = docOf("```js\nconst hello = 1;\n```\n");
     const state = searchDoc(doc, { term: "hello" });
@@ -231,6 +242,26 @@ describe("find.ts search engine (plan 07 task 7.1)", () => {
   it("cross-block detection works at list boundaries", () => {
     const doc = docOf("- alpha\n\nbeta\n");
     const state = searchDoc(doc, { term: "a\\nb", useRegex: true });
+    expect(state.matches).toHaveLength(1);
+    expect(state.matches[0].crossBlock).toBe(true);
+    expect(state.matches[0].block).toBe(0);
+  });
+
+  it("a match spanning two list items in one list is cross-block", () => {
+    // List items flatten without a separator, so "abet" concatenates across the
+    // item boundary; the two items are distinct text containers (issue #71).
+    const doc = docOf("- alpha\n- beta\n");
+    const state = searchDoc(doc, { term: "abet" });
+    expect(state.matches).toHaveLength(1);
+    expect(state.matches[0].crossBlock).toBe(true);
+    expect(state.matches[0].block).toBe(0);
+  });
+
+  it("a match spanning two table cells is cross-block", () => {
+    // Each cell holds its own paragraph, so a run across a cell boundary is not
+    // rewritable as a single text node (issue #71).
+    const doc = docOf("| a | b |\n| --- | --- |\n| x | y |\n");
+    const state = searchDoc(doc, { term: "bx" });
     expect(state.matches).toHaveLength(1);
     expect(state.matches[0].crossBlock).toBe(true);
     expect(state.matches[0].block).toBe(0);

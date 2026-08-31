@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 // Find & replace against the live WYSIWYG editor (plan 07 task 7.2, issue
-// #70): single replace, replace all in one transaction (single undo), the
-// cross-block refusal, and the decoration pipeline that renders the
-// published SearchState in the real app Editor component (bridge + plugin).
+// #70; replace behavior is task 7.3, issue #71): single replace, replace
+// all in one reverse-order transaction (single undo), the cross-container
+// refusal, empty (delete) replacements, and the dirty-state + save pipeline
+// guarantee (plan 07 §4 AC6). Also covers the decoration pipeline that
+// renders the published SearchState in the real app Editor component
+// (bridge + plugin).
 import { afterEach, describe, expect, it } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -17,7 +20,8 @@ import TableHeader from "@tiptap/extension-table-header";
 import { TextSelection } from "@tiptap/pm/state";
 import type { DecorationSet } from "@tiptap/pm/view";
 import AppEditor from "../../components/Editor";
-import { markdownToTiptap } from "../pm";
+import { markdownToTiptap, tiptapToMarkdown } from "../pm";
+import { createDocument, encodeDocument, saveDocument } from "../pipeline";
 import {
   applyReplacement,
   currentFindDoc,
@@ -196,6 +200,150 @@ describe("replaceAllMatches", () => {
   });
 });
 
+// --- WYSIWYG replace (plan 07 task 7.3, issue #71) --------------------------
+//
+// The reverse-order single-transaction replace-all and its single-undo
+// guarantee are asserted above; this block covers the remaining replace
+// behaviors: empty (delete) replacements, matches that span inline marks
+// within one text block, and the cross-container refusal.
+
+describe("replaceActiveMatch with an empty replacement (issue #71)", () => {
+  it("deletes the active match and collapses the selection there", () => {
+    const editor = makeEditor("cat dog cat\n");
+    const state = searchDoc(editor.state.doc, { term: "cat" });
+    expect(replaceActiveMatch(editor, state, "")).toBe(true);
+    expect(editor.state.doc.textBetween(0, editor.state.doc.content.size)).toBe(" dog cat");
+
+    // The (empty) replacement is left selected: a collapsed selection at the
+    // cut point.
+    const sel = editor.state.selection;
+    expect(sel).toBeInstanceOf(TextSelection);
+    expect(sel.from).toBe(sel.to);
+  });
+
+  it("is a no-op for a zero-width match and leaves the doc untouched", () => {
+    const editor = makeEditor("bb\n");
+    const state = searchDoc(editor.state.doc, { term: "a*", useRegex: true });
+    const before = editor.state.doc;
+    expect(replaceActiveMatch(editor, state, "")).toBe(true);
+    expect(before.eq(editor.state.doc)).toBe(true);
+  });
+});
+
+describe("replaceAllMatches with an empty replacement (issue #71)", () => {
+  it("deletes every match in one transaction (single undo)", () => {
+    const editor = makeEditor("cat dog cat cat\n");
+    const state = searchDoc(editor.state.doc, { term: "cat" });
+    expect(state.matches).toHaveLength(3);
+    const before = editor.state.doc;
+
+    expect(replaceAllMatches(editor, state, "")).toBe(3);
+    expect(editor.state.doc.textBetween(0, editor.state.doc.content.size)).toBe(" dog  ");
+
+    // One undo restores the pre-replace doc exactly.
+    editor.chain().undo().run();
+    expect(before.eq(editor.state.doc)).toBe(true);
+  });
+});
+
+describe("replace across inline marks within one text block (issue #71)", () => {
+  it("single replace rewrites a range spanning marks", () => {
+    // "lo w" runs from bold "lo" into italic "w" inside one paragraph: the
+    // range is rewritable as a single text node, so replace must apply.
+    const editor = makeEditor("Hel**lo** *world* here\n");
+    const state = searchDoc(editor.state.doc, { term: "lo w" });
+    expect(state.matches).toHaveLength(1);
+    expect(state.matches[0].crossBlock).toBe(false);
+
+    expect(replaceActiveMatch(editor, state, "X")).toBe(true);
+    expect(tiptapToMarkdown(editor.getJSON())).toBe("HelX*orld* here\n");
+  });
+
+  it("replace-all rewrites every in-block match that spans marks", () => {
+    const editor = makeEditor("a**b**c a**b**c\n");
+    const state = searchDoc(editor.state.doc, { term: "bc" });
+    expect(state.matches).toHaveLength(2);
+    expect(state.matches.every((m) => !m.crossBlock)).toBe(true);
+
+    expect(replaceAllMatches(editor, state, "X")).toBe(2);
+    expect(tiptapToMarkdown(editor.getJSON())).toBe("aX aX\n");
+  });
+});
+
+describe("cross-container refusal (issue #71)", () => {
+  it("refuses a match spanning two list items of one list", () => {
+    const editor = makeEditor("- alpha\n- beta\n");
+    const state = searchDoc(editor.state.doc, { term: "abet" });
+    expect(state.matches).toHaveLength(1);
+    expect(state.matches[0].crossBlock).toBe(true);
+
+    const before = editor.state.doc;
+    expect(replaceActiveMatch(editor, state, "X")).toBe(false);
+    expect(replaceAllMatches(editor, state, "X")).toBe(0);
+    expect(before.eq(editor.state.doc)).toBe(true);
+  });
+
+  it("refuses a match spanning two table cells", () => {
+    const editor = makeEditor("| a | b |\n| --- | --- |\n| x | y |\n");
+    const state = searchDoc(editor.state.doc, { term: "bx" });
+    expect(state.matches).toHaveLength(1);
+    expect(state.matches[0].crossBlock).toBe(true);
+
+    const before = editor.state.doc;
+    expect(replaceActiveMatch(editor, state, "Z")).toBe(false);
+    expect(before.eq(editor.state.doc)).toBe(true);
+  });
+});
+
+describe("dirty state + save pipeline (plan 07 §4 AC6, issue #71)", () => {
+  const SOURCE = "cat one\ncat two\n\nuntouched **block**\n";
+
+  it("a replace marks the doc dirty and the save splices only dirty blocks", () => {
+    const editor = makeEditor(SOURCE);
+    const state = searchDoc(editor.state.doc, { term: "cat" });
+    expect(replaceAllMatches(editor, state, "dog")).toBe(2);
+
+    // Dirty: the serialized text differs from the source.
+    const current = tiptapToMarkdown(editor.getJSON());
+    expect(current).not.toBe(SOURCE);
+    expect(current).toBe("dog one\ndog two\n\nuntouched **block**\n");
+
+    // The clean-path pipeline splices exactly the two dirty blocks and keeps
+    // the untouched block (and its blank-line separator) byte-identical.
+    const result = saveDocument(createDocument(SOURCE), current);
+    expect(result.kind).toBe("splice");
+    expect(result.text).toBe("dog one\ndog two\n\nuntouched **block**\n");
+  });
+
+  it("re-saving a replaced doc is byte-identical", () => {
+    const editor = makeEditor(SOURCE);
+    const state = searchDoc(editor.state.doc, { term: "cat" });
+    replaceAllMatches(editor, state, "dog");
+    const current = tiptapToMarkdown(editor.getJSON());
+
+    const saved = saveDocument(createDocument(SOURCE), current).text;
+    // Round-trip the saved text through the editor's own parse/serialize and
+    // save again: a second save must be a verbatim no-op (byte-identical).
+    const resaved = saveDocument(
+      createDocument(saved),
+      tiptapToMarkdown(markdownToTiptap(saved)),
+    );
+    expect(resaved.kind).toBe("verbatim");
+    expect(resaved.text).toBe(saved);
+  });
+
+  it("a single replace keeps the CRLF encoding on save", () => {
+    const editor = makeEditor("alpha beta alpha\n");
+    const state = searchDoc(editor.state.doc, { term: "alpha" });
+    expect(replaceActiveMatch(editor, state, "gamma")).toBe(true);
+    const current = tiptapToMarkdown(editor.getJSON());
+
+    const result = saveDocument(createDocument("alpha beta alpha\n"), current);
+    const bytes = encodeDocument(result.text, { eol: "crlf", bom: false });
+    expect(new TextDecoder().decode(bytes)).toBe("gamma beta alpha\r\n");
+  });
+});
+
 describe("decoration pipeline in the app editor (issue #70)", () => {
   function renderAppEditor(markdown: string): Editor {
     container = document.createElement("div");
@@ -214,6 +362,36 @@ describe("decoration pipeline in the app editor (issue #70)", () => {
     renderAppEditor("hello hello\n");
     const doc = currentFindDoc();
     expect(doc?.textBetween(0, doc.content.size)).toBe("hello hello");
+  });
+
+  it("a replace through the bridge fires onChange with the new markdown (issue #71)", () => {
+    // App.tsx owns the dirty flag as (currentText !== open.source); the only
+    // way a replace dirties the doc is by flowing through the editor's
+    // onUpdate -> onChange. Render the real app Editor with a live onChange
+    // and drive replace exactly the way doReplaceAll does.
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    const emitted: string[] = [];
+    const root = createRoot(container);
+    roots.push(root);
+    const source = "cat one\ncat two\n\nuntouched **block**\n";
+    act(() => {
+      root.render(<AppEditor value={source} onChange={(md) => emitted.push(md)} />);
+    });
+    const editor = currentFindEditor();
+    if (!editor) throw new Error("find editor provider not registered");
+
+    const state = searchDoc(editor.state.doc, { term: "cat" });
+    act(() => {
+      replaceAllMatches(editor, state, "dog");
+    });
+
+    // The editor emits once on mount (the unchanged source) and once per doc
+    // update; the replace is the update that dirties the doc.
+    const dirty = emitted[emitted.length - 1];
+    expect(dirty).toBe("dog one\ndog two\n\nuntouched **block**\n");
+    // Dirty: the emitted text differs from the opened source.
+    expect(dirty).not.toBe(source);
   });
 
   it("publishing a SearchState renders every match and marks the active one", () => {
