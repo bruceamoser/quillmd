@@ -103,9 +103,15 @@
    #                       the fontColor / highlightColor registry commands +
    #                       color readers in editorCommands.ts, the shared
    #                       ColorPalette popover component (24-grid + auto +
-   #                       custom), and the Toolbar rendering both pickers
-   #                       through that one component
-   #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
+    #                       custom), and the Toolbar rendering both pickers
+    #                       through that one component
+    #           p2-font-toolbar -> plan 04 task 4.3 acceptance gate (issue #49):
+    #                       the fontFamily / fontSize registry commands +
+    #                       selection readers + curated family/size constants in
+    #                       editorCommands.ts, and the Toolbar rendering the
+    #                       family + size selects as the font cluster next to the
+    #                       color/highlight pickers
+    #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
 #           dragdrop -> p0-shell drag & drop open (issue #27)
@@ -1840,6 +1846,57 @@ test_colors_suites_present() {
     fi
 }
 
+# --- p2-font-toolbar: toolbar font family / size selects (issue #49, plan 04 task 4.3) ---
+# The select behavior (family/size apply + Normal clear, "Npt" canonicalization,
+# non-point-count rejection, the Custom… prompt flow, off-list values as dynamic
+# options, and the heading -> family -> size -> inline-mark DOM order) is covered
+# by the vitest suite (src/lib/__tests__/fonttoolbar.test.tsx); this section
+# checks the wiring the GUI driver cannot reach headlessly: the fontFamily /
+# fontSize registry commands + selection readers + curated family/size constants
+# in editorCommands.ts, and the Toolbar rendering the family + size selects as
+# the font cluster beside the color/highlight pickers.
+test_fonttoolbar_registry_commands() {
+    note "font-toolbar fontFamily + fontSize registry commands + readers present"
+    if grep -q 'id: "fontFamily"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'id: "fontSize"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export function fontFamilyOf' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export function fontSizeOf' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export const FONT_FAMILIES' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export const FONT_SIZES' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export const FONT_FAMILY_CUSTOM' "$ROOT/src/lib/editorCommands.ts"; then
+        pass "font-toolbar fontFamily + fontSize registry commands + readers present"
+    else
+        fail "font-toolbar fontFamily + fontSize registry commands + readers present"
+    fi
+}
+test_fonttoolbar_toolbar_wiring() {
+    note "font-toolbar Toolbar renders the family + size selects"
+    if grep -q 'FONT_FAMILIES' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'FONT_SIZES' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'FONT_FAMILY_CUSTOM' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'title="Font family"' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'title="Font size"' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'runEditorCommand(editor, "fontFamily"' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'runEditorCommand(editor, "fontSize"' "$ROOT/src/components/Toolbar.tsx"; then
+        pass "font-toolbar Toolbar renders the family + size selects"
+    else
+        fail "font-toolbar Toolbar renders the family + size selects"
+    fi
+}
+test_fonttoolbar_suites_present() {
+    note "font-toolbar vitest suite: family/size apply + clear + Custom prompt"
+    if [ -f "$ROOT/src/lib/__tests__/fonttoolbar.test.tsx" ] \
+        && grep -q 'picking a family applies the span; Normal clears it' "$ROOT/src/lib/__tests__/fonttoolbar.test.tsx" \
+        && grep -q 'picking a size applies font-size: Npt; Normal clears it' "$ROOT/src/lib/__tests__/fonttoolbar.test.tsx" \
+        && grep -q 'Custom… prompts for a free-text family and applies it' "$ROOT/src/lib/__tests__/fonttoolbar.test.tsx" \
+        && grep -q 'sits right of the heading select and left of the inline-mark group' "$ROOT/src/lib/__tests__/fonttoolbar.test.tsx" \
+        && grep -q 'composes family + size + color in the fixed attribute order' "$ROOT/src/lib/__tests__/fonttoolbar.test.tsx"; then
+        pass "font-toolbar vitest suite: family/size apply + clear + Custom prompt"
+    else
+        fail "font-toolbar vitest suite: family/size apply + clear + Custom prompt"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -2021,6 +2078,11 @@ case "$SUBSET" in
         test_colors_toolbar_wiring
         test_colors_suites_present
         ;;
+    p2-font-toolbar)
+        test_fonttoolbar_registry_commands
+        test_fonttoolbar_toolbar_wiring
+        test_fonttoolbar_suites_present
+        ;;
     shell)
         test_shell_new_bundled
         test_shell_new_menu_wiring
@@ -2171,9 +2233,12 @@ case "$SUBSET" in
         test_colors_palette_component
         test_colors_toolbar_wiring
         test_colors_suites_present
+        test_fonttoolbar_registry_commands
+        test_fonttoolbar_toolbar_wiring
+        test_fonttoolbar_suites_present
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac

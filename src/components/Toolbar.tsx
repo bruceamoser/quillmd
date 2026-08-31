@@ -4,8 +4,13 @@ import type { Editor as CoreEditor } from "@tiptap/core";
 import ColorPalette from "./ColorPalette";
 import {
   EDITOR_COMMANDS,
+  FONT_FAMILY_CUSTOM,
+  FONT_FAMILIES,
+  FONT_SIZES,
   editorCommandActive,
+  fontFamilyOf,
   fontColorOf,
+  fontSizeOf,
   highlightColorOf,
   runEditorCommand,
 } from "../lib/editorCommands";
@@ -131,6 +136,66 @@ export default function Toolbar({ editor }: ToolbarProps) {
     </button>
   );
 
+  // Font cluster (plan 04 task 4.3, issue #49): the family and size selects
+  // read the attribute at the selection (or "" for "Normal") and dispatch
+  // the fontFamily / fontSize registry commands. A value that is not in the
+  // curated list (a custom family, an off-list size loaded from a doc) is
+  // added as a dynamic option so the controlled select always shows it.
+  const family = fontFamilyOf(editor) ?? "";
+  const familyOptions =
+    family !== "" && !FONT_FAMILIES.includes(family)
+      ? [...FONT_FAMILIES, family]
+      : [...FONT_FAMILIES];
+  const size = fontSizeOf(editor) ?? "";
+  const sizeValues = FONT_SIZES.map((n) => `${n}pt`);
+  const sizeOptions = size !== "" && !sizeValues.includes(size) ? [...sizeValues, size] : sizeValues;
+
+  const renderFontSelects = () => (
+    <>
+      <select
+        className="quillmd-font-select"
+        title="Font family"
+        value={family}
+        onChange={(e) => {
+          const value = e.target.value;
+          if (value === "") {
+            // "Normal" clears the attribute back to the document default.
+            runEditorCommand(editor, "fontFamily", null);
+          } else if (value === FONT_FAMILY_CUSTOM) {
+            const name = window.prompt("Custom font family") ?? "";
+            if (name.trim() !== "") runEditorCommand(editor, "fontFamily", name);
+          } else {
+            runEditorCommand(editor, "fontFamily", value);
+          }
+        }}
+      >
+        <option value="">Normal (document default)</option>
+        {familyOptions.map((f) => (
+          <option key={f} value={f}>
+            {f}
+          </option>
+        ))}
+        <option value={FONT_FAMILY_CUSTOM}>Custom…</option>
+      </select>
+      <select
+        className="quillmd-font-select"
+        title="Font size"
+        value={size}
+        onChange={(e) => {
+          const value = e.target.value;
+          runEditorCommand(editor, "fontSize", value === "" ? null : value);
+        }}
+      >
+        <option value="">Normal</option>
+        {sizeOptions.map((s) => (
+          <option key={s} value={s}>
+            {s.replace("pt", "")}
+          </option>
+        ))}
+      </select>
+    </>
+  );
+
   // The image split button (plan 08 task 8.2, issue #77): the main half runs
   // the "From URL" default, the caret half opens the From file / From URL
   // dropdown — the same two flows as the Insert > Image submenu.
@@ -205,6 +270,9 @@ export default function Toolbar({ editor }: ToolbarProps) {
           </option>
         ))}
       </select>
+
+      <span className="quillmd-toolbar-sep" />
+      {renderFontSelects()}
 
       <span className="quillmd-toolbar-sep" />
       {INLINE_CMDS.map(renderButton)}
