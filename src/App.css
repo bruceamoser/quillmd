@@ -1265,3 +1265,129 @@ button.quillmd-status-spellcheck:hover {
   border: none;
   border-top: 2px solid var(--border);
 }
+
+/* --- link dialog (plan 08 task 8.1, issue #76) ---------------------------- */
+
+/* Full-content-area backdrop; a press on it (outside the dialog box) cancels. */
+.quillmd-link-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quillmd-link-dialog {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  padding: 14px 16px 12px;
+}
+
+.quillmd-link-title {
+  color: var(--text-bright);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.quillmd-link-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.quillmd-link-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.quillmd-link-label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.quillmd-link-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 5px 8px;
+  outline: none;
+  width: 100%;
+}
+
+.quillmd-link-input:focus {
+  border-color: var(--accent);
+}
+
+/* Validation failure (plan 08 §2.1): the URL input turns red. */
+.quillmd-link-input.error {
+  border-color: var(--danger);
+}
+
+.quillmd-link-error {
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.quillmd-link-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.quillmd-link-actions-left,
+.quillmd-link-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quillmd-link-button {
+  background: var(--bg-active);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 5px 12px;
+}
+
+.quillmd-link-button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--text-faint);
+}
+
+.quillmd-link-button:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.quillmd-link-button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+
+.quillmd-link-button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.quillmd-link-button.danger {
+  color: var(--danger);
+}
+
+.quillmd-link-button.danger:hover:not(:disabled) {
+  border-color: var(--danger);
+}
