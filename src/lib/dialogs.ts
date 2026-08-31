@@ -15,8 +15,13 @@ export const MARKDOWN_FILTER: DialogFilter = {
 };
 
 export const DOCX_FILTER: DialogFilter = {
-  name: "DOCX",
+  name: "Word",
   extensions: ["docx"],
+};
+
+export const IMAGE_FILTER: DialogFilter = {
+  name: "Images",
+  extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif"],
 };
 
 // Builds a single-extension filter (used for per-format export dialogs).

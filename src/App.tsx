@@ -41,8 +41,12 @@ import {
   clampZoom,
   dispatchEditorCommand,
   isLineSpacingValue,
+  registerImageInsertListener,
   registerLinkDialogListener,
 } from "./lib/editorCommands";
+import { IMAGE_FILTER, pickOpenFile } from "./lib/dialogs";
+import { imageSrcForPickedFile, insertImage } from "./lib/images";
+import type { ImagePayload } from "./lib/images";
 import type { EditorCommandId, LineSpacingValue } from "./lib/editorCommands";
 import {
   applyLink,
@@ -98,6 +102,7 @@ import type { ExplorerHandle } from "./components/Explorer";
 import FindReplacePanel from "./components/FindReplacePanel";
 import type { FindPanelMode, FindPanelOption, FindPanelResult } from "./components/FindReplacePanel";
 import LinkDialog from "./components/LinkDialog";
+import ImageDialog from "./components/ImageDialog";
 import { loadViewMode, saveViewMode } from "./components/viewModes";
 import type { ViewMode } from "./components/viewModes";
 import "./App.css";
@@ -153,7 +158,12 @@ const MENU_TO_COMMAND: Record<string, EditorCommandId> = {
   "insert-strike": "strike",
   "insert-code": "code",
   "insert-link": "link",
+  // Plan 08 task 8.2 (issue #77): the flat "Image" item became the submenu
+  // Insert > Image > From file / From URL; "insert-image" is kept as an
+  // alias so an older menu build still reaches the From URL default.
   "insert-image": "image",
+  "insert-image-from-file": "imageFromFile",
+  "insert-image-from-url": "image",
   "insert-table": "table",
   "insert-codeblock": "codeBlock",
   "insert-hr": "hr",
@@ -223,6 +233,13 @@ export default function App() {
   const [linkDialog, setLinkDialog] = useState<{
     editor: CoreEditor;
     prefill: LinkPrefill;
+  } | null>(null);
+  // Image dialog (plan 08 task 8.2, issue #77): the registry "image" command
+  // (toolbar main button, Insert > Image > From URL, /image) requests the
+  // dialog; the editor the request came from is kept so the result applies
+  // to the same instance.
+  const [imageDialog, setImageDialog] = useState<{
+    editor: CoreEditor;
   } | null>(null);
   // Find panel position setting (plan 07 task 7.5, issue #73): a global
   // top/bottom preference persisted in localStorage; the panel docks via its
@@ -821,6 +838,56 @@ export default function App() {
     await openLinkUrl(href);
     setLinkDialog(null);
   }, []);
+
+  // --- image insert (plan 08 task 8.2, issue #77) ---------------------------
+  //
+  // Two registry commands request the insert: "image" (the From URL default)
+  // opens the dialog, "imageFromFile" runs the native image picker. Both
+  // apply to the editor the request came from. The From file flow inserts
+  // the picked path relativized against the active doc's folder (images.ts);
+  // the asset-copy upgrade (task 8.3) lands on this same entry point.
+
+  const insertImageFromFile = useCallback(async (editor: CoreEditor) => {
+    const picked = await pickOpenFile({ title: "Insert image", filters: [IMAGE_FILTER] });
+    if (!picked || picked.length === 0) return;
+    const docPath = activeDoc?.open.path ?? "";
+    const src = imageSrcForPickedFile(docPath, picked[0]);
+    if (insertImage(editor, { src, alt: "" })) {
+      setStatus(`Inserted image ${src}`);
+    }
+  }, [activeDoc, setStatus]);
+
+  // The listener is registered once; the ref keeps it pointed at the latest
+  // picker flow (which tracks the active doc).
+  const insertImageFromFileRef = useRef(insertImageFromFile);
+  insertImageFromFileRef.current = insertImageFromFile;
+
+  useEffect(() => {
+    return registerImageInsertListener((editor, source) => {
+      if (source === "url") setImageDialog({ editor });
+      else void insertImageFromFileRef.current(editor);
+    });
+  }, []);
+
+  // The dialog edits a specific TipTap instance, which unmounts on a tab
+  // switch or a view-mode change — close it so it never talks to a dead
+  // editor (same rule as the link dialog).
+  useEffect(() => {
+    setImageDialog(null);
+  }, [activePath, viewMode]);
+
+  const closeImageDialog = useCallback(() => {
+    setImageDialog(null);
+  }, []);
+
+  const applyImageDialog = useCallback(
+    (payload: ImagePayload) => {
+      if (!imageDialog) return;
+      insertImage(imageDialog.editor, payload);
+      setImageDialog(null);
+    },
+    [imageDialog],
+  );
 
   // Per-doc term memory (plan 07 task 7.5, issue #73): writes the panel's
   // term + options to the active doc's memory. Only the active doc is
@@ -1533,6 +1600,9 @@ export default function App() {
                   onOpen={(href) => void openLinkDialogUrl(href)}
                   onClose={closeLinkDialog}
                 />
+              )}
+              {imageDialog && (
+                <ImageDialog onApply={applyImageDialog} onClose={closeImageDialog} />
               )}
             </div>
             {infoOpen && activeDoc && (

@@ -34,6 +34,14 @@
 #                       tooltip, dirty save + byte-identical re-save, no
 #                       window.prompt in the find path), and the large-doc
 #                       perf test (100k-char recompute < 100ms, issue #74)
+#           p1-media -> plan 08 task 8.2 acceptance gate (issue #77): Insert >
+#                       Image submenu (From file / From URL) menu wiring,
+#                       App.tsx routing of both menu ids + the from-file
+#                       picker flow + the ImageDialog render, the toolbar
+#                       split image button, the images.ts module (URL
+#                       validation, insert, from-file src) + IMAGE_FILTER +
+#                       inline-image extension config, and the images.test.tsx
+#                       vitest suite presence
 #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -1059,6 +1067,83 @@ test_find_perf_large_doc() {
     fi
 }
 
+# --- p1-media: Image submenu + from-URL (plan 08 task 8.2, issue #77) -----------
+# The URL validation, the image insert, the From file src computation, the
+# registry split, and the dialog's keyboard model are covered by the vitest
+# suite (images.test.tsx) that `npm test` runs; this section checks the
+# app-level wiring a GUI driver cannot reach headlessly: the native Insert
+# menu carries the Image submenu (From file / From URL), App.tsx routes both
+# menu ids + the from-file picker flow + the dialog render, the toolbar
+# carries the split image button, and images.ts is the shared logic module.
+test_media_menu_wiring() {
+    note "media.menu Insert > Image submenu (From file / From URL) present"
+    if grep -q 'SubmenuBuilder::new(app, "Image")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'image.text("insert-image-from-file", "From file...")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'image.text("insert-image-from-url", "From URL...")' "$ROOT/src-tauri/src/menu.rs" \
+        && ! grep -q 'MenuItem::with_id(app, "insert-image",' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "media.menu Insert > Image submenu (From file / From URL) present"
+    else
+        fail "media.menu Insert > Image submenu (From file / From URL) present"
+    fi
+}
+test_media_app_routing() {
+    note "media.routing App.tsx routes both menu ids, picker flow, dialog render"
+    if grep -q '"insert-image-from-file": "imageFromFile"' "$ROOT/src/App.tsx" \
+        && grep -q '"insert-image-from-url": "image"' "$ROOT/src/App.tsx" \
+        && grep -q 'registerImageInsertListener' "$ROOT/src/App.tsx" \
+        && grep -q 'setImageDialog({ editor })' "$ROOT/src/App.tsx" \
+        && grep -q 'pickOpenFile({ title: "Insert image", filters: \[IMAGE_FILTER\] })' "$ROOT/src/App.tsx" \
+        && grep -q 'imageSrcForPickedFile(docPath, picked\[0\])' "$ROOT/src/App.tsx" \
+        && grep -q '<ImageDialog onApply={applyImageDialog} onClose={closeImageDialog} />' "$ROOT/src/App.tsx" \
+        && grep -q 'insertImage(imageDialog.editor, payload)' "$ROOT/src/App.tsx"; then
+        pass "media.routing App.tsx routes both menu ids, picker flow, dialog render"
+    else
+        fail "media.routing App.tsx routes both menu ids, picker flow, dialog render"
+    fi
+}
+test_media_toolbar_split() {
+    note "media.toolbar split image button (From file / From URL) present"
+    if grep -q 'quillmd-toolbar-split' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'runEditorCommand(editor, "imageFromFile")' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'quillmd-toolbar-dropdown' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q '.quillmd-toolbar-split' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-toolbar-dropdown' "$ROOT/src/App.css"; then
+        pass "media.toolbar split image button (From file / From URL) present"
+    else
+        fail "media.toolbar split image button (From file / From URL) present"
+    fi
+}
+test_media_images_module() {
+    note "media.module images.ts validation/insert/src + IMAGE_FILTER + inline image"
+    if [ -f "$ROOT/src/lib/images.ts" ] \
+        && grep -q 'export function validateImageUrl' "$ROOT/src/lib/images.ts" \
+        && grep -q 'export function insertImage' "$ROOT/src/lib/images.ts" \
+        && grep -q 'export function imageSrcForPickedFile' "$ROOT/src/lib/images.ts" \
+        && grep -q 'ALLOWED_IMAGE_SCHEMES = new Set(\["http", "https"\])' "$ROOT/src/lib/images.ts" \
+        && grep -q 'export const IMAGE_FILTER' "$ROOT/src/lib/dialogs.ts" \
+        && grep -q 'export type ImageInsertSource = "url" | "file"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export function requestImageInsert' "$ROOT/src/lib/editorCommands.ts" \
+        && [ -f "$ROOT/src/components/ImageDialog.tsx" ] \
+        && grep -q 'Image.configure({ inline: true })' "$ROOT/src/components/Editor.tsx"; then
+        pass "media.module images.ts validation/insert/src + IMAGE_FILTER + inline image"
+    else
+        fail "media.module images.ts validation/insert/src + IMAGE_FILTER + inline image"
+    fi
+}
+test_media_suites_present() {
+    note "media.suites plan 08 task 8.2 vitest suite present"
+    if [ -f "$ROOT/src/lib/__tests__/images.test.tsx" ] \
+        && grep -q 'validateImageUrl (plan 08 §2.4)' "$ROOT/src/lib/__tests__/images.test.tsx" \
+        && grep -q 'insertImage (images.ts)' "$ROOT/src/lib/__tests__/images.test.tsx" \
+        && grep -q 'imageSrcForPickedFile (plan 08 §3 relative-path invariant)' "$ROOT/src/lib/__tests__/images.test.tsx" \
+        && grep -q 'registry wiring (issue #77)' "$ROOT/src/lib/__tests__/images.test.tsx" \
+        && grep -q 'ImageDialog component' "$ROOT/src/lib/__tests__/images.test.tsx"; then
+        pass "media.suites plan 08 task 8.2 vitest suite present"
+    else
+        fail "media.suites plan 08 task 8.2 vitest suite present"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -1146,6 +1231,13 @@ case "$SUBSET" in
         test_find_ac6_dirty_roundtrip
         test_find_ac7_no_prompt
         test_find_perf_large_doc
+        ;;
+    p1-media)
+        test_media_menu_wiring
+        test_media_app_routing
+        test_media_toolbar_split
+        test_media_images_module
+        test_media_suites_present
         ;;
     shell)
         test_shell_new_bundled
@@ -1248,9 +1340,14 @@ case "$SUBSET" in
         test_find_ac6_dirty_roundtrip
         test_find_ac7_no_prompt
         test_find_perf_large_doc
+        test_media_menu_wiring
+        test_media_app_routing
+        test_media_toolbar_split
+        test_media_images_module
+        test_media_suites_present
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac

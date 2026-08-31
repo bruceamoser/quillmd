@@ -491,7 +491,11 @@ export default function Editor({
       Underline,
       Highlight,
       LinkWithTitle.configure({ openOnClick: false, autolink: true }),
-      Image,
+      // Inline (plan 08 task 8.2, issue #77): the converter treats images as
+      // phrasing content (pm.ts), and a block image is dropped by
+      // tiptapToMarkdown — so inserted images must land inside a paragraph
+      // to survive the round-trip.
+      Image.configure({ inline: true }),
       TaskList,
       TaskItem.configure({ nested: true }),
       Subscript,
