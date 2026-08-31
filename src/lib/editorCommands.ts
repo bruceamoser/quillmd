@@ -6,6 +6,8 @@
 
 import type { Editor as CoreEditor } from "@tiptap/core";
 import type { Node as PmNode } from "@tiptap/pm/model";
+import type { EditorState } from "@tiptap/pm/state";
+import { CellSelection, cellAround, findCell } from "@tiptap/pm/tables";
 import { FRONTMATTER_LANG } from "./pm";
 import type { DocSettings } from "./docSettings";
 import { normalizeColor } from "./colors";
@@ -42,6 +44,19 @@ export type EditorCommandId =
   | "orderedList"
   | "taskList"
   | "table"
+  | "rowInsertAbove"
+  | "rowInsertBelow"
+  | "rowDelete"
+  | "colInsertLeft"
+  | "colInsertRight"
+  | "colDelete"
+  | "cellAlignLeft"
+  | "cellAlignCenter"
+  | "cellAlignRight"
+  | "headerRowToggle"
+  | "cellMerge"
+  | "cellClear"
+  | "tableDelete"
   | "codeBlock"
   | "hr"
   | "footnote"
@@ -585,6 +600,208 @@ function inList(editor: CoreEditor): boolean {
   return editor.isActive("listItem") || editor.isActive("taskItem");
 }
 
+// --- table commands (plan 06 task 6.2, issue #62) --------------------------
+//
+// The row / column / cell / header / delete commands. Each wraps TipTap's
+// table extension (or a small ProseMirror transaction) so the toolbar
+// (P3 task 6.4), the context menu, and the native menu all dispatch the same
+// behavior through the registry. These commands mutate the ProseMirror model
+// only; the GFM round-trip contract stays in the converter (pm.ts), which
+// re-serializes the table (including the per-column alignment spec) on save.
+//
+// A cell position is the position directly before a cell node: its parent is
+// the row, so `node(-1)` is the table and `findCell($pos)` resolves its
+// column rect. `CellSelection.forEachCell` and `cellAround` both yield that
+// shape.
+
+// The table under the selection plus the 0-based indices of every column the
+// selection touches. A cursor / text selection covers the cell under the
+// caret (a merged cell touches every column it spans); a CellSelection
+// covers all of its selected cells. Null when the selection is not inside a
+// table.
+function tableColumnsOf(state: EditorState): { tablePos: number; columns: number[] } | null {
+  const sel = state.selection;
+  const columns = new Set<number>();
+  let tablePos = -1;
+  const visit = (pos: number): void => {
+    const $cell = state.doc.resolve(pos);
+    if (tablePos === -1) {
+      for (let d = $cell.depth; d > 0; d -= 1) {
+        if ($cell.node(d).type.name === "table") {
+          tablePos = $cell.before(d);
+          break;
+        }
+      }
+    }
+    const rect = findCell($cell);
+    for (let c = rect.left; c < rect.right; c += 1) columns.add(c);
+  };
+  if (sel instanceof CellSelection) {
+    sel.forEachCell((_cell, pos) => visit(pos));
+  } else {
+    const $cell = cellAround(sel.$from);
+    if (!$cell) return null;
+    visit($cell.pos);
+  }
+  if (tablePos === -1) return null;
+  return { tablePos, columns: [...columns].sort((a, b) => a - b) };
+}
+
+// Whether the selection is inside a table (every table command is
+// applicable).
+export function inTable(editor: CoreEditor): boolean {
+  return tableColumnsOf(editor.state) !== null;
+}
+
+type CellAlignValue = "left" | "center" | "right";
+
+// The effective alignment of one column's spec entry. Unset (or an
+// unrecognized) spec reads as "left" — the GFM default, serialized by
+// pm.ts as a bare `---` delimiter.
+function effectiveCellAlign(value: unknown): CellAlignValue {
+  return value === "center" || value === "right" ? value : "left";
+}
+
+// The alignment shared by every column the selection touches, or null when
+// the selection is not in a table (or a multi-column selection spans mixed
+// alignments). Drives the active state of the cell alignment commands.
+export function cellAlignOf(editor: CoreEditor): CellAlignValue | null {
+  const target = tableColumnsOf(editor.state);
+  if (!target) return null;
+  const table = editor.state.doc.nodeAt(target.tablePos);
+  if (!table) return null;
+  const align = table.attrs.align;
+  const values = target.columns.map((c) =>
+    effectiveCellAlign(Array.isArray(align) ? align[c] : null),
+  );
+  return values.every((v) => v === values[0]) ? values[0] : null;
+}
+
+// Sets the GFM alignment spec on every column the selection touches. The
+// spec lives on the table node's `align` attribute (pm.ts re-serializes it
+// as the `:---` / `:---:` / `---:` delimiter row, plan 06 §2.4). A never-set
+// column reads as the GFM default (a bare `---`, which renders left), so an
+// explicit "align left" on such a column is a no-op like the block
+// alignment commands; left is written as the explicit `:---` spec only when
+// it replaces another alignment.
+function setCellAlign(editor: CoreEditor, value: CellAlignValue): boolean {
+  const target = tableColumnsOf(editor.state);
+  if (!target) return false;
+  const { state } = editor;
+  const table = state.doc.nodeAt(target.tablePos);
+  if (!table) return false;
+  const align = table.attrs.align;
+  const already = target.columns.every((c) =>
+    effectiveCellAlign(Array.isArray(align) ? align[c] : null) === value,
+  );
+  if (already) return true;
+  let width = 0;
+  table.forEach((row) => {
+    width = Math.max(width, row.childCount);
+  });
+  const spec: Array<string | null> = [];
+  for (let i = 0; i < width; i += 1) {
+    const a = Array.isArray(align) ? align[i] : null;
+    spec.push(a === "left" || a === "center" || a === "right" ? a : null);
+  }
+  for (const c of target.columns) {
+    spec[c] = value;
+  }
+  const tr = state.tr.setNodeMarkup(target.tablePos, table.type, {
+    ...table.attrs,
+    align: spec,
+  });
+  editor.view.dispatch(tr);
+  return true;
+}
+
+// The header-row state of the table under the selection — GFM has exactly
+// one header row and it is always the first row (pm.ts), so only the first
+// row's header-ness is read. Null outside a table.
+export function headerRowOf(editor: CoreEditor): boolean | null {
+  const target = tableColumnsOf(editor.state);
+  if (!target) return null;
+  const table = editor.state.doc.nodeAt(target.tablePos);
+  const firstCell = table?.firstChild?.firstChild;
+  return firstCell ? firstCell.type.name === "tableHeader" : null;
+}
+
+// Toggles the header-ness of the FIRST row, whichever row the cursor is in.
+// TipTap's own toggleHeaderRow acts on the selected row, which would create a
+// second header row in a body row — invalid in the GFM model, where the
+// header is always row 0 (pm.ts). No-op (returns false) outside a table.
+function headerRowToggleRun(editor: CoreEditor): boolean {
+  const target = tableColumnsOf(editor.state);
+  if (!target) return false;
+  const { state } = editor;
+  const table = state.doc.nodeAt(target.tablePos);
+  const firstRow = table?.firstChild;
+  const headerType = state.schema.nodes.tableHeader;
+  const cellType = state.schema.nodes.tableCell;
+  if (!table || !firstRow || !headerType || !cellType) return false;
+  let isHeader = true;
+  firstRow.forEach((cell) => {
+    if (cell.type !== headerType) isHeader = false;
+  });
+  const tr = state.tr;
+  let offset = 0;
+  firstRow.forEach((cell) => {
+    const cellPos = target.tablePos + 2 + offset;
+    const wanted = isHeader ? cellType : headerType;
+    if (cell.type !== wanted) {
+      tr.setNodeMarkup(cellPos, wanted, cell.attrs);
+    }
+    offset += cell.nodeSize;
+  });
+  if (tr.docChanged) {
+    editor.view.dispatch(tr);
+  }
+  return true;
+}
+
+// Whether a multi-cell (CellSelection) selection is active — the only
+// selection shape cell merging applies to.
+function cellMergeActive(editor: CoreEditor): boolean {
+  const sel = editor.state.selection;
+  if (!(sel instanceof CellSelection)) return false;
+  let count = 0;
+  sel.forEachCell(() => {
+    count += 1;
+  });
+  return count >= 2;
+}
+
+// Clears the content of every cell the selection covers (the cell under the
+// caret, or all cells of a CellSelection), leaving one empty paragraph per
+// cell. TipTap 2.x ships no clear-cells command; the closest relative,
+// prosemirror-tables' deleteCellSelection (Backspace on a cell selection),
+// only accepts a CellSelection — a plain cursor in a single cell reports
+// failure — so the registry keeps its own to cover both selection shapes.
+function cellClearRun(editor: CoreEditor): boolean {
+  const { state } = editor;
+  const ranges: Array<{ from: number; to: number }> = [];
+  const addCell = (pos: number): void => {
+    const cell = state.doc.nodeAt(pos);
+    if (cell) ranges.push({ from: pos + 1, to: pos + cell.nodeSize - 1 });
+  };
+  const sel = state.selection;
+  if (sel instanceof CellSelection) {
+    sel.forEachCell((_cell, pos) => addCell(pos));
+  } else {
+    const $cell = cellAround(sel.$from);
+    if (!$cell) return false;
+    addCell($cell.pos);
+  }
+  const empty = state.schema.nodes.paragraph.createChecked();
+  if (!empty || ranges.length === 0) return false;
+  let tr = state.tr;
+  for (const r of [...ranges].sort((a, b) => b.from - a.from)) {
+    tr = tr.replaceWith(r.from, r.to, empty);
+  }
+  editor.view.dispatch(tr);
+  return true;
+}
+
 export const EDITOR_COMMANDS: EditorCommand[] = [
   {
     id: "paragraph",
@@ -771,6 +988,87 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
     label: "Table",
     run: (editor) =>
       editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+  },
+  // Table editing (plan 06 task 6.2, issue #62). TipTap's table commands
+  // resolve the cell under the selection themselves; focus() (position
+  // null) preserves the current selection, including a CellSelection.
+  {
+    id: "rowInsertAbove",
+    label: "Insert row above",
+    run: (editor) => editor.chain().focus().addRowBefore().run(),
+    active: inTable,
+  },
+  {
+    id: "rowInsertBelow",
+    label: "Insert row below",
+    run: (editor) => editor.chain().focus().addRowAfter().run(),
+    active: inTable,
+  },
+  {
+    id: "rowDelete",
+    label: "Delete row",
+    run: (editor) => editor.chain().focus().deleteRow().run(),
+    active: inTable,
+  },
+  {
+    id: "colInsertLeft",
+    label: "Insert column left",
+    run: (editor) => editor.chain().focus().addColumnBefore().run(),
+    active: inTable,
+  },
+  {
+    id: "colInsertRight",
+    label: "Insert column right",
+    run: (editor) => editor.chain().focus().addColumnAfter().run(),
+    active: inTable,
+  },
+  {
+    id: "colDelete",
+    label: "Delete column",
+    run: (editor) => editor.chain().focus().deleteColumn().run(),
+    active: inTable,
+  },
+  {
+    id: "cellAlignLeft",
+    label: "Align cells left",
+    run: (editor) => setCellAlign(editor, "left"),
+    active: (editor) => cellAlignOf(editor) === "left",
+  },
+  {
+    id: "cellAlignCenter",
+    label: "Align cells center",
+    run: (editor) => setCellAlign(editor, "center"),
+    active: (editor) => cellAlignOf(editor) === "center",
+  },
+  {
+    id: "cellAlignRight",
+    label: "Align cells right",
+    run: (editor) => setCellAlign(editor, "right"),
+    active: (editor) => cellAlignOf(editor) === "right",
+  },
+  {
+    id: "headerRowToggle",
+    label: "Toggle header row",
+    run: headerRowToggleRun,
+    active: (editor) => headerRowOf(editor) === true,
+  },
+  {
+    id: "cellMerge",
+    label: "Merge cells",
+    run: (editor) => editor.chain().focus().mergeCells().run(),
+    active: cellMergeActive,
+  },
+  {
+    id: "cellClear",
+    label: "Clear cell contents",
+    run: cellClearRun,
+    active: inTable,
+  },
+  {
+    id: "tableDelete",
+    label: "Delete table",
+    run: (editor) => editor.chain().focus().deleteTable().run(),
+    active: inTable,
   },
   {
     id: "codeBlock",
