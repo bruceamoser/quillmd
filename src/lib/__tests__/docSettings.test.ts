@@ -18,12 +18,13 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
     localStorage.clear();
   });
 
-  it("defaults to single spacing, wrap on, marks off, 100% zoom", () => {
+  it("defaults to single spacing, wrap on, marks off, 100% zoom, spellcheck on", () => {
     expect(DEFAULT_DOC_SETTINGS).toEqual({
       lineSpacing: "single",
       wordWrap: true,
       showMarks: false,
       zoom: 100,
+      spellcheck: true,
     });
     expect(loadDocSettings("/a.md")).toEqual(DEFAULT_DOC_SETTINGS);
   });
@@ -34,33 +35,60 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
       wordWrap: false,
       showMarks: true,
       zoom: 150,
+      spellcheck: false,
     };
     saveDocSettings("/a.md", settings);
     expect(loadDocSettings("/a.md")).toEqual(settings);
   });
 
   it("keeps settings independent per path", () => {
-    saveDocSettings("/a.md", { lineSpacing: "double", wordWrap: false, showMarks: true, zoom: 120 });
-    saveDocSettings("/b.md", { lineSpacing: "1.15", wordWrap: true, showMarks: false, zoom: 80 });
+    saveDocSettings("/a.md", {
+      lineSpacing: "double",
+      wordWrap: false,
+      showMarks: true,
+      zoom: 120,
+      spellcheck: false,
+    });
+    saveDocSettings("/b.md", {
+      lineSpacing: "1.15",
+      wordWrap: true,
+      showMarks: false,
+      zoom: 80,
+      spellcheck: true,
+    });
     expect(loadDocSettings("/a.md")).toEqual({
       lineSpacing: "double",
       wordWrap: false,
       showMarks: true,
       zoom: 120,
+      spellcheck: false,
     });
     expect(loadDocSettings("/b.md")).toEqual({
       lineSpacing: "1.15",
       wordWrap: true,
       showMarks: false,
       zoom: 80,
+      spellcheck: true,
     });
     // An unknown path still gets the defaults.
     expect(loadDocSettings("/c.md")).toEqual(DEFAULT_DOC_SETTINGS);
   });
 
   it("overwrites an existing record on the same path", () => {
-    saveDocSettings("/a.md", { lineSpacing: "double", wordWrap: false, showMarks: true, zoom: 160 });
-    saveDocSettings("/a.md", { lineSpacing: "single", wordWrap: true, showMarks: false, zoom: 100 });
+    saveDocSettings("/a.md", {
+      lineSpacing: "double",
+      wordWrap: false,
+      showMarks: true,
+      zoom: 160,
+      spellcheck: false,
+    });
+    saveDocSettings("/a.md", {
+      lineSpacing: "single",
+      wordWrap: true,
+      showMarks: false,
+      zoom: 100,
+      spellcheck: true,
+    });
     expect(loadDocSettings("/a.md")).toEqual(DEFAULT_DOC_SETTINGS);
   });
 
@@ -71,6 +99,7 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
       wordWrap: true,
       showMarks: false,
       zoom: 100,
+      spellcheck: true,
     });
   });
 
@@ -91,6 +120,7 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
       wordWrap: true,
       showMarks: false,
       zoom: 200,
+      spellcheck: true,
     });
     localStorage.setItem(KEY, JSON.stringify({ "/a.md": { zoom: 1 } }));
     expect(loadDocSettings("/a.md")).toEqual({
@@ -98,6 +128,7 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
       wordWrap: true,
       showMarks: false,
       zoom: 50,
+      spellcheck: true,
     });
     // A fractional stored percent rounds to a whole percent.
     localStorage.setItem(KEY, JSON.stringify({ "/a.md": { zoom: 112.6 } }));
@@ -111,12 +142,24 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
 
   it("leaves an unrelated localStorage map untouched", () => {
     localStorage.setItem("quillmd.viewMode", JSON.stringify({ "/a.md": "source" }));
-    saveDocSettings("/a.md", { lineSpacing: "1.5", wordWrap: false, showMarks: true, zoom: 110 });
+    saveDocSettings("/a.md", {
+      lineSpacing: "1.5",
+      wordWrap: false,
+      showMarks: true,
+      zoom: 110,
+      spellcheck: true,
+    });
     expect(JSON.parse(localStorage.getItem("quillmd.viewMode")!)).toEqual({
       "/a.md": "source",
     });
     expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual({
-      "/a.md": { lineSpacing: "1.5", wordWrap: false, showMarks: true, zoom: 110 },
+      "/a.md": {
+        lineSpacing: "1.5",
+        wordWrap: false,
+        showMarks: true,
+        zoom: 110,
+        spellcheck: true,
+      },
     });
   });
 });

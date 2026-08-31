@@ -347,6 +347,34 @@ export function handleEditorKeyDown(editor: CoreEditor, event: KeyboardEvent): b
   return false;
 }
 
+// Modifier key of a paste event. ClipboardEvent is a UIEvent: unlike
+// KeyboardEvent it exposes no ctrlKey/shiftKey properties in browsers, so
+// getModifierState is the spec path (the DOM lib types it only on
+// Mouse/KeyboardEvent, hence the cast). The property fallback covers
+// synthetic events (tests) where getModifierState is absent.
+function pasteModifierKey(event: ClipboardEvent, state: string, prop: string): boolean {
+  const ui = event as unknown as { getModifierState?: (key: string) => boolean };
+  if (typeof ui.getModifierState === "function") return ui.getModifierState(state);
+  return Boolean((event as unknown as Record<string, unknown>)[prop]);
+}
+
+// Paste-as-text interception (plan 02 §2.9, issue #36). ProseMirror already
+// treats a shifted paste as plain text, but the insertion goes through the
+// registry command (pasteAsText) so the Edit menu item, the Ctrl+Shift+V
+// shortcut, and the tests all exercise identical behavior. A plain Ctrl+V
+// returns false and keeps the native rich-HTML paste (bold/italic/links/
+// headings survive into the markdown schema).
+export function handleEditorPaste(editor: CoreEditor, event: ClipboardEvent): boolean {
+  const controlOrMeta =
+    pasteModifierKey(event, "Control", "ctrlKey") || pasteModifierKey(event, "Meta", "metaKey");
+  if (!controlOrMeta || !pasteModifierKey(event, "Shift", "shiftKey")) return false;
+  const text = event.clipboardData?.getData("text/plain");
+  if (!text) return false;
+  event.preventDefault();
+  runEditorCommand(editor, "pasteAsText", text);
+  return true;
+}
+
 export default function Editor({
   value,
   onChange,
@@ -402,11 +430,18 @@ export default function Editor({
     editorProps: {
       attributes: {
         class: "quillmd-prosemirror",
-        spellcheck: "false",
+        // Spellcheck (plan 02 §2.8, issue #36): on by default (the per-doc
+        // setting, applied below), the browser engine does the checking.
+        // applyViewSettings reconciles this on mount and on changes.
+        spellcheck: (settings?.spellcheck ?? true) ? "true" : "false",
       },
       handleKeyDown: (_view, event) => {
         const active = editorRef.current;
         return active ? handleEditorKeyDown(active, event) : false;
+      },
+      handlePaste: (_view, event) => {
+        const active = editorRef.current;
+        return active ? handleEditorPaste(active, event) : false;
       },
       handleClickOn: (_view, _pos, node, nodePos, _event, direct) => {
         const active = editorRef.current;

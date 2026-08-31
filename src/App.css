@@ -473,6 +473,30 @@ button.quillmd-status-zoom:hover {
   background: rgba(255, 255, 255, 0.25);
 }
 
+/* Spellcheck indicator (plan 02 §2.8, issue #36): styled like the zoom
+   readout; "off" is dimmed so the state reads at a glance. */
+.quillmd-status-spellcheck {
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-radius: 3px;
+  padding: 1px 7px;
+  font-size: 11px;
+  cursor: default;
+}
+
+.quillmd-status-spellcheck.off {
+  opacity: 0.55;
+}
+
+button.quillmd-status-spellcheck {
+  cursor: pointer;
+}
+
+button.quillmd-status-spellcheck:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
 .quillmd-status-toast {
   position: fixed;
   bottom: 32px;

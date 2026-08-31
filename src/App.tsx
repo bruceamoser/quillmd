@@ -45,6 +45,7 @@ import {
 import type { EditorCommandId, LineSpacingValue } from "./lib/editorCommands";
 import { loadDocSettings, saveDocSettings } from "./lib/docSettings";
 import type { DocSettings } from "./lib/docSettings";
+import { readClipboardText } from "./lib/clipboard";
 import { handleDroppedPaths } from "./lib/dragDrop";
 import Editor from "./components/Editor";
 import DocInfoPanel from "./components/DocInfoPanel";
@@ -128,6 +129,7 @@ const SHORTCUTS_TEXT = [
   "Ctrl+S / Ctrl+Shift+S: save / save as",
   "Ctrl+W: close tab",
   "Ctrl+Z / Ctrl+Shift+Z: undo / redo",
+  "Ctrl+Shift+V: paste as plain text (Edit > Paste as Text)",
   "Ctrl+Shift+E: toggle explorer",
 ].join("\n");
 
@@ -433,6 +435,27 @@ export default function App() {
     dispatchEditorCommand("wordWrap");
   }, [activeDoc, patchDocSettings]);
 
+  // Spellcheck (plan 02 §2.8, issue #36): per-doc toggle like the other View
+  // preferences — the persisted setting is the source of truth, the registry
+  // command flips the contenteditable attribute on the open WYSIWYG DOM.
+  const toggleSpellcheck = useCallback(() => {
+    if (!activeDoc) return;
+    patchDocSettings({ spellcheck: !activeDoc.settings.spellcheck });
+    dispatchEditorCommand("spellcheck");
+  }, [activeDoc, patchDocSettings]);
+
+  // Paste as text (plan 02 §2.9, issue #36): the Edit menu item reads the
+  // system clipboard (the native accelerator has already consumed the key
+  // stroke) and dispatches the pasteAsText command with the payload.
+  const doPasteAsText = useCallback(async () => {
+    const text = await readClipboardText();
+    if (text === null) {
+      setStatus("Paste as text: clipboard unavailable in this view");
+      return;
+    }
+    dispatchEditorCommand("pasteAsText", text);
+  }, [setStatus]);
+
   // Zoom (plan 02 task 2.6, issue #35): the per-doc settings record is the
   // single source of truth for the percent. Every surface (View > Zoom
   // submenu, Ctrl+=/Ctrl+-/Ctrl+0, Ctrl-wheel, status-bar reset) funnels
@@ -603,6 +626,8 @@ export default function App() {
         document.execCommand("copy");
       } else if (id === "edit-paste") {
         document.execCommand("paste");
+      } else if (id === "edit-paste-as-text") {
+        void doPasteAsText();
       } else if (id === "edit-find") {
         doFind();
       } else if (id === "view-wysiwyg") {
@@ -623,6 +648,8 @@ export default function App() {
         toggleShowMarks();
       } else if (id === "view-word-wrap") {
         toggleWordWrap();
+      } else if (id === "view-spellcheck") {
+        toggleSpellcheck();
       } else if (id.startsWith("view-spacing-")) {
         setLineSpacing(id.slice("view-spacing-".length) as LineSpacingValue);
       } else if (id === "view-zoom-in") {
@@ -655,6 +682,8 @@ export default function App() {
       setLineSpacing,
       toggleShowMarks,
       toggleWordWrap,
+      toggleSpellcheck,
+      doPasteAsText,
       stepZoom,
       changeZoom,
       recentFiles,
@@ -944,6 +973,8 @@ export default function App() {
               eol={activeDoc?.open.eol ?? "lf"}
               dirty={dirty}
               zoom={activeDoc?.settings.zoom ?? ZOOM_DEFAULT}
+              spellcheck={activeDoc?.settings.spellcheck ?? true}
+              onSpellcheckToggle={toggleSpellcheck}
               fileName={
                 activePath && isUntitledPath(activePath)
                   ? untitledDisplayName(activePath)

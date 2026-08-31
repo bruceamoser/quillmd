@@ -30,9 +30,13 @@ export default function SourceView({
   // horizontally). Word wrap on adds the lineWrapping extension; off keeps the
   // default horizontal scroll. The extensions prop reconfigures the live view
   // when it changes.
-  const extensions = wrap
-    ? [markdown({ codeLanguages }), EditorView.lineWrapping]
-    : [markdown({ codeLanguages })];
+  //
+  // Spellcheck is always off in the source view (plan 02 §2.8, issue #36):
+  // it is a WYSIWYG-engine feature and the raw markdown source (including
+  // syntax tokens) is not prose to spell-check. The contentAttributes facet
+  // lands on the editable .cm-content element.
+  const base = [markdown({ codeLanguages }), EditorView.contentAttributes.of({ spellcheck: "false" })];
+  const extensions = wrap ? [...base, EditorView.lineWrapping] : base;
   return (
     <div className="quillmd-source">
       <CodeMirror
