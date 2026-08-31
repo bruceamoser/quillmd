@@ -128,6 +128,171 @@ export function renderImgHtml(attrs: {
   return `<img ${parts.join(" ")}>`;
 }
 
+// --- Font & highlight spans (plan 04 task 4.1, issue #47) ------------------
+//
+// Styled text serializes as pandoc/HTML spans with a stable class + inline
+// style (decision in plan 04 §3):
+//   <span class="quillmd-font" style="font-family: Georgia; font-size: 14pt; color: #c00000">styled</span>
+// The serializer writes only non-default properties, always in the fixed
+// order font-family, font-size, color, so the span HTML is stable and
+// save -> reopen -> save is byte-identical. A highlight with a non-default
+// color uses the same mechanism with background-color:
+//   <span class="quillmd-highlight" style="background-color: #ffff00">marked</span>
+// A highlight without a color keeps the ==text== syntax (backward compat).
+// Tags with anything beyond the recognized shape stay opaque HTML (the
+// norm-002 passthrough behavior).
+
+export const FONT_SPAN_CLASS = "quillmd-font";
+export const HIGHLIGHT_SPAN_CLASS = "quillmd-highlight";
+
+export interface FontSpanStyle {
+  fontFamily: string | null;
+  fontSize: string | null;
+  color: string | null;
+}
+
+const SPAN_OPEN_RE = /^<span\b([^>]*?)>$/i;
+const SPAN_CLOSE = "</span>";
+
+// A #rrggbb hex color (any case) or a browser-normalized rgb(r, g, b)
+// (DOM paste hands us the CSSOM form). Canonical output is lowercase hex.
+function normalizeColor(value: string): string | null {
+  const hex = /^#([0-9a-fA-F]{6})$/.exec(value);
+  if (hex) return `#${hex[1].toLowerCase()}`;
+  const rgb = /^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/.exec(value);
+  if (rgb) {
+    const nums = rgb.slice(1).map(Number);
+    if (nums.some((n) => n > 255)) return null;
+    return `#${nums.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
+  }
+  return null;
+}
+
+interface SpanOpen {
+  kind: "font" | "highlight";
+  style: FontSpanStyle & { background: string | null };
+}
+
+// The recognized opening span tags, or null when the value is not one (then
+// it stays opaque HTML, never silently rewritten). Attribute order is
+// accepted anywhere; the canonical order is enforced on emit.
+export function parseSpanOpen(value: string): SpanOpen | null {
+  const m = SPAN_OPEN_RE.exec(value.trim());
+  if (!m) return null;
+  const attrs: Record<string, string> = {};
+  const attrRe = /\b(class|style)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+  let a: RegExpExecArray | null;
+  while ((a = attrRe.exec(m[1])) !== null) {
+    attrs[a[1].toLowerCase()] = a[2] ?? a[3] ?? "";
+  }
+  const stripped = m[1].replace(/\b(class|style)\s*=\s*(?:"[^"]*"|'[^']*')/gi, " ").trim();
+  if (stripped.length > 0) return null;
+  const className = attrs.class?.trim();
+  if (className !== FONT_SPAN_CLASS && className !== HIGHLIGHT_SPAN_CLASS) return null;
+  const style: FontSpanStyle & { background: string | null } = {
+    fontFamily: null,
+    fontSize: null,
+    color: null,
+    background: null,
+  };
+  if (attrs.style !== undefined) {
+    for (const part of attrs.style.split(";")) {
+      if (part.trim() === "") continue;
+      const idx = part.indexOf(":");
+      if (idx === -1) return null;
+      const key = part.slice(0, idx).trim().toLowerCase();
+      const val = part.slice(idx + 1).trim();
+      if (val === "") return null;
+      switch (key) {
+        case "font-family":
+          style.fontFamily = val;
+          break;
+        case "font-size":
+          if (!/^\d+pt$/.test(val)) return null;
+          style.fontSize = val;
+          break;
+        case "color": {
+          const color = normalizeColor(val);
+          if (!color) return null;
+          style.color = color;
+          break;
+        }
+        case "background-color": {
+          const background = normalizeColor(val);
+          if (!background) return null;
+          style.background = background;
+          break;
+        }
+        default:
+          return null;
+      }
+    }
+  }
+  if (className === FONT_SPAN_CLASS) {
+    if (style.background !== null) return null;
+    if (!style.fontFamily && !style.fontSize && !style.color) return null;
+    return { kind: "font", style };
+  }
+  if (style.background === null) return null;
+  if (style.fontFamily !== null || style.fontSize !== null || style.color !== null) return null;
+  return { kind: "highlight", style };
+}
+
+// The canonical opening tag for a font span's style (fixed property order,
+// only the properties that are set).
+export function renderFontSpanOpen(style: FontSpanStyle): string {
+  const parts: string[] = [];
+  if (style.fontFamily) parts.push(`font-family: ${style.fontFamily}`);
+  if (style.fontSize) parts.push(`font-size: ${style.fontSize}`);
+  if (style.color) parts.push(`color: ${style.color}`);
+  return `<span class="${FONT_SPAN_CLASS}" style="${parts.join("; ")}">`;
+}
+
+// The canonical opening tag for a colored highlight span.
+export function renderHighlightSpanOpen(color: string): string {
+  return `<span class="${HIGHLIGHT_SPAN_CLASS}" style="background-color: ${color}">`;
+}
+
+// The ==text== highlight syntax inside a run of plain text (same delimiter
+// rules as the TipTap highlight input rule: no '=' inside, no == hugging a
+// space+==).
+const HIGHLIGHT_SYNTAX_RE = /==(?!\s+==)((?:[^=]+))==/g;
+
+function splitHighlightSyntax(text: string): JSONContent[] {
+  const out: JSONContent[] = [];
+  let last = 0;
+  for (const m of text.matchAll(HIGHLIGHT_SYNTAX_RE)) {
+    const idx = m.index ?? 0;
+    if (idx > last) out.push({ type: "text", text: text.slice(last, idx) });
+    out.push({ type: "text", text: m[1], marks: [{ type: "highlight" }] });
+    last = idx + m[0].length;
+  }
+  if (last < text.length) out.push({ type: "text", text: text.slice(last) });
+  return out.length > 0 ? out : [{ type: "text", text }];
+}
+
+// Adds `marks` to every text node of the (possibly nested) inline JSON.
+// ProseMirror stores marks on text nodes only, so a span covering a mixed
+// run (e.g. **bold** and plain) becomes the mark on each text run; this is
+// also the only shape the TipTap JSON loader accepts (an empty text node
+// with content throws in Node.fromJSON and drops the document).
+function applyInlineMarks(nodes: JSONContent[], marks: NonNullable<JSONContent["marks"]>): JSONContent[] {
+  if (marks.length === 0 || nodes.length === 0) return nodes;
+  return nodes.map((node) => {
+    if (node.type === "text") {
+      const existing = node.marks ?? [];
+      const merged = existing.filter(
+        (m) => !marks.some((n) => n.type === m.type && JSON.stringify(n.attrs) === JSON.stringify(m.attrs)),
+      );
+      return { ...node, marks: [...merged, ...marks] };
+    }
+    if (Array.isArray(node.content)) {
+      return { ...node, content: applyInlineMarks(node.content, marks) };
+    }
+    return node;
+  });
+}
+
 // --- markdown -> TipTap ---------------------------------------------------
 
 export function markdownToTiptap(markdown: string): JSONContent {
@@ -299,17 +464,78 @@ function tableToTiptap(node: Table): JSONContent {
 
 function inlineChildren(children: PhrasingContent[]): JSONContent[] {
   const out: JSONContent[] = [];
-  for (const child of children) {
-    const converted = inlineToTiptap(child);
-    if (converted) out.push(converted);
+  let i = 0;
+  while (i < children.length) {
+    const child = children[i];
+    if (child.type === "html" && child.value.trim() !== SPAN_CLOSE) {
+      const img = parseImgHtml(child.value);
+      if (img) {
+        out.push(imageToJson(img));
+        i += 1;
+        continue;
+      }
+      const span = parseSpanOpen(child.value);
+      if (span) {
+        // Collect the span's phrasing content up to the matching </span>
+        // (nested spans of any kind tracked by depth); the marks land on
+        // every inner text run.
+        const inner: PhrasingContent[] = [];
+        let j = i + 1;
+        let depth = 1;
+        let closed = false;
+        while (j < children.length) {
+          const c = children[j];
+          if (c.type === "html") {
+            const v = c.value.trim();
+            if (v === SPAN_CLOSE) {
+              depth -= 1;
+              if (depth === 0) {
+                closed = true;
+                break;
+              }
+            } else if (/^<span\b/i.test(v)) {
+              depth += 1;
+            }
+          }
+          inner.push(c);
+          j += 1;
+        }
+        if (closed) {
+          const marks: NonNullable<JSONContent["marks"]> =
+            span.kind === "font"
+              ? [
+                  ...(span.style.fontFamily ? [{ type: "fontFamily", attrs: { fontFamily: span.style.fontFamily } }] : []),
+                  ...(span.style.fontSize ? [{ type: "fontSize", attrs: { fontSize: span.style.fontSize } }] : []),
+                  ...(span.style.color ? [{ type: "fontColor", attrs: { color: span.style.color } }] : []),
+                ]
+              : [{ type: "highlight", attrs: { color: span.style.background } }];
+          out.push(...applyInlineMarks(inlineChildren(inner), marks));
+          i = j + 1;
+          continue;
+        }
+      }
+      out.push({ type: "text", text: child.value });
+      i += 1;
+      continue;
+    }
+    if (child.type === "text") {
+      // ==text== is the highlight syntax (plan 04 §3, AC5): parse it into
+      // the colorless highlight mark so WYSIWYG renders the default yellow
+      // and the serializer keeps the syntax for backward compatibility.
+      out.push(...splitHighlightSyntax(child.value));
+      i += 1;
+      continue;
+    }
+    out.push(...inlineToTiptap(child));
+    i += 1;
   }
   return out;
 }
 
-function inlineToTiptap(node: PhrasingContent): JSONContent | null {
+function inlineToTiptap(node: PhrasingContent): JSONContent[] {
   switch (node.type) {
     case "text":
-      return { type: "text", text: node.value };
+      return [{ type: "text", text: node.value }];
     case "emphasis":
       return markWrapped(node.children, "italic");
     case "strong":
@@ -317,9 +543,9 @@ function inlineToTiptap(node: PhrasingContent): JSONContent | null {
     case "delete":
       return markWrapped(node.children, "strike");
     case "inlineCode":
-      return { type: "text", text: node.value, marks: [{ type: "code" }] };
+      return [{ type: "text", text: node.value, marks: [{ type: "code" }] }];
     case "footnoteReference":
-      return { type: "footnoteRef", attrs: { label: node.label ?? node.identifier } };
+      return [{ type: "footnoteRef", attrs: { label: node.label ?? node.identifier } }];
     case "link":
       // The title round-trips through the link mark attribute (plan 08
       // task 8.1): [text](url "title") must survive an edit of its block.
@@ -328,20 +554,17 @@ function inlineToTiptap(node: PhrasingContent): JSONContent | null {
         title: typeof node.title === "string" ? node.title : null,
       });
     case "image":
-      return imageToJson({ src: node.url, alt: node.alt, title: node.title });
+      return [imageToJson({ src: node.url, alt: node.alt, title: node.title })];
     case "break":
-      return { type: "hardBreak" };
-    case "html": {
-      const img = parseImgHtml(node.value);
-      if (img) return imageToJson(img);
-      return { type: "text", text: node.value };
-    }
+      return [{ type: "hardBreak" }];
+    case "html":
+      return [{ type: "text", text: node.value }];
     case "linkReference":
       return markWrapped(node.children, "link", { href: node.identifier });
     case "imageReference":
-      return imageToJson({ src: node.identifier, alt: node.alt });
+      return [imageToJson({ src: node.identifier, alt: node.alt })];
     default:
-      return null;
+      return [];
   }
 }
 
@@ -368,14 +591,15 @@ function markWrapped(
   children: PhrasingContent[],
   markType: string,
   attrs?: Record<string, unknown>,
-): JSONContent {
+): JSONContent[] {
   const content = inlineChildren(children);
-  const marks = attrs ? [{ type: markType, attrs }] : [{ type: markType }];
-  const first = content[0];
-  if (content.length === 1 && first && first.type === "text") {
-    return { type: "text", text: first.text ?? "", marks: [...(first.marks ?? []), ...marks] };
-  }
-  return { type: "text", text: "", marks, content };
+  const marks: NonNullable<JSONContent["marks"]> = attrs
+    ? [{ type: markType, attrs }]
+    : [{ type: markType }];
+  // A mark over a mixed run (e.g. **bold _italic_**) lands on every inner
+  // text run — the only shape the TipTap JSON loader accepts (an empty text
+  // node with content throws in Node.fromJSON and drops the document).
+  return applyInlineMarks(content, marks);
 }
 
 // Definition lists parse as a single paragraph whose later lines all start
@@ -536,9 +760,34 @@ function tiptapBlockChildren(node: JSONContent): Array<BlockContent | Definition
 
 function tiptapInline(node: JSONContent): PhrasingContent[] {
   const out: PhrasingContent[] = [];
-  for (const child of node.content ?? []) {
+  const children = node.content ?? [];
+  let i = 0;
+  while (i < children.length) {
+    const child = children[i];
+    if (child.type === "text") {
+      // ProseMirror splits a styled run into one text node per distinct
+      // mark set (e.g. **bold** and plain inside one font span). Group the
+      // consecutive text nodes sharing the same font attribute set so a
+      // single span wraps the whole run — the canonical, byte-stable form.
+      const font = fontStyleOf(child);
+      const group: JSONContent[] = [child];
+      let j = i + 1;
+      while (
+        j < children.length &&
+        children[j].type === "text" &&
+        sameFontStyle(fontStyleOf(children[j]), font)
+      ) {
+        group.push(children[j]);
+        j += 1;
+      }
+      out.push(...tiptapTextGroup(group));
+      i = j;
+      continue;
+    }
+    // Non-text, non-leaf inline content (defensive; paragraphs are flat).
     if (child.type === "hardBreak") {
       out.push({ type: "break" } as Break);
+      i += 1;
       continue;
     }
     if (child.type === "image") {
@@ -554,26 +803,193 @@ function tiptapInline(node: JSONContent): PhrasingContent[] {
       } else {
         out.push({ type: "image", url: src, alt, title });
       }
+      i += 1;
       continue;
     }
     if (child.type === "footnoteRef") {
       const label = String(child.attrs?.label ?? "");
       out.push({ type: "footnoteReference", identifier: label, label });
-      continue;
-    }
-    if (child.type === "text") {
-      out.push(...tiptapTextWithMarks(child.text ?? "", child.marks ?? []));
+      i += 1;
       continue;
     }
     out.push(...tiptapInline(child));
+    i += 1;
   }
   return out;
 }
 
-function tiptapTextWithMarks(text: string, marks: NonNullable<JSONContent["marks"]>): PhrasingContent[] {
+function fontStyleOf(node: JSONContent): FontSpanStyle {
+  const style: FontSpanStyle = { fontFamily: null, fontSize: null, color: null };
+  for (const mark of node.marks ?? []) {
+    if (mark.type === "fontFamily" && typeof mark.attrs?.fontFamily === "string") {
+      style.fontFamily = mark.attrs.fontFamily;
+    } else if (mark.type === "fontSize" && typeof mark.attrs?.fontSize === "string") {
+      style.fontSize = mark.attrs.fontSize;
+    } else if (mark.type === "fontColor" && typeof mark.attrs?.color === "string") {
+      style.color = mark.attrs.color;
+    }
+  }
+  return style;
+}
+
+function sameFontStyle(a: FontSpanStyle, b: FontSpanStyle): boolean {
+  return (
+    a.fontFamily === b.fontFamily && a.fontSize === b.fontSize && a.color === b.color
+  );
+}
+
+// Canonical mark-nesting order, outermost first: the marks that can be
+// factored out as a wrapper around a run every node shares. Font spans are
+// applied by the caller (outside everything); code, sub/superscript, and the
+// colorless highlight are literal text and never wrap.
+const WRAPPABLE_MARKS = ["highlight", "underline", "link", "bold", "italic", "strike"];
+
+// A highlight only wraps (as a colored span) when it carries a color; the
+// colorless highlight is the ==text== literal.
+function isWrappableMark(mark: { type: string; attrs?: Record<string, unknown> }): boolean {
+  if (mark.type === "highlight") {
+    return typeof mark.attrs?.color === "string" && mark.attrs.color !== "";
+  }
+  return (WRAPPABLE_MARKS as readonly string[]).includes(mark.type);
+}
+
+// The outermost mark (per WRAPPABLE_MARKS) present on every node with the
+// same attributes — null when no such mark exists.
+function sharedWrappableMark(nodes: JSONContent[]): { type: string; attrs?: Record<string, unknown> } | null {
+  for (const type of WRAPPABLE_MARKS) {
+    const first = (nodes[0].marks ?? []).find((m) => m.type === type);
+    if (!first || !isWrappableMark(first)) continue;
+    const firstAttrs = JSON.stringify(first.attrs ?? null);
+    if (!nodes.every((n) => {
+      const m = (n.marks ?? []).find((mm) => mm.type === type);
+      return m !== undefined && JSON.stringify(m.attrs ?? null) === firstAttrs;
+    })) continue;
+    return { type, attrs: first.attrs as Record<string, unknown> | undefined };
+  }
+  return null;
+}
+
+// Stable identity of a text node's non-font marks (font marks are uniform
+// within a group and handled by the caller). Used to split a run into
+// maximal segments that share one mark set.
+function markSetKey(node: JSONContent): string {
+  return (node.marks ?? [])
+    .filter((m) => m.type !== "fontFamily" && m.type !== "fontSize" && m.type !== "fontColor")
+    .map((m) => `${m.type}:${JSON.stringify(m.attrs ?? null)}`)
+    .join(",");
+}
+
+// Serializes a run of consecutive text nodes that share one font attribute
+// set: the shared font style wraps the whole group in a single span
+// (outermost layer) and the non-font marks are re-nested into structure.
+function tiptapTextGroup(group: JSONContent[]): PhrasingContent[] {
+  const font = fontStyleOf(group[0]);
+  const body = reNest(group);
+  if (!font.fontFamily && !font.fontSize && !font.color) return body;
+  return [
+    { type: "html", value: renderFontSpanOpen(font) },
+    ...body,
+    { type: "html", value: SPAN_CLOSE },
+  ];
+}
+
+// Rebuilds markdown nesting from ProseMirror's flat "marks on text nodes"
+// model. The outermost mark shared by every node is factored out as a
+// wrapper and the inner run re-serialized without it; with no shared
+// wrappable mark the run splits into maximal identical-mark-set segments —
+// a segment carrying only literal marks (code, sub/sup, colorless
+// highlight) serializes its joined text directly, otherwise it recurses.
+function reNest(nodes: JSONContent[]): PhrasingContent[] {
+  if (nodes.length === 0) return [];
+  const shared = sharedWrappableMark(nodes);
+  if (shared) {
+    const inner = nodes.map((n) => ({
+      ...n,
+      marks: (n.marks ?? []).filter((m) => m.type !== shared.type),
+    }));
+    return wrapMarked(shared.type, shared.attrs, reNest(inner));
+  }
+  const out: PhrasingContent[] = [];
+  let start = 0;
+  for (let k = 1; k <= nodes.length; k++) {
+    if (k === nodes.length || markSetKey(nodes[k]) !== markSetKey(nodes[start])) {
+      const segment = nodes.slice(start, k);
+      if (segment.some((n) => (n.marks ?? []).some((m) => isWrappableMark(m)))) {
+        out.push(...reNest(segment));
+      } else {
+        const text = segment.map((n) => n.text ?? "").join("");
+        out.push(...tiptapTextWithMarks(text, segment[0].marks ?? []));
+      }
+      start = k;
+    }
+  }
+  return out;
+}
+
+// Wraps already-serialized phrasing content in one mark (the outermost
+// shared-mark layer of reNest).
+function wrapMarked(
+  type: string,
+  attrs: Record<string, unknown> | undefined,
+  content: PhrasingContent[],
+): PhrasingContent[] {
+  switch (type) {
+    case "bold":
+      return [{ type: "strong", children: content }];
+    case "italic":
+      return [{ type: "emphasis", children: content }];
+    case "strike":
+      return [{ type: "delete", children: content }];
+    case "link": {
+      const url = typeof attrs?.href === "string" ? attrs.href : "";
+      const title = typeof attrs?.title === "string" ? attrs.title : null;
+      return [{ type: "link", url, title, children: content }];
+    }
+    case "underline":
+      return [{ type: "html", value: "<u>" }, ...content, { type: "html", value: "</u>" }];
+    case "highlight": {
+      const color = typeof attrs?.color === "string" ? attrs.color : null;
+      return [
+        { type: "html", value: renderHighlightSpanOpen(color ?? "#ffff00") },
+        ...content,
+        { type: "html", value: SPAN_CLOSE },
+      ];
+    }
+    default:
+      return content;
+  }
+}
+
+function tiptapTextWithMarks(
+  text: string,
+  marks: NonNullable<JSONContent["marks"]>,
+): PhrasingContent[] {
   let current: PhrasingContent[] = text.length > 0 ? [{ type: "text", value: text }] : [];
 
-  for (const mark of marks) {
+  // Marks are emitted in a fixed nesting order (last wrap = outermost) so
+  // the output is stable regardless of the mark order ProseMirror reports:
+  // the syntax marks first, then underline and the highlight span, with the
+  // font span applied by the caller around the whole grouped run.
+  const byType = (type: string) => marks.find((m) => m.type === type);
+  const ordered: NonNullable<JSONContent["marks"]> = [];
+  for (const type of [
+    "bold",
+    "italic",
+    "strike",
+    "link",
+    "subscript",
+    "superscript",
+    "code",
+    "underline",
+    "highlight",
+  ]) {
+    const mark = byType(type);
+    if (mark) ordered.push(mark);
+  }
+
+  let highlightColor: string | null = null;
+
+  for (const mark of ordered) {
     const type = mark.type;
     if (type === "bold") {
       current = [{ type: "strong", children: current }];
@@ -594,12 +1010,26 @@ function tiptapTextWithMarks(text: string, marks: NonNullable<JSONContent["marks
     } else if (type === "superscript") {
       const joined = current.map(plainTextOf).join("");
       current = [{ type: "text", value: `^${joined}^` }];
-    } else if (type === "highlight") {
-      const joined = current.map(plainTextOf).join("");
-      current = [{ type: "text", value: `==${joined}==` }];
     } else if (type === "underline") {
       current = [{ type: "html", value: "<u>" }, ...current, { type: "html", value: "</u>" }];
+    } else if (type === "highlight") {
+      const color = typeof mark.attrs?.color === "string" ? mark.attrs.color : null;
+      if (color) {
+        highlightColor = color;
+      } else {
+        // Default (yellow) highlight keeps the ==text== syntax.
+        const joined = current.map(plainTextOf).join("");
+        current = [{ type: "text", value: `==${joined}==` }];
+      }
     }
+  }
+
+  if (highlightColor) {
+    current = [
+      { type: "html", value: renderHighlightSpanOpen(highlightColor) },
+      ...current,
+      { type: "html", value: SPAN_CLOSE },
+    ];
   }
   return current;
 }

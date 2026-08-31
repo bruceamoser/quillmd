@@ -86,9 +86,19 @@
  #                     insertImage through the shared from-file flow
  #                     (insertImageFromPath + currentFindEditor, same
  #                     pipeline as Insert > Image > From file), and the
- #                     dragDrop.test.ts image routing/skip/failure suite
- #                     presence
- #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
+  #                     dragDrop.test.ts image routing/skip/failure suite
+  #                     presence
+  #           p2-fonts -> plan 04 task 4.1 acceptance gate (issue #47): the
+  #                       three font marks (fontFamily/fontSize/fontColor) +
+  #                       the highlight color attribute registered in
+  #                       Editor.tsx, the quillmd-font / quillmd-highlight
+  #                       span parse + emit in pm.ts (fixed font-family ->
+  #                       font-size -> color attribute order), the clean
+  #                       font-styled.md fixture contract, and the
+  #                       fontmarks.test.tsx AC1/AC3/AC5 vitest-suite
+  #                       presence (compose bold+italic+font+color, per-attr
+  #                       toggle-off, highlight color + ==text== compat)
+  #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
 #           dragdrop -> p0-shell drag & drop open (issue #27)
@@ -1671,6 +1681,85 @@ test_media_windows_openlink() {
     fi
 }
 
+# --- p2-fonts: fonts/sizes/color marks + serializer/parser (issue #47, plan 04 task 4.1) ---
+# The mark semantics (apply + per-attribute toggle-off, the canonical
+# <span class="quillmd-font" style="..."> / <span class="quillmd-highlight"
+# style="background-color: ..."> emit, the fixed font-family -> font-size ->
+# color attribute order, and the ==text== backward-compat) are covered by the
+# vitest suite (src/lib/__tests__/fontmarks.test.tsx); this section checks the
+# schema + converter wiring the GUI driver cannot reach headlessly: the three
+# font marks + the highlight color attribute are registered in Editor.tsx,
+# pm.ts parses/emits the quillmd-font + quillmd-highlight spans in a fixed
+# attribute order, and the clean fixture contract includes a styled doc.
+test_fonts_marks_registered() {
+    note "fonts Editor.tsx registers the three font marks + highlight color"
+    if grep -q 'function makeFontMark' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'export const FontFamilyMark' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'export const FontSizeMark' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'export const FontColorMark' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'export const QuillHighlight' "$ROOT/src/components/Editor.tsx"; then
+        pass "fonts Editor.tsx registers the three font marks + highlight color"
+    else
+        fail "fonts Editor.tsx registers the three font marks + highlight color"
+    fi
+}
+test_fonts_marks_in_extensions() {
+    note "fonts Editor.tsx wires the font marks + highlight into the extension list"
+    if grep -q 'QuillHighlight,' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'FontFamilyMark,' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'FontSizeMark,' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'FontColorMark,' "$ROOT/src/components/Editor.tsx"; then
+        pass "fonts Editor.tsx wires the font marks + highlight into the extension list"
+    else
+        fail "fonts Editor.tsx wires the font marks + highlight into the extension list"
+    fi
+}
+test_fonts_pm_span_parse_serialize() {
+    note "fonts pm.ts parses + emits quillmd-font / quillmd-highlight spans"
+    if grep -q 'FONT_SPAN_CLASS = "quillmd-font"' "$ROOT/src/lib/pm.ts" \
+        && grep -q 'HIGHLIGHT_SPAN_CLASS = "quillmd-highlight"' "$ROOT/src/lib/pm.ts" \
+        && grep -q 'renderFontSpanOpen' "$ROOT/src/lib/pm.ts" \
+        && grep -q 'renderHighlightSpanOpen' "$ROOT/src/lib/pm.ts"; then
+        pass "fonts pm.ts parses + emits quillmd-font / quillmd-highlight spans"
+    else
+        fail "fonts pm.ts parses + emits quillmd-font / quillmd-highlight spans"
+    fi
+}
+test_fonts_pm_fixed_attr_order() {
+    note "fonts pm.ts emits font attrs in a fixed order (family, size, color)"
+    if grep -q 'parts.push(`font-family: ' "$ROOT/src/lib/pm.ts" \
+        && grep -q 'parts.push(`font-size: ' "$ROOT/src/lib/pm.ts" \
+        && grep -q 'parts.push(`color: ' "$ROOT/src/lib/pm.ts" \
+        && grep -q 'background-color: ' "$ROOT/src/lib/pm.ts"; then
+        pass "fonts pm.ts emits font attrs in a fixed order (family, size, color)"
+    else
+        fail "fonts pm.ts emits font attrs in a fixed order (family, size, color)"
+    fi
+}
+test_fonts_roundtrip_fixture() {
+    note "fonts untouched styled fixture in the round-trip contract"
+    if [ -f "$FIXTURES/clean/font-styled.md" ] \
+        && grep -q 'quillmd-font' "$FIXTURES/clean/font-styled.md" \
+        && grep -q 'quillmd-highlight' "$FIXTURES/clean/font-styled.md" \
+        && grep -q '==legacy==' "$FIXTURES/clean/font-styled.md" \
+        && [ -f "$ROOT/src/lib/__tests__/fontmarks.test.tsx" ]; then
+        pass "fonts untouched styled fixture in the round-trip contract"
+    else
+        fail "fonts untouched styled fixture in the round-trip contract"
+    fi
+}
+test_fonts_suites_present() {
+    note "fonts AC1/AC3/AC5 vitest-suite assertions present"
+    if grep -q 'composes bold + italic + font + color on one range (AC3)' "$ROOT/src/lib/__tests__/fontmarks.test.tsx" \
+        && grep -q 'toggles a font attribute off independently, keeping the others (AC3)' "$ROOT/src/lib/__tests__/fontmarks.test.tsx" \
+        && grep -q 'sets a highlight color as a quillmd-highlight span (AC5)' "$ROOT/src/lib/__tests__/fontmarks.test.tsx" \
+        && grep -q 'keeps the default (colorless) highlight as ==text==' "$ROOT/src/lib/__tests__/fontmarks.test.tsx"; then
+        pass "fonts AC1/AC3/AC5 vitest-suite assertions present"
+    else
+        fail "fonts AC1/AC3/AC5 vitest-suite assertions present"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -1837,6 +1926,14 @@ case "$SUBSET" in
         test_dnd_app_wiring
         test_dnd_suites_present
         ;;
+    p2-fonts)
+        test_fonts_marks_registered
+        test_fonts_marks_in_extensions
+        test_fonts_pm_span_parse_serialize
+        test_fonts_pm_fixed_attr_order
+        test_fonts_roundtrip_fixture
+        test_fonts_suites_present
+        ;;
     shell)
         test_shell_new_bundled
         test_shell_new_menu_wiring
@@ -1976,9 +2073,15 @@ case "$SUBSET" in
         test_media_ac8_roundtrip
         test_media_windows_assetcopy
         test_media_windows_openlink
+        test_fonts_marks_registered
+        test_fonts_marks_in_extensions
+        test_fonts_pm_span_parse_serialize
+        test_fonts_pm_fixed_attr_order
+        test_fonts_roundtrip_fixture
+        test_fonts_suites_present
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { Extension, Node, mergeAttributes } from "@tiptap/core";
+import { Extension, Mark, Node, mergeAttributes } from "@tiptap/core";
 import type { Editor as CoreEditor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Strike from "@tiptap/extension-strike";
@@ -8,7 +8,7 @@ import CodeBlock from "@tiptap/extension-code-block";
 import Paragraph from "@tiptap/extension-paragraph";
 import Heading from "@tiptap/extension-heading";
 import Blockquote from "@tiptap/extension-blockquote";
-import { ALIGN_CLASSES } from "../lib/pm";
+import { ALIGN_CLASSES, FONT_SPAN_CLASS, HIGHLIGHT_SPAN_CLASS } from "../lib/pm";
 import Underline from "@tiptap/extension-underline";
 import Highlight from "@tiptap/extension-highlight";
 import Link from "@tiptap/extension-link";
@@ -61,6 +61,63 @@ export const LinkWithTitle = Link.extend({
         parseHTML: (element: HTMLElement) => element.getAttribute("title"),
       },
     };
+  },
+});
+
+// Font styling (plan 04 task 4.1, issue #47): fontFamily / fontSize /
+// fontColor are three separate marks so the toolbar can toggle each
+// independently. All three share one canonical HTML form —
+// <span class="quillmd-font" style="..."> — so each mark's parse rule
+// matches that span and reads only its own style property; pm.ts collapses
+// the three marks back into a single span with a fixed attribute order.
+function makeFontMark(name: string, styleProp: string, cssProp: string, attrName: string) {
+  return Mark.create({
+    name,
+    addAttributes() {
+      return {
+        [attrName]: {
+          default: null,
+          parseHTML: (element: HTMLElement) =>
+            (element.style as unknown as Record<string, string>)[styleProp] || null,
+          renderHTML: (attrs: Record<string, unknown>) =>
+            typeof attrs[attrName] === "string" && attrs[attrName] !== ""
+              ? { style: `${cssProp}: ${attrs[attrName]}` }
+              : {},
+        },
+      };
+    },
+    parseHTML() {
+      return [{ tag: `span.${FONT_SPAN_CLASS}` }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["span", mergeAttributes({ class: FONT_SPAN_CLASS }, HTMLAttributes), 0];
+    },
+  });
+}
+
+export const FontFamilyMark = makeFontMark("fontFamily", "fontFamily", "font-family", "fontFamily");
+export const FontSizeMark = makeFontMark("fontSize", "fontSize", "font-size", "fontSize");
+export const FontColorMark = makeFontMark("fontColor", "color", "color", "color");
+
+// Colored highlight (plan 04 task 4.1, issue #47): the colorless ==text==
+// stays a plain <mark> (browser yellow); a colored highlight round-trips
+// through <span class="quillmd-highlight" style="background-color: ...">.
+export const QuillHighlight = Highlight.extend({
+  addAttributes() {
+    return {
+      color: {
+        default: null,
+        parseHTML: (element: HTMLElement) =>
+          element.getAttribute("data-color") || element.style.backgroundColor || null,
+        renderHTML: (attrs: Record<string, unknown>) =>
+          typeof attrs.color === "string" && attrs.color !== ""
+            ? { "data-color": attrs.color, style: `background-color: ${attrs.color}; color: inherit` }
+            : {},
+      },
+    };
+  },
+  parseHTML() {
+    return [...(this.parent?.() ?? []), { tag: `span.${HIGHLIGHT_SPAN_CLASS}` }];
   },
 });
 
@@ -622,7 +679,10 @@ export default function Editor({
       AlignedBlockquote,
       CodeBlockWithLang,
       Underline,
-      Highlight,
+      QuillHighlight,
+      FontFamilyMark,
+      FontSizeMark,
+      FontColorMark,
       LinkWithTitle.configure({ openOnClick: false, autolink: true }),
       // Inline (plan 08 task 8.2, issue #77): the converter treats images as
       // phrasing content (pm.ts), and a block image is dropped by
