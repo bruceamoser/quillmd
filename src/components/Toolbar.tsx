@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { useEditorState } from "@tiptap/react";
 import type { Editor as CoreEditor } from "@tiptap/core";
 import {
@@ -86,6 +87,28 @@ export default function Toolbar({ editor }: ToolbarProps) {
     selector: ({ transactionNumber }) => transactionNumber,
   });
 
+  // Image split button (plan 08 task 8.2, issue #77): the main button keeps
+  // the "From URL" default, the caret opens the From file / From URL menu.
+  const [imageMenuOpen, setImageMenuOpen] = useState(false);
+  const imageSplitRef = useRef<HTMLSpanElement>(null);
+
+  // Close the dropdown on an outside click or an Escape press.
+  useEffect(() => {
+    if (!imageMenuOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (!imageSplitRef.current?.contains(e.target as Node)) setImageMenuOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setImageMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [imageMenuOpen]);
+
   if (!editor) return null;
 
   const heading = (["h1", "h2", "h3", "h4", "h5", "h6"] as EditorCommandId[]).find((id) =>
@@ -102,6 +125,58 @@ export default function Toolbar({ editor }: ToolbarProps) {
     >
       {GLYPHS[id] ?? id}
     </button>
+  );
+
+  // The image split button (plan 08 task 8.2, issue #77): the main half runs
+  // the "From URL" default, the caret half opens the From file / From URL
+  // dropdown — the same two flows as the Insert > Image submenu.
+  const renderImageSplit = () => (
+    <span key="image" className="quillmd-toolbar-split" ref={imageSplitRef}>
+      <button
+        type="button"
+        title={title("image")}
+        onClick={() => {
+          setImageMenuOpen(false);
+          runEditorCommand(editor, "image");
+        }}
+      >
+        {GLYPHS.image}
+      </button>
+      <button
+        type="button"
+        title="Image options"
+        aria-haspopup="menu"
+        aria-expanded={imageMenuOpen}
+        className={imageMenuOpen ? "quillmd-toolbar-active" : ""}
+        onClick={() => setImageMenuOpen((open) => !open)}
+      >
+        {"\u25BE"}
+      </button>
+      {imageMenuOpen && (
+        <span className="quillmd-toolbar-dropdown" role="menu">
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setImageMenuOpen(false);
+              runEditorCommand(editor, "imageFromFile");
+            }}
+          >
+            From file…
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setImageMenuOpen(false);
+              runEditorCommand(editor, "image");
+            }}
+          >
+            From URL…
+          </button>
+        </span>
+      )}
+    </span>
   );
 
   return (
@@ -131,7 +206,7 @@ export default function Toolbar({ editor }: ToolbarProps) {
       {INLINE_CMDS.map(renderButton)}
 
       <span className="quillmd-toolbar-sep" />
-      {BLOCK_CMDS.map(renderButton)}
+      {BLOCK_CMDS.map((id) => (id === "image" ? renderImageSplit() : renderButton(id)))}
 
       <span className="quillmd-toolbar-sep" />
       {ALIGN_CMDS.map(renderButton)}

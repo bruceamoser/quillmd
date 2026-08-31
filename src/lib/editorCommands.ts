@@ -22,6 +22,7 @@ export type EditorCommandId =
   | "code"
   | "link"
   | "image"
+  | "imageFromFile"
   | "highlight"
   | "subscript"
   | "superscript"
@@ -395,13 +396,22 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
   },
   {
     id: "image",
-    label: "Image",
-    run: (editor) => {
-      const src = window.prompt("Image URL") ?? "";
-      if (!src) return false;
-      const alt = window.prompt("Alt text (optional)") ?? "";
-      return editor.chain().focus().setImage({ src, alt }).run();
-    },
+    label: "Image from URL",
+    // Plan 08 task 8.2 (issue #77): the image command no longer prompts — it
+    // requests the in-app image dialog for the "From URL" flow (App.tsx
+    // renders it), the same shape as the link command from task 8.1. The
+    // toolbar main button, the Insert > Image > From URL menu item, and the
+    // slash menu all reach this one command.
+    run: (editor) => requestImageInsert(editor, "url"),
+  },
+  {
+    id: "imageFromFile",
+    label: "Image from file",
+    // Plan 08 task 8.2 (issue #77): the "From file" half of the Image
+    // submenu. The registry cannot open the native picker itself, so the
+    // command requests the flow and the app shell (App.tsx) runs the picker
+    // and inserts the relativized src.
+    run: (editor) => requestImageInsert(editor, "file"),
   },
   {
     id: "highlight",
@@ -735,5 +745,30 @@ export function registerLinkDialogListener(fn: LinkDialogListener): () => void {
 export function requestLinkDialog(editor: CoreEditor): boolean {
   if (!linkDialogListener) return false;
   linkDialogListener(editor);
+  return true;
+}
+
+// Image insert plumbing (plan 08 task 8.2, issue #77). The image commands
+// cannot render UI or open native pickers themselves, so they request the
+// flow and the app shell (App.tsx) reacts: "url" opens the image dialog,
+// "file" runs the native picker and inserts the relativized src. The request
+// carries the live editor so both flows apply to the same instance.
+export type ImageInsertSource = "url" | "file";
+type ImageInsertListener = (editor: CoreEditor, source: ImageInsertSource) => void;
+let imageInsertListener: ImageInsertListener | null = null;
+
+export function registerImageInsertListener(fn: ImageInsertListener): () => void {
+  imageInsertListener = fn;
+  return () => {
+    if (imageInsertListener === fn) imageInsertListener = null;
+  };
+}
+
+// Requests an image insert for the given editor. Returns false (no-op) when
+// no renderer is registered — e.g. outside WYSIWYG where there is no TipTap
+// instance to edit.
+export function requestImageInsert(editor: CoreEditor, source: ImageInsertSource): boolean {
+  if (!imageInsertListener) return false;
+  imageInsertListener(editor, source);
   return true;
 }

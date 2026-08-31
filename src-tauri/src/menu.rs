@@ -241,7 +241,14 @@ fn build_insert_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
         MenuItem::with_id(app, "insert-strike", "Strikethrough", true, Some("Ctrl+Shift+X"))?;
     let code = MenuItem::with_id(app, "insert-code", "Inline Code", true, Some("Ctrl+E"))?;
     let link = MenuItem::with_id(app, "insert-link", "Link", true, Some("Ctrl+K"))?;
-    let image = MenuItem::with_id(app, "insert-image", "Image", true, None::<&str>)?;
+    // Image submenu (plan 08 task 8.2, issue #77): the flat "Image" item
+    // (URL prompt) becomes Insert > Image with the two flows — "From file..."
+    // runs the native picker, "From URL..." the in-app dialog. Both dispatch
+    // to the shared frontend commands (App.tsx MENU_TO_COMMAND).
+    let mut image = SubmenuBuilder::new(app, "Image");
+    image = image.text("insert-image-from-file", "From file...");
+    image = image.text("insert-image-from-url", "From URL...");
+    let image = image.build()?;
     let table = MenuItem::with_id(app, "insert-table", "Table", true, None::<&str>)?;
     let codeblock = MenuItem::with_id(app, "insert-codeblock", "Code Block", true, None::<&str>)?;
     let hr = MenuItem::with_id(app, "insert-hr", "Horizontal Rule", true, None::<&str>)?;
@@ -253,7 +260,8 @@ fn build_insert_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
     let insert = SubmenuBuilder::new(app, "Insert")
         .item(&heading)
         .separator()
-        .items(&[&bold, &italic, &strike, &code, &link, &image])
+        .items(&[&bold, &italic, &strike, &code, &link])
+        .item(&image)
         .separator()
         .items(&[&table, &codeblock, &hr, &footnote, &tasklist, &blockquote, &emoji])
         .build()?;
