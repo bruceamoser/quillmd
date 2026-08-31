@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, ReactNodeViewRenderer, useEditor } from "@tiptap/react";
 import { Extension, Mark, Node, mergeAttributes } from "@tiptap/core";
 import type { Editor as CoreEditor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
@@ -45,6 +45,8 @@ import type { EditorView } from "@tiptap/pm/view";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import Toolbar from "./Toolbar";
 import TableToolbar from "./TableToolbar";
+import MermaidCard, { setMermaidCardTheme } from "./MermaidCard";
+import type { ThemeId } from "../lib/theme";
 
 // Strikethrough is bound to Ctrl+Shift+X per spec §2.6 (the default Mod-Shift-s
 // collides with Save As).
@@ -270,9 +272,13 @@ export const CodeBlockWithLang = CodeBlock.extend({
 // Mermaid diagram (plan 11 task 11.1, issue #100): a ```mermaid fenced code
 // block. The node holds the diagram source as plain code text (code: true,
 // like codeBlock) and serializes back to the fence — the source is the
-// document content, the rendered SVG (a later task) is a view artifact that
-// is never stored. parseHTML matches the language-mermaid code element so
-// pasted HTML lands as a diagram too; renderHTML emits the same shape.
+// document content, the rendered SVG is a view artifact that is never
+// stored. parseHTML matches the language-mermaid code element so pasted
+// HTML lands as a diagram too; renderHTML emits the same shape.
+//
+// The WYSIWYG card (plan 11 task 11.3, issue #102): a React NodeView
+// renders the live SVG (preview) or the editable source (edit) around the
+// node's own ProseMirror text, with an error badge for failed renders.
 export const MermaidBlock = Node.create({
   name: "mermaidBlock",
   group: "block",
@@ -280,6 +286,9 @@ export const MermaidBlock = Node.create({
   marks: "",
   code: true,
   defining: true,
+  addNodeView() {
+    return ReactNodeViewRenderer(MermaidCard);
+  },
   parseHTML() {
     return [{ tag: "pre > code.language-mermaid", preserveWhitespace: "full" }];
   },
@@ -482,6 +491,10 @@ interface EditorProps {
   // and the re-link handler the placeholder's button calls.
   missingImages?: ReadonlySet<string>;
   onReLinkImage?: (src: string, pos: number) => void;
+  // The active document theme (plan 11 task 11.3, issue #102): mermaid cards
+  // render in their own React root, so the theme reaches them through the
+  // card's module holder instead of normal prop drilling.
+  theme?: ThemeId;
 }
 
 interface SlashAction {
@@ -727,6 +740,7 @@ export default function Editor({
   settings,
   missingImages,
   onReLinkImage,
+  theme = "quill",
 }: EditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -872,6 +886,13 @@ export default function Editor({
     imagePlaceholderRuntime.onReLink = onReLinkImage ?? null;
     for (const rerender of imagePlaceholderViews) rerender();
   }, [missingImages, onReLinkImage]);
+
+  // Mermaid cards (plan 11 task 11.3, issue #102): publish the active theme
+  // to the card's module holder on mount and on every theme change, so each
+  // mounted card re-renders its SVG with the mapped mermaid theme (AC3).
+  useEffect(() => {
+    setMermaidCardTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     if (!editor) return;

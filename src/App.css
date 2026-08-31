@@ -1326,6 +1326,122 @@ button.quillmd-status-spellcheck:hover {
   font-size: inherit;
 }
 
+/* Mermaid card (plan 11 task 11.3, issue #102): the React NodeView around a
+   mermaidBlock — a header (label, error badge, Edit/Preview toggle), a body
+   holding the live SVG (preview) or the editable source (edit), and a
+   footer with the first error line. The SVG is a view artifact; the styled
+   source is the node's own ProseMirror text. */
+.quillmd-mermaid-card {
+  margin: 0.6em 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+.quillmd-mermaid-card.quillmd-mermaid-error {
+  border-color: var(--danger);
+}
+
+.quillmd-mermaid-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.quillmd-mermaid-label {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.quillmd-mermaid-badge {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: help;
+}
+
+.quillmd-mermaid-rendering {
+  color: var(--warn);
+  font-size: 11px;
+}
+
+.quillmd-mermaid-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.quillmd-mermaid-actions button {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.quillmd-mermaid-actions button:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.quillmd-mermaid-actions button.quillmd-mermaid-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-bright);
+}
+
+.quillmd-mermaid-body {
+  padding: 10px;
+}
+
+/* Wide diagrams fit by mermaid's width="100%" viewBox scaling; this is the
+   horizontal-scroll fallback for anything that overflows. */
+.quillmd-mermaid-svg {
+  overflow-x: auto;
+}
+
+.quillmd-mermaid-svg svg {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+}
+
+.quillmd-mermaid-source {
+  overflow-x: auto;
+  min-height: 1.4em;
+}
+
+.quillmd-mermaid-source-code {
+  display: block;
+  padding: 0;
+  background: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  white-space: pre;
+}
+
+.quillmd-mermaid-footer {
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  background: rgba(241, 76, 76, 0.12);
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .quillmd-prosemirror table {
   border-collapse: collapse;
   table-layout: fixed;
