@@ -10,14 +10,16 @@
 #           p0-shell -> all app-shell checks: File > New (#24), Make a Copy /
 #                       Close / Close All (#25), File > Info (#26), drag & drop
 #                       (#27), multi-open + dialog choke point (#28)
- #           p1-editor -> plan 02 editor-core checks: underline toolbar/menu/
- #                       Ctrl+U wiring (#31), text alignment toolbar/menu/
- #                       serializer wiring (#32), indent/outdent + list
- #                       keyboard (Ctrl+]/[ + Tab) wiring (#33), line spacing +
-  #                       word wrap + formatting marks wiring (#34), zoom
-   #                       state/menu submenu/shortcuts/Ctrl-wheel/status (#35),
-   #                       spellcheck attr + View toggle / paste-as-text
-   #                       Edit menu + Ctrl+Shift+V wiring (#36)
+#           p1-editor -> plan 02 editor-core checks: underline toolbar/menu/
+#                       Ctrl+U wiring (#31), text alignment toolbar/menu/
+#                       serializer wiring (#32), indent/outdent + list
+#                       keyboard (Ctrl+]/[ + Tab) wiring (#33), line spacing +
+#                       word wrap + formatting marks wiring (#34), zoom
+#                       state/menu submenu/shortcuts/Ctrl-wheel/status (#35),
+#                       spellcheck attr + View toggle / paste-as-text
+#                       Edit menu + Ctrl+Shift+V wiring (#36), Ctrl+1..6
+#                       heading shortcuts + Help > Shortcuts dialog + plan 02
+#                       test-suite presence (#37)
 #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -773,6 +775,71 @@ test_editor_pasteas_interception() {
     fi
 }
 
+# --- p1-editor: heading keyboard + Help > Shortcuts (plan 02 §4 AC3, issue #37) ---
+# Ctrl+1..6 sets the heading level of the block under the cursor in the
+# WYSIWYG view (src/lib/__tests__/headingShortcuts.test.tsx), dispatched
+# through the shared registry like every other formatting command. This
+# section checks the app-level wiring the GUI driver cannot reach headlessly:
+# the keydown binding lives in the editor view, and the Help > Keyboard
+# Shortcuts dialog (native menu item + App.tsx alert text) documents the
+# editor shortcuts including the heading levels.
+test_editor_headings_keydown() {
+    note "editor.headings Ctrl+1..6 keydown handled in the editor view"
+    if grep -q 'event.key >= "1" && event.key <= "6"' "$ROOT/src/components/Editor.tsx" \
+        && grep -qF 'runEditorCommand(editor, `h${event.key}` as EditorCommandId)' "$ROOT/src/components/Editor.tsx" \
+        && [ -f "$ROOT/src/lib/__tests__/headingShortcuts.test.tsx" ] \
+        && grep -q 'handleEditorKeyDown' "$ROOT/src/lib/__tests__/headingShortcuts.test.tsx" \
+        && grep -q 'heading level of the block under the cursor' "$ROOT/src/lib/__tests__/headingShortcuts.test.tsx"; then
+        pass "editor.headings Ctrl+1..6 keydown handled in the editor view"
+    else
+        fail "editor.headings Ctrl+1..6 keydown handled in the editor view"
+    fi
+}
+test_editor_shortcuts_dialog() {
+    note "editor.shortcuts Help > Shortcuts dialog lists the editor shortcuts"
+    if grep -q 'MenuItem::with_id(app, "help-shortcuts", "Keyboard Shortcuts"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'id === "help-shortcuts"' "$ROOT/src/App.tsx" \
+        && grep -q 'SHORTCUTS_TEXT' "$ROOT/src/App.tsx" \
+        && grep -q 'Ctrl+1..6' "$ROOT/src/App.tsx" \
+        && grep -q 'Ctrl+U' "$ROOT/src/App.tsx" \
+        && grep -q 'Ctrl+\] / Ctrl+\[: indent / outdent' "$ROOT/src/App.tsx" \
+        && grep -q 'Tab / Shift+Tab: nest / un-nest' "$ROOT/src/App.tsx" \
+        && grep -q 'Ctrl+= / Ctrl+- / Ctrl+0' "$ROOT/src/App.tsx" \
+        && grep -q 'Ctrl+Shift+V: paste as plain text' "$ROOT/src/App.tsx"; then
+        pass "editor.shortcuts Help > Shortcuts dialog lists the editor shortcuts"
+    else
+        fail "editor.shortcuts Help > Shortcuts dialog lists the editor shortcuts"
+    fi
+}
+
+# --- p1-editor: plan 02 test suites + round-trip fixture suite (plan 02 §4 AC8, issue #37) ---
+# AC8 requires every plan 02 behavior to carry a vitest suite and the
+# round-trip fixture suite to stay green. The suites themselves run under
+# `npm test`; this check asserts each one exists and that the round-trip suite
+# still loads the clean fixture corpus byte-for-byte (the M-suite gate for
+# this plan).
+test_editor_suites_present() {
+    note "editor.suites plan 02 vitest suites + round-trip fixture suite present (AC8)"
+    local suite
+    for suite in underline.test.tsx alignment.test.tsx indent.test.tsx \
+                 headingShortcuts.test.tsx paste.test.tsx clipboard.test.ts \
+                 editorCommands.test.ts docSettings.test.ts statusBar.test.tsx; do
+        if [ ! -f "$ROOT/src/lib/__tests__/$suite" ]; then
+            echo "  missing: $suite"
+            fail "editor.suites plan 02 vitest suites + round-trip fixture suite present (AC8)"
+            return
+        fi
+    done
+    if [ -f "$ROOT/src/lib/__tests__/roundtrip.test.ts" ] \
+        && grep -q 'fixtures", "clean"' "$ROOT/src/lib/__tests__/roundtrip.test.ts" \
+        && grep -q 'toBeGreaterThanOrEqual(40)' "$ROOT/src/lib/__tests__/roundtrip.test.ts" \
+        && grep -q 'toBe("verbatim")' "$ROOT/src/lib/__tests__/roundtrip.test.ts"; then
+        pass "editor.suites plan 02 vitest suites + round-trip fixture suite present (AC8)"
+    else
+        fail "editor.suites plan 02 vitest suites + round-trip fixture suite present (AC8)"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -842,6 +909,9 @@ case "$SUBSET" in
         test_editor_pasteas_menu_wiring
         test_editor_pasteas_app_routing
         test_editor_pasteas_interception
+        test_editor_headings_keydown
+        test_editor_shortcuts_dialog
+        test_editor_suites_present
         ;;
     shell)
         test_shell_new_bundled
@@ -928,6 +998,9 @@ case "$SUBSET" in
         test_editor_pasteas_menu_wiring
         test_editor_pasteas_app_routing
         test_editor_pasteas_interception
+        test_editor_headings_keydown
+        test_editor_shortcuts_dialog
+        test_editor_suites_present
         ;;
     *)
         echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|shell|copyclose|info|dragdrop|all)" >&2
