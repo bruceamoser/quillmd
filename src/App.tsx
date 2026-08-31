@@ -870,24 +870,43 @@ export default function App() {
   // per the asset-folder setting — and the copy's relative path is
   // inserted.
 
+  // The from-file insert flow (plan 08 task 8.3, issue #78) shared by the
+  // Insert > Image > From file picker and the DnD drop handler (plan 08 task
+  // 8.6, issue #81): the file runs through the asset pipeline (assets.ts) —
+  // referenced relatively when it already sits inside the active doc's
+  // folder, otherwise copied next to the doc per the asset-folder setting —
+  // and the resulting src is inserted at the editor's caret. Resolves to
+  // false when the insert did not happen (the caller reports it).
+  const insertImageFromPath = useCallback(
+    async (editor: CoreEditor, filePath: string): Promise<boolean> => {
+      const docPath = activeDoc?.open.path ?? "";
+      try {
+        const src = await assetSrcForPickedFile(docPath, filePath, loadAssetFolder());
+        if (insertImage(editor, { src, alt: "" })) {
+          setStatus(`Inserted image ${src}`);
+          return true;
+        }
+        return false;
+      } catch (e) {
+        setStatus(`Could not insert image: ${String(e)}`);
+        return false;
+      }
+    },
+    [activeDoc, setStatus],
+  );
+
   const insertImageFromFile = useCallback(async (editor: CoreEditor) => {
     const picked = await pickOpenFile({ title: "Insert image", filters: [IMAGE_FILTER] });
     if (!picked || picked.length === 0) return;
-    const docPath = activeDoc?.open.path ?? "";
-    try {
-      const src = await assetSrcForPickedFile(docPath, picked[0], loadAssetFolder());
-      if (insertImage(editor, { src, alt: "" })) {
-        setStatus(`Inserted image ${src}`);
-      }
-    } catch (e) {
-      setStatus(`Could not insert image: ${String(e)}`);
-    }
-  }, [activeDoc, setStatus]);
+    await insertImageFromPath(editor, picked[0]);
+  }, [insertImageFromPath]);
 
-  // The listener is registered once; the ref keeps it pointed at the latest
-  // picker flow (which tracks the active doc).
+  // The listeners are registered once; the refs keep them pointed at the
+  // latest flows (which track the active doc).
   const insertImageFromFileRef = useRef(insertImageFromFile);
   insertImageFromFileRef.current = insertImageFromFile;
+  const insertImageFromPathRef = useRef(insertImageFromPath);
+  insertImageFromPathRef.current = insertImageFromPath;
 
   useEffect(() => {
     return registerImageInsertListener((editor, source) => {
@@ -1429,11 +1448,14 @@ export default function App() {
     };
   }, [handleMenuEvent]);
 
-  // Drag & drop (plan 01 task 1.6, issue #27): Tauri emits tauri://drag-*
-  // events to the webview by default; on drop each .md file opens as a tab,
-  // each folder switches the Explorer root, and every dropped item gets its
-  // own status-bar line (skipped non-markdown files included). In browser dev
-  // the Tauri event stream does not exist, so this listener is never set up.
+  // Drag & drop (plan 01 task 1.6, issue #27; image insert per plan 08 task
+  // 8.6, issue #81): Tauri emits tauri://drag-* events to the webview by
+  // default; on drop each .md file opens as a tab, each folder switches the
+  // Explorer root, each image file is routed through the from-file flow
+  // (asset copy + insert at the active editor's caret), and every dropped
+  // item gets its own status-bar line (skipped files included). In browser
+  // dev the Tauri event stream does not exist, so this listener is never
+  // set up.
   useEffect(() => {
     if (!runningInTauri()) return;
     let disposed = false;
@@ -1446,6 +1468,14 @@ export default function App() {
           openFolder: (path) => {
             setExplorerOpen(true);
             explorerRef.current?.openFolderPath(path);
+          },
+          insertImage: async (path) => {
+            // The drop lands on the webview, not a specific editor: the
+            // active WYSIWYG editor is the target (currentFindEditor is
+            // null outside it, and the handler reports a skip line).
+            const editor = currentFindEditor();
+            if (!editor) return false;
+            return insertImageFromPathRef.current(editor, path);
           },
           status: setStatus,
         });

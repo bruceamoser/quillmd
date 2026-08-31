@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { openPath } from "../fileIo";
-import { handleDroppedPaths, isMarkdownPath } from "../dragDrop";
+import { handleDroppedPaths, isImagePath, isMarkdownPath } from "../dragDrop";
 import type { DragDropDeps } from "../dragDrop";
 
 const g = globalThis as unknown as Record<string, unknown>;
@@ -44,15 +44,22 @@ function dropIpc(opts: {
   });
 }
 
-function makeDeps(openFile?: Mock) {
+function makeDeps(openFile?: Mock, insertImage?: Mock) {
   const status = vi.fn();
   const openFolder = vi.fn();
   const deps: DragDropDeps = {
     openFile: openFile ?? vi.fn(async () => {}),
     openFolder,
+    insertImage: insertImage ?? vi.fn(async () => true),
     status,
   };
-  return { deps, status, openFolder, openFile: deps.openFile as Mock };
+  return {
+    deps,
+    status,
+    openFolder,
+    openFile: deps.openFile as Mock,
+    insertImage: deps.insertImage as Mock,
+  };
 }
 
 beforeEach(() => {
@@ -85,6 +92,25 @@ describe("isMarkdownPath (#27)", () => {
   });
 });
 
+describe("isImagePath (#81)", () => {
+  it("accepts the IMAGE_FILTER image extensions case-insensitively", () => {
+    for (const ext of ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif"]) {
+      expect(isImagePath(`/docs/photo.${ext}`), ext).toBe(true);
+    }
+    expect(isImagePath("C:\\docs\\PHOTO.PNG")).toBe(true);
+    expect(isImagePath("C:\\docs\\photo.Jpeg")).toBe(true);
+  });
+
+  it("rejects non-image extensions, extensionless names, and embedded dots", () => {
+    expect(isImagePath("/docs/notes.md")).toBe(false);
+    expect(isImagePath("/docs/notes.txt")).toBe(false);
+    expect(isImagePath("/docs/photo")).toBe(false);
+    expect(isImagePath("/docs/photo.png.bak")).toBe(false);
+    expect(isImagePath("/docs/xpng")).toBe(false);
+    expect(isImagePath("/docs/photo.pgn")).toBe(false);
+  });
+});
+
 describe("handleDroppedPaths (#27)", () => {
   it("opens 2 md files as tabs and switches the Explorer root to a dropped folder (acceptance #7)", async () => {
     dropIpc({
@@ -112,7 +138,7 @@ describe("handleDroppedPaths (#27)", () => {
     // The opened file's own "Opened ..." line comes from the openFile dep;
     // the module reports the items it decides on itself.
     expect(status.mock.calls.map((c) => c[0])).toEqual([
-      "Skipped notes.txt (not a markdown file)",
+      "Skipped notes.txt (not a markdown file or image)",
       "Opened folder /docs/folder",
     ]);
     expect(openFile).toHaveBeenCalledTimes(1);
@@ -120,11 +146,88 @@ describe("handleDroppedPaths (#27)", () => {
 
   it("skips non-markdown files without opening them", async () => {
     dropIpc({ dirs: [], files: {} });
-    const { deps, status, openFile } = makeDeps();
+    const { deps, status, openFile, insertImage } = makeDeps();
     await handleDroppedPaths(["/docs/notes.txt", "C:\\docs\\report.docx"], deps);
     expect(openFile).not.toHaveBeenCalled();
-    expect(status).toHaveBeenNthCalledWith(1, "Skipped notes.txt (not a markdown file)");
-    expect(status).toHaveBeenNthCalledWith(2, "Skipped report.docx (not a markdown file)");
+    expect(insertImage).not.toHaveBeenCalled();
+    expect(status).toHaveBeenNthCalledWith(1, "Skipped notes.txt (not a markdown file or image)");
+    expect(status).toHaveBeenNthCalledWith(2, "Skipped report.docx (not a markdown file or image)");
+  });
+
+  it("routes a dropped image file through the insertImage dep, not openFile (#81)", async () => {
+    dropIpc({ dirs: [], files: {} });
+    const { deps, status, openFile, insertImage } = makeDeps();
+    await handleDroppedPaths(["/docs/assets/photo.png"], deps);
+    expect(insertImage).toHaveBeenCalledTimes(1);
+    expect(insertImage).toHaveBeenCalledWith("/docs/assets/photo.png");
+    expect(openFile).not.toHaveBeenCalled();
+    // The from-file flow reports its own "Inserted image ..." line.
+    expect(status).not.toHaveBeenCalled();
+  });
+
+  it("routes every dropped image in a multi-image drop, in order (#81)", async () => {
+    dropIpc({ dirs: [], files: {} });
+    const { deps, insertImage } = makeDeps();
+    await handleDroppedPaths(["/a/one.png", "/b/two.JPEG", "/c/three.webp"], deps);
+    expect(insertImage.mock.calls.map((c) => c[0])).toEqual([
+      "/a/one.png",
+      "/b/two.JPEG",
+      "/c/three.webp",
+    ]);
+  });
+
+  it("reports a skip line when there is no WYSIWYG editor to insert into (#81)", async () => {
+    dropIpc({ dirs: [], files: {} });
+    const { deps, status } = makeDeps(undefined, vi.fn(async () => false));
+    await handleDroppedPaths(["/docs/photo.png"], deps);
+    expect(status).toHaveBeenNthCalledWith(
+      1,
+      "Skipped photo.png (no WYSIWYG editor to insert into)",
+    );
+  });
+
+  it("reports a per-image insert failure without aborting the batch (#81)", async () => {
+    dropIpc({ dirs: [], files: { "/docs/three.md": [1] } });
+    const insertImage = vi.fn(async (path: string) => {
+      if (path === "/other/pic.png") throw new Error("asset_copy: permission denied");
+      return true;
+    });
+    const { deps, status, openFile } = makeDeps(undefined, insertImage);
+    await handleDroppedPaths(["/other/pic.png", "/docs/one.md", "/docs/three.md"], deps);
+    expect(status).toHaveBeenNthCalledWith(
+      1,
+      "Image insert failed: /other/pic.png (Error: asset_copy: permission denied)",
+    );
+    expect(openFile).toHaveBeenNthCalledWith(2, "/docs/three.md");
+  });
+
+  it("treats a directory named like an image file as a folder (#81)", async () => {
+    dropIpc({ dirs: ["/docs/photo.png"], files: {} });
+    const { deps, openFile, openFolder, insertImage } = makeDeps();
+    await handleDroppedPaths(["/docs/photo.png"], deps);
+    expect(openFile).not.toHaveBeenCalled();
+    expect(insertImage).not.toHaveBeenCalled();
+    expect(openFolder).toHaveBeenCalledWith("/docs/photo.png");
+  });
+
+  it("routes a mixed drop: md opens, image inserts, unknown skips, folder opens (#81)", async () => {
+    dropIpc({
+      dirs: ["/docs/folder"],
+      files: { "/docs/one.md": [1] },
+    });
+    const { deps, status, openFile, openFolder, insertImage } = makeDeps();
+    await handleDroppedPaths(
+      ["/docs/one.md", "/docs/photo.png", "/docs/notes.txt", "/docs/folder"],
+      deps,
+    );
+    expect(openFile).toHaveBeenCalledWith("/docs/one.md");
+    expect(insertImage).toHaveBeenCalledWith("/docs/photo.png");
+    expect(openFolder).toHaveBeenCalledWith("/docs/folder");
+    expect(status).toHaveBeenNthCalledWith(
+      1,
+      "Skipped notes.txt (not a markdown file or image)",
+    );
+    expect(status).toHaveBeenNthCalledWith(2, "Opened folder /docs/folder");
   });
 
   it("treats a directory named like a markdown file as a folder", async () => {
@@ -140,12 +243,8 @@ describe("handleDroppedPaths (#27)", () => {
     const openFile = vi.fn(async (path: string) => {
       if (path === "/docs/bad.md") throw new Error("no such file");
     });
-    const { status } = makeDeps(openFile);
-    await handleDroppedPaths(["/docs/bad.md", "/docs/three.md"], {
-      openFile,
-      openFolder: vi.fn(),
-      status,
-    });
+    const { deps, status } = makeDeps(openFile);
+    await handleDroppedPaths(["/docs/bad.md", "/docs/three.md"], deps);
     expect(openFile).toHaveBeenCalledTimes(2);
     expect(status).toHaveBeenNthCalledWith(1, "Open failed: /docs/bad.md (Error: no such file)");
   });

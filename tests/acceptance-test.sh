@@ -71,6 +71,15 @@
   #                       CSS, App.tsx detection effect + re-link picker ->
   #                       setNodeMarkup flow, and the openLinks.test.tsx /
   #                       missingImages.test.tsx vitest suite presence
+ #           p1-dnd -> plan 08 task 8.6 acceptance gate (issue #81): the
+ #                     dragDrop.ts image classification (IMAGE_FILTER
+ #                     extensions) + insertImage dep routing + skip/failure
+ #                     status lines, App.tsx wiring the drop handler's
+ #                     insertImage through the shared from-file flow
+ #                     (insertImageFromPath + currentFindEditor, same
+ #                     pipeline as Insert > Image > From file), and the
+ #                     dragDrop.test.ts image routing/skip/failure suite
+ #                     presence
  #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -1122,7 +1131,8 @@ test_media_app_routing() {
         && grep -q 'registerImageInsertListener' "$ROOT/src/App.tsx" \
         && grep -q 'setImageDialog({ editor })' "$ROOT/src/App.tsx" \
         && grep -q 'pickOpenFile({ title: "Insert image", filters: \[IMAGE_FILTER\] })' "$ROOT/src/App.tsx" \
-        && grep -q 'assetSrcForPickedFile(docPath, picked\[0\], loadAssetFolder())' "$ROOT/src/App.tsx" \
+        && grep -q 'await insertImageFromPath(editor, picked\[0\]);' "$ROOT/src/App.tsx" \
+        && grep -q 'assetSrcForPickedFile(docPath, filePath, loadAssetFolder())' "$ROOT/src/App.tsx" \
         && grep -q '<ImageDialog onApply={applyImageDialog} onClose={closeImageDialog} />' "$ROOT/src/App.tsx" \
         && grep -q 'insertImage(imageDialog.editor, payload)' "$ROOT/src/App.tsx"; then
         pass "media.routing App.tsx routes both menu ids, picker flow, dialog render"
@@ -1225,7 +1235,8 @@ test_assets_module() {
 test_assets_app_routing() {
     note "assets.routing App.tsx from-file picker routed through the pipeline"
     if grep -q 'import { assetSrcForPickedFile, loadAssetFolder } from "./lib/assets"' "$ROOT/src/App.tsx" \
-        && grep -q 'assetSrcForPickedFile(docPath, picked\[0\], loadAssetFolder())' "$ROOT/src/App.tsx"; then
+        && grep -q 'const insertImageFromPath = useCallback(' "$ROOT/src/App.tsx" \
+        && grep -q 'assetSrcForPickedFile(docPath, filePath, loadAssetFolder())' "$ROOT/src/App.tsx"; then
         pass "assets.routing App.tsx from-file picker routed through the pipeline"
     else
         fail "assets.routing App.tsx from-file picker routed through the pipeline"
@@ -1454,6 +1465,57 @@ test_links_suites_present() {
     fi
 }
 
+# --- p1-dnd: drag & drop image insert (plan 08 task 8.6, issue #81) ---------------
+# Per-item classification and routing (image extension match, insertImage dep
+# call, skip/failure status lines) is covered by the vitest suite
+# (src/lib/__tests__/dragDrop.test.ts), which `npm test` runs. This section
+# checks the app-level wiring a GUI driver cannot reach headlessly:
+# dragDrop.ts carries the image classification + routing, and App.tsx routes
+# the dropped image through the same from-file flow as Insert > Image >
+# From file (shared insertImageFromPath against the active WYSIWYG editor
+# from currentFindEditor).
+test_dnd_module() {
+    note "dnd.module dragDrop.ts image classification + insertImage routing"
+    if grep -q 'jpe?g|gif|webp|bmp|svg|avif' "$ROOT/src/lib/dragDrop.ts" \
+        && grep -q 'export function isImagePath' "$ROOT/src/lib/dragDrop.ts" \
+        && grep -q 'insertImage: (path: string) => Promise<boolean>;' "$ROOT/src/lib/dragDrop.ts" \
+        && grep -q 'const inserted = await deps.insertImage(path);' "$ROOT/src/lib/dragDrop.ts" \
+        && grep -q 'Skipped ${baseName(path)} (no WYSIWYG editor to insert into)' "$ROOT/src/lib/dragDrop.ts" \
+        && grep -q 'Image insert failed: ${path} (${String(err)})' "$ROOT/src/lib/dragDrop.ts" \
+        && grep -q 'not a markdown file or image' "$ROOT/src/lib/dragDrop.ts"; then
+        pass "dnd.module dragDrop.ts image classification + insertImage routing"
+    else
+        fail "dnd.module dragDrop.ts image classification + insertImage routing"
+    fi
+}
+test_dnd_app_wiring() {
+    note "dnd.app App.tsx drop handler routes images through the from-file flow"
+    if grep -q 'insertImage: async (path) => {' "$ROOT/src/App.tsx" \
+        && grep -q 'const editor = currentFindEditor();' "$ROOT/src/App.tsx" \
+        && grep -q 'return insertImageFromPathRef.current(editor, path);' "$ROOT/src/App.tsx" \
+        && grep -q 'const insertImageFromPath = useCallback(' "$ROOT/src/App.tsx" \
+        && grep -q 'assetSrcForPickedFile(docPath, filePath, loadAssetFolder())' "$ROOT/src/App.tsx" \
+        && grep -q 'await insertImageFromPath(editor, picked\[0\]);' "$ROOT/src/App.tsx" \
+        && grep -q 'handleDroppedPaths(event.payload.paths, {' "$ROOT/src/App.tsx"; then
+        pass "dnd.app App.tsx drop handler routes images through the from-file flow"
+    else
+        fail "dnd.app App.tsx drop handler routes images through the from-file flow"
+    fi
+}
+test_dnd_suites_present() {
+    note "dnd.suites dragDrop.test.ts image routing + skip + failure coverage"
+    if [ -f "$ROOT/src/lib/__tests__/dragDrop.test.ts" ] \
+        && grep -q 'describe("isImagePath (#81)"' "$ROOT/src/lib/__tests__/dragDrop.test.ts" \
+        && grep -q 'routes a dropped image file through the insertImage dep, not openFile (#81)' "$ROOT/src/lib/__tests__/dragDrop.test.ts" \
+        && grep -q 'reports a skip line when there is no WYSIWYG editor to insert into (#81)' "$ROOT/src/lib/__tests__/dragDrop.test.ts" \
+        && grep -q 'reports a per-image insert failure without aborting the batch (#81)' "$ROOT/src/lib/__tests__/dragDrop.test.ts" \
+        && grep -q 'routes a mixed drop: md opens, image inserts, unknown skips, folder opens (#81)' "$ROOT/src/lib/__tests__/dragDrop.test.ts"; then
+        pass "dnd.suites dragDrop.test.ts image routing + skip + failure coverage"
+    else
+        fail "dnd.suites dragDrop.test.ts image routing + skip + failure coverage"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -1574,6 +1636,11 @@ case "$SUBSET" in
         test_missing_images_nodeview
         test_missing_images_app_wiring
         test_links_suites_present
+        ;;
+    p1-dnd)
+        test_dnd_module
+        test_dnd_app_wiring
+        test_dnd_suites_present
         ;;
     shell)
         test_shell_new_bundled
@@ -1701,9 +1768,12 @@ case "$SUBSET" in
         test_missing_images_nodeview
         test_missing_images_app_wiring
         test_links_suites_present
+        test_dnd_module
+        test_dnd_app_wiring
+        test_dnd_suites_present
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac
