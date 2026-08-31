@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { Node, mergeAttributes } from "@tiptap/core";
+import { Extension, Node, mergeAttributes } from "@tiptap/core";
 import type { Editor as CoreEditor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Strike from "@tiptap/extension-strike";
@@ -30,6 +30,10 @@ import {
 import type { EditorCommandId } from "../lib/editorCommands";
 import { DEFAULT_DOC_SETTINGS } from "../lib/docSettings";
 import type { DocSettings } from "../lib/docSettings";
+import { matchDecorations, registerFindEditor, registerFindStateListener } from "../lib/find";
+import type { SearchState } from "../lib/find";
+import { DecorationSet } from "@tiptap/pm/view";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
 import Toolbar from "./Toolbar";
 
 // Strikethrough is bound to Ctrl+Shift+X per spec §2.6 (the default Mod-Shift-s
@@ -184,6 +188,56 @@ const FootnoteDef = Node.create({
     ];
   },
 });
+
+// Find decorations (plan 07 task 7.2, issue #70): a plugin whose DecorationSet
+// is driven by the published SearchState. App publishes a state, the listener
+// below rewrites the plugin state through a meta transaction (doc-unchanged,
+// so no onUpdate / no serialization), and every other transaction remaps the
+// set with the doc mapping so the highlights track edits.
+const findDecoKey = new PluginKey<DecorationSet>("quillmdFind");
+
+const findDecorationsPlugin = new Plugin({
+  key: findDecoKey,
+  props: {
+    decorations: (state) => findDecoKey.getState(state),
+  },
+  state: {
+    init: () => DecorationSet.empty,
+    apply: (tr, old) => {
+      const next = tr.getMeta(findDecoKey);
+      if (next !== undefined) return next;
+      return old.map(tr.mapping, tr.doc);
+    },
+  },
+});
+
+// Tiptap only surfaces ProseMirror plugins through an extension's
+// addProseMirrorPlugins field (raw plugins in the extensions array are
+// ignored), so the decoration plugin is carried by this no-op extension.
+const FindDecorations = Extension.create({
+  name: "quillmdFindDecorations",
+  addProseMirrorPlugins() {
+    return [findDecorationsPlugin];
+  },
+});
+
+// Scrolls the active match into the editor's view (plan 07 §3: the panel
+// drives next/prev; the editor shows where the active match is).
+function scrollToFindMatch(editor: CoreEditor, state: SearchState): void {
+  if (state.active < 0 || state.active >= state.matches.length) return;
+  const m = state.matches[state.active];
+  if (m.to <= m.from) return;
+  try {
+    const dom = editor.view.nodeDOM(m.from);
+    const el = dom instanceof Text ? dom.parentElement : (dom as HTMLElement | null);
+    if (el instanceof HTMLElement && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ block: "center" });
+    }
+  } catch {
+    // The position can be transiently invalid mid-transaction; the highlight
+    // is still correct, only the scroll is skipped.
+  }
+}
 
 interface EditorProps {
   value: string;
@@ -433,6 +487,7 @@ export default function Editor({
       OpaqueBlock,
       FootnoteRef,
       FootnoteDef,
+      FindDecorations,
     ],
     content: markdownToTiptap(initialRef.current),
     editable: !readOnly,
@@ -491,6 +546,26 @@ export default function Editor({
   useEffect(() => {
     if (!editor) return;
     return registerEditorCommandListener((id, param) => runEditorCommand(editor, id, param));
+  }, [editor]);
+
+  // Find & replace bridge (plan 07 task 7.2, issue #70): expose the live
+  // editor to the search/replace owned by App.tsx and apply the published
+  // SearchState as inline decorations (plus a scroll to the active match).
+  // While this view is unmounted (source/split/preview) no provider is
+  // registered, so App's search reports no doc — source-view search is
+  // task 7.4.
+  useEffect(() => {
+    if (!editor) return;
+    const unregisterEditor = registerFindEditor(() => editor);
+    const unregisterState = registerFindStateListener((state) => {
+      const set = state ? matchDecorations(editor.state.doc, state) : DecorationSet.empty;
+      editor.view.dispatch(editor.state.tr.setMeta(findDecoKey, set));
+      if (state) scrollToFindMatch(editor, state);
+    });
+    return () => {
+      unregisterEditor();
+      unregisterState();
+    };
   }, [editor]);
 
   useEffect(() => {

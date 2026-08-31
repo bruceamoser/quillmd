@@ -47,6 +47,18 @@ import { loadDocSettings, saveDocSettings } from "./lib/docSettings";
 import type { DocSettings } from "./lib/docSettings";
 import { readClipboardText } from "./lib/clipboard";
 import { handleDroppedPaths } from "./lib/dragDrop";
+import {
+  compileSearch,
+  currentFindDoc,
+  currentFindEditor,
+  nextMatch,
+  prevMatch,
+  publishFindState,
+  replaceActiveMatch,
+  replaceAllMatches,
+  searchDoc,
+} from "./lib/find";
+import type { SearchState } from "./lib/find";
 import Editor from "./components/Editor";
 import DocInfoPanel from "./components/DocInfoPanel";
 import SourceView from "./components/SourceView";
@@ -56,6 +68,8 @@ import StatusBar from "./components/StatusBar";
 import TabBar from "./components/TabBar";
 import Explorer from "./components/Explorer";
 import type { ExplorerHandle } from "./components/Explorer";
+import FindReplacePanel from "./components/FindReplacePanel";
+import type { FindPanelMode, FindPanelOption, FindPanelResult } from "./components/FindReplacePanel";
 import { loadViewMode, saveViewMode } from "./components/viewModes";
 import type { ViewMode } from "./components/viewModes";
 import "./App.css";
@@ -69,6 +83,31 @@ interface DocState {
   // the saved markdown.
   settings: DocSettings;
 }
+
+// Find & replace panel state (plan 07 task 7.2, issue #70). App owns the
+// panel; the search engine (task 7.1) runs in the effect below against the
+// live WYSIWYG doc and the outcome is kept in `findState`. The term and
+// options survive closing the panel (Word behavior); per-doc term memory is
+// task 7.5.
+interface FindPanelState {
+  open: boolean;
+  mode: FindPanelMode;
+  term: string;
+  replaceTerm: string;
+  matchCase: boolean;
+  wholeWord: boolean;
+  useRegex: boolean;
+}
+
+const FIND_PANEL_INITIAL: FindPanelState = {
+  open: false,
+  mode: "find",
+  term: "",
+  replaceTerm: "",
+  matchCase: false,
+  wholeWord: false,
+  useRegex: false,
+};
 
 // Native menu item id -> shared editor command. Both Insert and Format menus
 // dispatch through the same registry the toolbar uses.
@@ -126,7 +165,8 @@ const SHORTCUTS_TEXT = [
   "Ctrl+Shift+X: strikethrough",
   "Ctrl+E: inline code",
   "Ctrl+/: toggle WYSIWYG / Source",
-  "Ctrl+F / Ctrl+H: find / replace",
+  "Ctrl+F / Ctrl+H: find / find and replace",
+  "F3 / Shift+F3: next / previous match (Esc closes the find panel)",
   "Ctrl+S / Ctrl+Shift+S: save / save as",
   "Ctrl+W: close tab",
   "Ctrl+Z / Ctrl+Shift+Z: undo / redo",
@@ -145,6 +185,10 @@ export default function App() {
   const [infoData, setInfoData] = useState<DocInfo | null>(null);
   const [infoLoading, setInfoLoading] = useState(false);
   const [status, setStatus] = useState<string>("");
+  const [findPanel, setFindPanel] = useState<FindPanelState>(FIND_PANEL_INITIAL);
+  const [findState, setFindState] = useState<SearchState | null>(null);
+  const findStateRef = useRef<SearchState | null>(null);
+  const findQueryRef = useRef("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const explorerRef = useRef<ExplorerHandle | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -156,6 +200,7 @@ export default function App() {
     [activeDoc],
   );
   const dirty = activeDoc !== undefined && activeDoc.currentText !== activeDoc.open.source;
+  const viewMode = activeDoc?.viewMode;
 
   const wordCount = useMemo(() => {
     const trimmed = currentText.trim();
@@ -574,15 +619,155 @@ export default function App() {
     await makeCopyDocument(doc.open, bytes, { openByPath, status: setStatus });
   }, [activeDoc, model, openByPath]);
 
-  const doFind = useCallback(() => {
-    const term = window.prompt("Find text") ?? "";
-    if (!term) return;
-    try {
-      (window as unknown as { find?: (t: string) => boolean }).find?.(term);
-    } catch {
-      // window.find is unsupported in some webviews; no-op
-    }
+  // --- find & replace panel (plan 07 task 7.2, issue #70) ------------------
+  //
+  // Ctrl+F / Edit > Find opens the panel in find mode; Ctrl+H / Edit > Find
+  // and Replace in replace mode. F3 / Shift+F3 cycle the active match while
+  // the panel is open (Word: no find bar, no F3). The search runs in the
+  // effect below against the live WYSIWYG doc (exposed through the find
+  // bridge); outside the WYSIWYG view the panel closes — source-view search
+  // is task 7.4.
+
+  const findNext = useCallback(() => {
+    const cur = findStateRef.current;
+    if (!cur || cur.matches.length === 0) return;
+    const moved = nextMatch(cur);
+    if (moved === cur) return;
+    findStateRef.current = moved;
+    setFindState(moved);
+    publishFindState(moved);
   }, []);
+
+  const findPrev = useCallback(() => {
+    const cur = findStateRef.current;
+    if (!cur || cur.matches.length === 0) return;
+    const moved = prevMatch(cur);
+    if (moved === cur) return;
+    findStateRef.current = moved;
+    setFindState(moved);
+    publishFindState(moved);
+  }, []);
+
+  // The panel is a WYSIWYG feature until source-view search lands (task
+  // 7.4): opening it in another view explains that in the status bar, and a
+  // view switch while it is open closes it (Word closes its find bar on view
+  // change too).
+  const openFindPanel = useCallback(
+    (mode: FindPanelMode) => {
+      if (!activePath || viewMode !== "wysiwyg") {
+        setStatus("Find & replace is available in the WYSIWYG view");
+        return;
+      }
+      setFindPanel((p) => ({ ...p, open: true, mode }));
+    },
+    [activePath, viewMode],
+  );
+
+  const closeFindPanel = useCallback(() => {
+    setFindPanel((p) => ({ ...p, open: false }));
+  }, []);
+
+  const setFindTerm = useCallback((term: string) => {
+    setFindPanel((p) => ({ ...p, term }));
+  }, []);
+
+  const setFindReplaceTerm = useCallback((term: string) => {
+    setFindPanel((p) => ({ ...p, replaceTerm: term }));
+  }, []);
+
+  const toggleFindOption = useCallback((option: FindPanelOption) => {
+    setFindPanel((p) => ({ ...p, [option]: !p[option] }));
+  }, []);
+
+  const setFindMode = useCallback((mode: FindPanelMode) => {
+    setFindPanel((p) => ({ ...p, mode }));
+  }, []);
+
+  const doReplace = useCallback(() => {
+    const state = findStateRef.current;
+    const editor = currentFindEditor();
+    if (!state || !editor) return;
+    replaceActiveMatch(editor, state, findPanel.replaceTerm);
+  }, [findPanel.replaceTerm]);
+
+  const doReplaceAll = useCallback(() => {
+    const state = findStateRef.current;
+    const editor = currentFindEditor();
+    if (!state || !editor) return;
+    replaceAllMatches(editor, state, findPanel.replaceTerm);
+  }, [findPanel.replaceTerm]);
+
+  // Runs the search engine (task 7.1) for the open panel: recomputes on
+  // term/options changes, doc edits, tab switches, and view-mode changes. A
+  // doc edit with an unchanged query keeps the navigation position (clamped
+  // to the new match count); a new query restarts at the first match. A view
+  // change away from WYSIWYG closes the panel (it is a WYSIWYG feature until
+  // source-view search lands in task 7.4).
+  useEffect(() => {
+    if (!findPanel.open || !activeDoc) {
+      findQueryRef.current = "";
+      findStateRef.current = null;
+      setFindState(null);
+      publishFindState(null);
+      return;
+    }
+    if (viewMode !== "wysiwyg") {
+      findQueryRef.current = "";
+      findStateRef.current = null;
+      setFindState(null);
+      setFindPanel((p) => ({ ...p, open: false }));
+      publishFindState(null);
+      return;
+    }
+    const options = {
+      term: findPanel.term,
+      matchCase: findPanel.matchCase,
+      wholeWord: findPanel.wholeWord,
+      useRegex: findPanel.useRegex,
+    };
+    const signature = [
+      options.term,
+      String(options.matchCase),
+      String(options.wholeWord),
+      String(options.useRegex),
+    ].join("\u0000");
+    const doc = currentFindDoc();
+    if (!doc) {
+      findQueryRef.current = "";
+      findStateRef.current = null;
+      setFindState(null);
+      publishFindState(null);
+      return;
+    }
+    const fresh = searchDoc(doc, options);
+    const prev = findStateRef.current;
+    const active =
+      findQueryRef.current === signature && prev && fresh.matches.length > 0
+        ? Math.max(0, Math.min(prev.active, fresh.matches.length - 1))
+        : fresh.active;
+    const state: SearchState = fresh.matches.length > 0 ? { ...fresh, active } : fresh;
+    findQueryRef.current = signature;
+    findStateRef.current = state;
+    setFindState(state);
+    publishFindState(state);
+  }, [findPanel.open, findPanel.term, findPanel.matchCase, findPanel.wholeWord, findPanel.useRegex, activeDoc, viewMode]);
+
+  // The result summary the panel renders: the engine's error for an invalid
+  // regex term (searchDoc reports it as zero matches, so the panel gets it
+  // from compileSearch), the match count, the active index, and the
+  // cross-block flag of the active match (which disables the Replace button).
+  const findPanelResult: FindPanelResult = useMemo(() => {
+    const active =
+      findState && findState.active >= 0 && findState.active < findState.matches.length
+        ? findState.matches[findState.active]
+        : undefined;
+    return {
+      count: findState?.matches.length ?? 0,
+      active: findState?.active ?? -1,
+      error: findPanel.open && findPanel.useRegex ? compileSearch(findPanel).error : null,
+      activeCrossBlock: active?.crossBlock ?? false,
+    };
+  }, [findPanel, findState]);
 
   const handleMenuEvent = useCallback(
     (id: string) => {
@@ -630,7 +815,13 @@ export default function App() {
       } else if (id === "edit-paste-as-text") {
         void doPasteAsText();
       } else if (id === "edit-find") {
-        doFind();
+        openFindPanel("find");
+      } else if (id === "edit-find-replace") {
+        openFindPanel("replace");
+      } else if (id === "edit-find-next") {
+        findNext();
+      } else if (id === "edit-find-prev") {
+        findPrev();
       } else if (id === "view-wysiwyg") {
         setMode("wysiwyg");
       } else if (id === "view-source") {
@@ -677,7 +868,9 @@ export default function App() {
       closeAll,
       doExport,
       doImport,
-      doFind,
+      openFindPanel,
+      findNext,
+      findPrev,
       setMode,
       toggleMode,
       setLineSpacing,
@@ -777,10 +970,30 @@ export default function App() {
   // App-level shortcuts (browser dev has no native menu accelerators).
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // Find next/previous (plan 07 task 7.2): F3/Shift+F3 cycle the active
+      // match (a no-op while the panel is closed — there is no active
+      // search). The panel's own keydown handles F3 while it has focus (and
+      // stops propagation), so this listener covers the rest of the window.
+      if (e.key === "F3" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        if (e.shiftKey) findPrev();
+        else findNext();
+        return;
+      }
+      if (e.key === "Escape" && findPanel.open) {
+        closeFindPanel();
+        return;
+      }
       const mod = e.ctrlKey || e.metaKey;
       if (!mod) return;
       const key = e.key.toLowerCase();
-      if (key === "n" && !e.shiftKey) {
+      if (key === "f" && !e.shiftKey) {
+        e.preventDefault();
+        openFindPanel("find");
+      } else if (key === "h" && !e.shiftKey) {
+        e.preventDefault();
+        openFindPanel("replace");
+      } else if (key === "n" && !e.shiftKey) {
         e.preventDefault();
         doNew();
       } else if (key === "e" && e.shiftKey) {
@@ -813,7 +1026,21 @@ export default function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [toggleMode, doSave, doSaveAs, doNew, closeDoc, activePath, stepZoom, changeZoom]);
+  }, [
+    toggleMode,
+    doSave,
+    doSaveAs,
+    doNew,
+    closeDoc,
+    activePath,
+    stepZoom,
+    changeZoom,
+    openFindPanel,
+    closeFindPanel,
+    findNext,
+    findPrev,
+    findPanel.open,
+  ]);
 
   // Ctrl+mouse-wheel zoom (plan 02 task 2.6, Word behavior): a wheel event
   // with Ctrl held steps the active doc's zoom. The listener is non-passive so
@@ -956,6 +1183,26 @@ export default function App() {
                     New document
                   </button>
                 </div>
+              )}
+              {findPanel.open && (
+                <FindReplacePanel
+                  mode={findPanel.mode}
+                  term={findPanel.term}
+                  replaceTerm={findPanel.replaceTerm}
+                  matchCase={findPanel.matchCase}
+                  wholeWord={findPanel.wholeWord}
+                  useRegex={findPanel.useRegex}
+                  result={findPanelResult}
+                  onTermChange={setFindTerm}
+                  onReplaceTermChange={setFindReplaceTerm}
+                  onToggle={toggleFindOption}
+                  onModeChange={setFindMode}
+                  onNext={findNext}
+                  onPrev={findPrev}
+                  onReplace={doReplace}
+                  onReplaceAll={doReplaceAll}
+                  onClose={closeFindPanel}
+                />
               )}
             </div>
             {infoOpen && activeDoc && (

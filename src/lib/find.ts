@@ -9,8 +9,10 @@
 // and the decoration builder renders it (every match highlighted, the active
 // match stronger). Replace (task 7.3) consumes the same ranges.
 
+import type { Editor as TiptapEditor } from "@tiptap/core";
 import type { Node } from "@tiptap/pm/model";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { TextSelection } from "@tiptap/pm/state";
 
 export interface SearchOptions {
   term: string;
@@ -251,4 +253,123 @@ export function matchDecorations(doc: Node, state: SearchState): DecorationSet {
     decos.push(Decoration.inline(m.from, m.to, { class: cls }, { class: cls }));
   });
   return DecorationSet.create(doc, decos);
+}
+
+// --- replace ---------------------------------------------------------------
+//
+// Single replace rewrites the active match's range; replace all rewrites
+// every match in ONE transaction (Word parity: Replace All is one undo
+// step). Matches are applied in reverse offset order so the earlier ranges
+// stay valid, and every replacement string is computed from the original
+// doc, never the partially rewritten one. Cross-block matches are refused:
+// replace only applies within a single text block (plan 07 §3).
+
+// The replacement text for one match. Regex mode runs the replacement string
+// through JS `String.replace` semantics ($1, $&, $` ...) against the pattern
+// matched at that spot; plain mode inserts the string literally.
+export function applyReplacement(
+  matchText: string,
+  options: NormalizedSearchOptions,
+  replacement: string,
+): string {
+  if (!options.useRegex) return replacement;
+  const compiled = compileSearch(options);
+  if (compiled.regex === null) return replacement; // invalid regex: no search ran
+  const single = new RegExp(compiled.regex.source, compiled.regex.flags.replace("g", ""));
+  return matchText.replace(single, replacement);
+}
+
+// Replaces the active match and leaves the replacement selected (Word
+// behavior, so the next F3 starts after it). Returns false when there is no
+// active match or it spans blocks.
+export function replaceActiveMatch(
+  editor: TiptapEditor,
+  state: SearchState,
+  replacement: string,
+): boolean {
+  if (state.active < 0 || state.active >= state.matches.length) return false;
+  const m = state.matches[state.active];
+  if (m.crossBlock) return false;
+  const text = applyReplacement(
+    editor.state.doc.textBetween(m.from, m.to, "\n", ""),
+    state,
+    replacement,
+  );
+  const tr = editor.state.tr.replaceWith(m.from, m.to, editor.state.schema.text(text));
+  tr.setSelection(TextSelection.create(tr.doc, m.from, m.from + text.length));
+  editor.view.dispatch(tr);
+  return true;
+}
+
+// Replaces every non-cross-block match in one transaction. Returns the
+// number of matches replaced (0 when there is nothing to replace, which also
+// means no transaction was dispatched).
+export function replaceAllMatches(
+  editor: TiptapEditor,
+  state: SearchState,
+  replacement: string,
+): number {
+  const doc = editor.state.doc;
+  const ops = state.matches
+    .filter((m) => !m.crossBlock)
+    .map((m) => ({
+      from: m.from,
+      to: m.to,
+      text: applyReplacement(doc.textBetween(m.from, m.to, "\n", ""), state, replacement),
+    }))
+    .sort((a, b) => b.from - a.from);
+  if (ops.length === 0) return 0;
+  const tr = editor.state.tr;
+  for (const op of ops) {
+    tr.replaceWith(op.from, op.to, editor.state.schema.text(op.text));
+  }
+  editor.view.dispatch(tr);
+  return ops.length;
+}
+
+// --- app-level find bridge -------------------------------------------------
+//
+// The find panel (task 7.2) is owned by App.tsx, while the match
+// decorations, the searchable doc, and the replace transactions live inside
+// the WYSIWYG Editor. Two module-level single-subscriber channels connect
+// them (the same pattern as the editorCommands command listener):
+//   * editor provider — the Editor registers a function returning the live
+//     TipTap editor (null outside the WYSIWYG view); App runs searchDoc
+//     against its doc and the replace transactions through its view, so
+//     search and replace always act on exactly the doc the decorations
+//     render over.
+//   * state publisher — App publishes the current SearchState (null while
+//     the panel is closed or no WYSIWYG editor is open) and the Editor
+//     applies it as inline decorations.
+
+type FindEditorProvider = () => TiptapEditor | null;
+let findEditorProvider: FindEditorProvider | null = null;
+
+export function registerFindEditor(fn: FindEditorProvider): () => void {
+  findEditorProvider = fn;
+  return () => {
+    if (findEditorProvider === fn) findEditorProvider = null;
+  };
+}
+
+export function currentFindEditor(): TiptapEditor | null {
+  return findEditorProvider ? findEditorProvider() : null;
+}
+
+export function currentFindDoc(): Node | null {
+  return currentFindEditor()?.state.doc ?? null;
+}
+
+type FindStateListener = (state: SearchState | null) => void;
+let findStateListener: FindStateListener | null = null;
+
+export function registerFindStateListener(fn: FindStateListener): () => void {
+  findStateListener = fn;
+  return () => {
+    if (findStateListener === fn) findStateListener = null;
+  };
+}
+
+export function publishFindState(state: SearchState | null): void {
+  if (findStateListener) findStateListener(state);
 }
