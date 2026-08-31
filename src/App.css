@@ -1353,6 +1353,23 @@ button.quillmd-status-spellcheck:hover {
   outline: 1px solid var(--accent);
 }
 
+/* Table column resize (plan 06 task 6.6, issue #66): the columnResizing
+   plugin's hover handle (a widget at the column's right edge) and the
+   editor-wide col-resize cursor while it is armed. */
+.quillmd-prosemirror.resize-cursor {
+  cursor: col-resize;
+}
+.quillmd-prosemirror .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  background: var(--accent);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .quillmd-prosemirror hr {
   border: none;
   border-top: 2px solid var(--border);

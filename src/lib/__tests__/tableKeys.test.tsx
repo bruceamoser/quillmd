@@ -22,7 +22,7 @@ import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import { CellSelection, cellAround } from "@tiptap/pm/tables";
-import { GfmTable } from "../../components/Editor";
+import { GfmTable, TABLE_CELL_MIN_WIDTH } from "../../components/Editor";
 import { handleEditorKeyDown } from "../../components/Editor";
 import { markdownToTiptap, tiptapToMarkdown } from "../pm";
 import { inTable, runEditorCommand } from "../editorCommands";
@@ -42,7 +42,7 @@ function makeEditor(markdown = TABLE_MD): Editor {
       StarterKit,
       TaskList,
       TaskItem.configure({ nested: true }),
-      GfmTable.configure({ resizable: false }),
+      GfmTable.configure({ resizable: true, cellMinWidth: TABLE_CELL_MIN_WIDTH }),
       TableRow,
       TableCell,
       TableHeader,

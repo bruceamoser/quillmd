@@ -16,7 +16,7 @@ import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import { CellSelection } from "@tiptap/pm/tables";
-import QuillEditor, { GfmTable } from "../../components/Editor";
+import QuillEditor, { GfmTable, TABLE_CELL_MIN_WIDTH } from "../../components/Editor";
 import TableToolbar, {
   TABLE_TOOLBAR_GAP,
   tableToolbarPosition,
@@ -41,7 +41,7 @@ function makeEditor(markdown = TABLE_MD): Editor {
     // Same table extensions as the app editor (Editor.tsx).
     extensions: [
       StarterKit,
-      GfmTable.configure({ resizable: false }),
+      GfmTable.configure({ resizable: true, cellMinWidth: TABLE_CELL_MIN_WIDTH }),
       TableRow,
       TableCell,
       TableHeader,
@@ -347,9 +347,21 @@ describe("floating table toolbar (issue #64, AC7)", () => {
 
   it("positions the bar above the table's nodeDOM rect", () => {
     const e = setup();
-    const tableEl = e.view.dom.querySelector("table");
-    expect(tableEl).not.toBeNull();
-    tableEl!.getBoundingClientRect = () => new DOMRect(40, 120, 300, 200);
+    // nodeDOM is the table itself, or the TableView wrapper (resizable
+    // tables render through a node view); the bar follows whichever the
+    // view reports.
+    let tablePos = -1;
+    e.state.doc.descendants((node, pos) => {
+      if (node.type.name === "table") {
+        tablePos = pos;
+        return false;
+      }
+      return true;
+    });
+    const nodeEl = e.view.nodeDOM(tablePos);
+    expect(nodeEl).not.toBeNull();
+    (nodeEl as HTMLElement).getBoundingClientRect = () =>
+      new DOMRect(40, 120, 300, 200);
     act(() => cursorAfter(e, "a1"));
     const el = bar()!;
     // No editor body around a detached test editor: the viewport origin is

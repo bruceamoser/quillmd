@@ -12,7 +12,7 @@ import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import { CellSelection } from "@tiptap/pm/tables";
-import { GfmTable } from "../../components/Editor";
+import { GfmTable, TABLE_CELL_MIN_WIDTH } from "../../components/Editor";
 import { markdownToTiptap, tiptapToMarkdown } from "../pm";
 import {
   EDITOR_COMMANDS,
@@ -52,7 +52,7 @@ function makeEditor(markdown = TABLE_MD): Editor {
     // Same table extensions as the app editor (Editor.tsx).
     extensions: [
       StarterKit,
-      GfmTable.configure({ resizable: false }),
+      GfmTable.configure({ resizable: true, cellMinWidth: TABLE_CELL_MIN_WIDTH }),
       TableRow,
       TableCell,
       TableHeader,

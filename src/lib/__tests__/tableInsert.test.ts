@@ -10,7 +10,7 @@ import StarterKit from "@tiptap/starter-kit";
 import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
-import { GfmTable } from "../../components/Editor";
+import { GfmTable, TABLE_CELL_MIN_WIDTH } from "../../components/Editor";
 import { createDocument, saveDocument } from "../pipeline";
 import { markdownToTiptap, tiptapToMarkdown } from "../pm";
 import {
@@ -33,7 +33,7 @@ function makeEditor(markdown?: string): Editor {
     // Same table extensions as the app editor (Editor.tsx).
     extensions: [
       StarterKit,
-      GfmTable.configure({ resizable: false }),
+      GfmTable.configure({ resizable: true, cellMinWidth: TABLE_CELL_MIN_WIDTH }),
       TableRow,
       TableCell,
       TableHeader,
