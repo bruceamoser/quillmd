@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import type React from "react";
 import { NodeViewContent, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/core";
+import { registerMermaidCardModeHandler } from "../lib/mermaidCardMode";
 import { renderMermaid } from "../lib/mermaidRender";
 import { isThemeId, type ThemeId } from "../lib/theme";
 
@@ -85,6 +86,33 @@ export default function MermaidCard(props: MermaidCardProps) {
     return () => {
       mermaidCardListeners.delete(notify);
     };
+  }, []);
+
+  // Mode channel (plan 11 task 11.6, issue #105): the diagram node's
+  // context-menu item set (diagramMenu.ts) switches this card's mode through
+  // the diagramEdit / diagramPreview registry commands. The card registers
+  // itself on mount — its doc position plus the mode getter/setter — so a
+  // request for the diagram under the selection lands here. The mode itself
+  // stays React state; the channel only routes the switch.
+  const modeRef = useRef<CardMode>(mode);
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+  useEffect(() => {
+    return registerMermaidCardModeHandler({
+      getPos: () => {
+        const pos = props.getPos();
+        return typeof pos === "number" ? pos : null;
+      },
+      setMode: (next) => {
+        // Update the ref synchronously so getMode reports the new mode
+        // immediately (React state, and the effect that mirrors it into the
+        // ref, only settle on the next render).
+        modeRef.current = next;
+        setMode(next);
+      },
+      getMode: () => modeRef.current,
+    });
   }, []);
 
   // Debounced re-render (plan 11: ~300 ms while the source changes). Every
