@@ -34,14 +34,22 @@
 #                       tooltip, dirty save + byte-identical re-save, no
 #                       window.prompt in the find path), and the large-doc
 #                       perf test (100k-char recompute < 100ms, issue #74)
-#           p1-media -> plan 08 task 8.2 acceptance gate (issue #77): Insert >
-#                       Image submenu (From file / From URL) menu wiring,
-#                       App.tsx routing of both menu ids + the from-file
-#                       picker flow + the ImageDialog render, the toolbar
-#                       split image button, the images.ts module (URL
-#                       validation, insert, from-file src) + IMAGE_FILTER +
-#                       inline-image extension config, and the images.test.tsx
-#                       vitest suite presence
+ #           p1-media -> plan 08 task 8.2 acceptance gate (issue #77): Insert >
+ #                       Image submenu (From file / From URL) menu wiring,
+ #                       App.tsx routing of both menu ids + the from-file
+ #                       picker flow + the ImageDialog render, the toolbar
+ #                       split image button, the images.ts module (URL
+ #                       validation, insert, from-file src) + IMAGE_FILTER +
+ #                       inline-image extension config, and the images.test.tsx
+ #                       vitest suite presence
+ #           p1-assets -> plan 08 task 8.3 acceptance gate (issue #78): the
+ #                       Rust fs/assets.rs core (AssetFolder, copy_asset,
+ #                       files_exist), the copy_asset + file_exists Tauri
+ #                       commands registered in generate_handler, the
+ #                       assets.ts module (asset-folder setting, invoke
+ #                       bridge, from-file src pipeline), App.tsx routing the
+ #                       from-file picker through the pipeline, and the
+ #                       assets.test.ts vitest suite presence
 #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -1093,7 +1101,7 @@ test_media_app_routing() {
         && grep -q 'registerImageInsertListener' "$ROOT/src/App.tsx" \
         && grep -q 'setImageDialog({ editor })' "$ROOT/src/App.tsx" \
         && grep -q 'pickOpenFile({ title: "Insert image", filters: \[IMAGE_FILTER\] })' "$ROOT/src/App.tsx" \
-        && grep -q 'imageSrcForPickedFile(docPath, picked\[0\])' "$ROOT/src/App.tsx" \
+        && grep -q 'assetSrcForPickedFile(docPath, picked\[0\], loadAssetFolder())' "$ROOT/src/App.tsx" \
         && grep -q '<ImageDialog onApply={applyImageDialog} onClose={closeImageDialog} />' "$ROOT/src/App.tsx" \
         && grep -q 'insertImage(imageDialog.editor, payload)' "$ROOT/src/App.tsx"; then
         pass "media.routing App.tsx routes both menu ids, picker flow, dialog render"
@@ -1141,6 +1149,77 @@ test_media_suites_present() {
         pass "media.suites plan 08 task 8.2 vitest suite present"
     else
         fail "media.suites plan 08 task 8.2 vitest suite present"
+    fi
+}
+
+# --- p1-assets: asset copy pipeline (plan 08 task 8.3, issue #78) ---------------
+# The copy semantics (collision-safe naming, atomic write, traversal +
+# reserved-name gates) are covered by the Rust unit tests (`cargo test`) and
+# the vitest suite (assets.test.ts) that `npm test` runs; this section checks
+# the cross-layer wiring: the Rust fs core, the two Tauri commands and their
+# registration, the assets.ts module, and App.tsx routing the from-file
+# picker through the pipeline.
+test_assets_rust_core() {
+    note "assets.core fs/assets.rs AssetFolder/copy_asset/files_exist present"
+    if [ -f "$ROOT/src-tauri/src/fs/assets.rs" ] \
+        && grep -q 'pub enum AssetFolder' "$ROOT/src-tauri/src/fs/assets.rs" \
+        && grep -q 'pub fn parse_asset_folder' "$ROOT/src-tauri/src/fs/assets.rs" \
+        && grep -q 'pub enum AssetCopyError' "$ROOT/src-tauri/src/fs/assets.rs" \
+        && grep -q 'pub fn copy_asset' "$ROOT/src-tauri/src/fs/assets.rs" \
+        && grep -q 'pub fn files_exist' "$ROOT/src-tauri/src/fs/assets.rs" \
+        && grep -q 'pub mod assets;' "$ROOT/src-tauri/src/fs/mod.rs"; then
+        pass "assets.core fs/assets.rs AssetFolder/copy_asset/files_exist present"
+    else
+        fail "assets.core fs/assets.rs AssetFolder/copy_asset/files_exist present"
+    fi
+}
+test_assets_command_registration() {
+    note "assets.commands copy_asset + file_exists Tauri commands registered"
+    if grep -q 'pub fn copy_asset(src: String, doc_dir: String, asset_folder: String) -> Result<String, String>' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'pub fn file_exists(paths: Vec<String>) -> Vec<bool>' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'commands::copy_asset,' "$ROOT/src-tauri/src/lib.rs" \
+        && grep -q 'commands::file_exists,' "$ROOT/src-tauri/src/lib.rs"; then
+        pass "assets.commands copy_asset + file_exists Tauri commands registered"
+    else
+        fail "assets.commands copy_asset + file_exists Tauri commands registered"
+    fi
+}
+test_assets_module() {
+    note "assets.module assets.ts setting + invoke bridge + from-file src pipeline"
+    if [ -f "$ROOT/src/lib/assets.ts" ] \
+        && grep -q 'export type AssetFolder = "assets" | "doc"' "$ROOT/src/lib/assets.ts" \
+        && grep -q 'export const DEFAULT_ASSET_FOLDER: AssetFolder = "assets"' "$ROOT/src/lib/assets.ts" \
+        && grep -q 'const ASSET_FOLDER_KEY = "quillmd.assetFolder"' "$ROOT/src/lib/assets.ts" \
+        && grep -q 'export function loadAssetFolder' "$ROOT/src/lib/assets.ts" \
+        && grep -q 'export function saveAssetFolder' "$ROOT/src/lib/assets.ts" \
+        && grep -q 'invoke<string>("copy_asset", { src, docDir, assetFolder: folder })' "$ROOT/src/lib/assets.ts" \
+        && grep -q 'invoke<boolean\[\]>("file_exists", { paths })' "$ROOT/src/lib/assets.ts" \
+        && grep -q 'export async function assetSrcForPickedFile' "$ROOT/src/lib/assets.ts" \
+        && grep -q 'return copyAsset(filePath, docDir, folder)' "$ROOT/src/lib/assets.ts"; then
+        pass "assets.module assets.ts setting + invoke bridge + from-file src pipeline"
+    else
+        fail "assets.module assets.ts setting + invoke bridge + from-file src pipeline"
+    fi
+}
+test_assets_app_routing() {
+    note "assets.routing App.tsx from-file picker routed through the pipeline"
+    if grep -q 'import { assetSrcForPickedFile, loadAssetFolder } from "./lib/assets"' "$ROOT/src/App.tsx" \
+        && grep -q 'assetSrcForPickedFile(docPath, picked\[0\], loadAssetFolder())' "$ROOT/src/App.tsx"; then
+        pass "assets.routing App.tsx from-file picker routed through the pipeline"
+    else
+        fail "assets.routing App.tsx from-file picker routed through the pipeline"
+    fi
+}
+test_assets_suites_present() {
+    note "assets.suites plan 08 task 8.3 vitest suite present"
+    if [ -f "$ROOT/src/lib/__tests__/assets.test.ts" ] \
+        && grep -q 'asset folder setting (plan 08 §2.3)' "$ROOT/src/lib/__tests__/assets.test.ts" \
+        && grep -q 'copy_asset / file_exists invoke bridge' "$ROOT/src/lib/__tests__/assets.test.ts" \
+        && grep -q 'climbsOutOf' "$ROOT/src/lib/__tests__/assets.test.ts" \
+        && grep -q 'assetSrcForPickedFile (plan 08 task 8.3 copy rule)' "$ROOT/src/lib/__tests__/assets.test.ts"; then
+        pass "assets.suites plan 08 task 8.3 vitest suite present"
+    else
+        fail "assets.suites plan 08 task 8.3 vitest suite present"
     fi
 }
 
@@ -1238,6 +1317,13 @@ case "$SUBSET" in
         test_media_toolbar_split
         test_media_images_module
         test_media_suites_present
+        ;;
+    p1-assets)
+        test_assets_rust_core
+        test_assets_command_registration
+        test_assets_module
+        test_assets_app_routing
+        test_assets_suites_present
         ;;
     shell)
         test_shell_new_bundled
@@ -1345,9 +1431,14 @@ case "$SUBSET" in
         test_media_toolbar_split
         test_media_images_module
         test_media_suites_present
+        test_assets_rust_core
+        test_assets_command_registration
+        test_assets_module
+        test_assets_app_routing
+        test_assets_suites_present
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac

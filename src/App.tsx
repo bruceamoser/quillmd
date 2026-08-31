@@ -45,8 +45,9 @@ import {
   registerLinkDialogListener,
 } from "./lib/editorCommands";
 import { IMAGE_FILTER, pickOpenFile } from "./lib/dialogs";
-import { imageSrcForPickedFile, insertImage } from "./lib/images";
+import { insertImage } from "./lib/images";
 import type { ImagePayload } from "./lib/images";
+import { assetSrcForPickedFile, loadAssetFolder } from "./lib/assets";
 import type { EditorCommandId, LineSpacingValue } from "./lib/editorCommands";
 import {
   applyLink,
@@ -839,21 +840,29 @@ export default function App() {
     setLinkDialog(null);
   }, []);
 
-  // --- image insert (plan 08 task 8.2, issue #77) ---------------------------
+  // --- image insert (plan 08 task 8.2, issue #77; asset copy is task 8.3,
+  //     issue #78) -------------------------------------------------------------
   //
   // Two registry commands request the insert: "image" (the From URL default)
   // opens the dialog, "imageFromFile" runs the native image picker. Both
-  // apply to the editor the request came from. The From file flow inserts
-  // the picked path relativized against the active doc's folder (images.ts);
-  // the asset-copy upgrade (task 8.3) lands on this same entry point.
+  // apply to the editor the request came from. The From file flow runs the
+  // picked file through the asset pipeline (assets.ts): a pick inside the
+  // active doc's folder is referenced relatively (no copy), a pick outside
+  // is copied next to the doc — into `assets/` or the doc folder itself
+  // per the asset-folder setting — and the copy's relative path is
+  // inserted.
 
   const insertImageFromFile = useCallback(async (editor: CoreEditor) => {
     const picked = await pickOpenFile({ title: "Insert image", filters: [IMAGE_FILTER] });
     if (!picked || picked.length === 0) return;
     const docPath = activeDoc?.open.path ?? "";
-    const src = imageSrcForPickedFile(docPath, picked[0]);
-    if (insertImage(editor, { src, alt: "" })) {
-      setStatus(`Inserted image ${src}`);
+    try {
+      const src = await assetSrcForPickedFile(docPath, picked[0], loadAssetFolder());
+      if (insertImage(editor, { src, alt: "" })) {
+        setStatus(`Inserted image ${src}`);
+      }
+    } catch (e) {
+      setStatus(`Could not insert image: ${String(e)}`);
     }
   }, [activeDoc, setStatus]);
 

@@ -259,6 +259,8 @@ pub fn run() {
             commands::export_document,
             commands::import_document,
             commands::list_dir,
+            commands::copy_asset,
+            commands::file_exists,
             commands::get_recent_files,
             commands::set_recent_files
         ])
