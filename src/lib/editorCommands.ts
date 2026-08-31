@@ -685,6 +685,17 @@ export function inTable(editor: CoreEditor): boolean {
   return tableColumnsOf(editor.state) !== null;
 }
 
+// The position of the table node under the selection (the node the floating
+// table toolbar, plan 06 task 6.4, issue #64, positions itself over), or
+// null when the selection is not inside a table. A cursor / text selection
+// resolves the cell under the caret, a CellSelection the anchor cell — both
+// are inside the table, so the same walk covers every in-table selection
+// shape.
+export function tablePosOf(editor: CoreEditor): number | null {
+  const target = tableColumnsOf(editor.state);
+  return target ? target.tablePos : null;
+}
+
 type CellAlignValue = "left" | "center" | "right";
 
 // The effective alignment of one column's spec entry. Unset (or an

@@ -766,6 +766,59 @@ button.quillmd-status-spellcheck:hover {
   min-width: 44px;
 }
 
+/* Floating table toolbar (plan 06 task 6.4, issue #64): the contextual bar
+   above the table's bounding rect while the selection is inside a table.
+   Absolutely positioned inside .quillmd-editor-body (the scroll container),
+   so it tracks the table in document space and scrolls with it; the inline
+   top/left come from the table's nodeDOM rect and the translateY(-100%)
+   lifts the bar by its own height above the table's top edge. */
+.quillmd-table-toolbar {
+  position: absolute;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  padding: 4px 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.quillmd-table-toolbar button {
+  min-width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 5px;
+}
+
+.quillmd-table-toolbar button:hover {
+  background: var(--bg-active);
+}
+
+.quillmd-table-toolbar button.quillmd-toolbar-active {
+  background: var(--accent-soft);
+  color: var(--text-bright);
+}
+
+.quillmd-table-toolbar button:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.quillmd-table-toolbar-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  margin: 0 3px;
+}
+
 /* Color palette (plan 04 task 4.2, issue #48): the shared popover behind the
    font color and highlight color pickers. The trigger shows the current pick
    as a bar under its glyph; the popover is an "Auto" cell, the 24 swatches in
