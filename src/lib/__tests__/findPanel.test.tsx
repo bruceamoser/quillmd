@@ -11,6 +11,7 @@ import FindReplacePanel, {
   type FindPanelOption,
   type FindPanelResult,
 } from "../../components/FindReplacePanel";
+import type { FindPanelPosition } from "../findMemory";
 
 // React 19 act() requires the environment flag in jsdom.
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -22,6 +23,7 @@ interface PanelProps {
   matchCase: boolean;
   wholeWord: boolean;
   useRegex: boolean;
+  position: FindPanelPosition;
   result: FindPanelResult;
   onTermChange: (term: string) => void;
   onReplaceTermChange: (term: string) => void;
@@ -32,6 +34,7 @@ interface PanelProps {
   onReplace: () => void;
   onReplaceAll: () => void;
   onClose: () => void;
+  onPositionToggle: () => void;
 }
 
 function makeProps(overrides: Partial<PanelProps> = {}): PanelProps {
@@ -42,6 +45,7 @@ function makeProps(overrides: Partial<PanelProps> = {}): PanelProps {
     matchCase: false,
     wholeWord: false,
     useRegex: false,
+    position: "top",
     result: { count: 17, active: 2, error: null, activeCrossBlock: false },
     onTermChange: vi.fn(),
     onReplaceTermChange: vi.fn(),
@@ -52,6 +56,7 @@ function makeProps(overrides: Partial<PanelProps> = {}): PanelProps {
     onReplace: vi.fn(),
     onReplaceAll: vi.fn(),
     onClose: vi.fn(),
+    onPositionToggle: vi.fn(),
     ...overrides,
   };
 }
@@ -89,6 +94,10 @@ function render(props: PanelProps) {
     next: container.querySelector<HTMLButtonElement>('button[aria-label="Next match"]'),
     close: container.querySelector<HTMLButtonElement>('button[aria-label="Close find panel"]'),
     modeToggle: container.querySelector<HTMLButtonElement>('button[aria-label="Toggle replace row"]'),
+    positionToggle: container.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Move find panel"]',
+    ),
+    panel: container.querySelector(".quillmd-find-panel"),
     replace: buttonByText("Replace"),
     replaceAll: buttonByText("Replace All"),
   };
@@ -403,5 +412,52 @@ describe("find panel replace buttons", () => {
     });
     expect(props.onReplace).toHaveBeenCalledTimes(1);
     expect(props.onReplaceAll).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Panel position setting (plan 07 task 7.5, issue #73): the panel can be
+// docked to the top (default) or bottom of the editor; the toggle button on
+// the panel flips the position and the "bottom" class drives the CSS docking.
+describe("find panel position", () => {
+  it("defaults to the top: no bottom class, toggle offers to move to bottom", () => {
+    const q = render(makeProps({ position: "top" }));
+    expect(q.panel?.classList.contains("bottom")).toBe(false);
+    expect(q.positionToggle?.getAttribute("aria-label")).toBe(
+      "Move find panel to bottom",
+    );
+    // Downward chevron while docked at the top.
+    expect(q.positionToggle?.textContent).toBe("\u25BE");
+  });
+
+  it("applies the bottom class and offers to move back to top", () => {
+    const q = render(makeProps({ position: "bottom" }));
+    expect(q.panel?.classList.contains("bottom")).toBe(true);
+    expect(q.positionToggle?.getAttribute("aria-label")).toBe(
+      "Move find panel to top",
+    );
+    // Upward chevron while docked at the bottom.
+    expect(q.positionToggle?.textContent).toBe("\u25B4");
+  });
+
+  it("the toggle button calls onPositionToggle (and keeps focus)", () => {
+    const props = makeProps({ position: "top" });
+    const q = render(props);
+    act(() => {
+      q.positionToggle?.click();
+    });
+    expect(props.onPositionToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("the toggle does not steal focus from the term input on mousedown", () => {
+    const props = makeProps({ position: "top" });
+    const q = render(props);
+    q.termInput?.focus();
+    const evt = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    act(() => {
+      q.positionToggle?.dispatchEvent(evt);
+    });
+    // keepFocus preventDefault'd the default focus transfer.
+    expect(evt.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(q.termInput);
   });
 });

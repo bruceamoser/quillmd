@@ -935,6 +935,13 @@ button.quillmd-status-spellcheck:hover {
   gap: 6px;
 }
 
+/* Panel position setting (plan 07 task 7.5, issue #73): "bottom" docks the
+   bar at the lower edge of the content area instead of the top. */
+.quillmd-find-panel.bottom {
+  top: auto;
+  bottom: 8px;
+}
+
 .quillmd-find-row {
   display: flex;
   align-items: center;
