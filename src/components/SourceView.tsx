@@ -1,9 +1,11 @@
+import { useEffect, useRef } from "react";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { html } from "@codemirror/lang-html";
 import { javascript } from "@codemirror/lang-javascript";
 import { css } from "@codemirror/lang-css";
 import { LanguageDescription } from "@codemirror/language";
+import { registerSourceFindView, sourceFindExtensions } from "../lib/sourceFind";
 
 const codeLanguages: LanguageDescription[] = [
   LanguageDescription.of({ name: "html", support: html(), load: async () => html() }),
@@ -35,8 +37,28 @@ export default function SourceView({
   // it is a WYSIWYG-engine feature and the raw markdown source (including
   // syntax tokens) is not prose to spell-check. The contentAttributes facet
   // lands on the editable .cm-content element.
-  const base = [markdown({ codeLanguages }), EditorView.contentAttributes.of({ spellcheck: "false" })];
+  //
+  // Find & replace (plan 07 task 7.4, issue #72) adds CodeMirror's search
+  // state and the match decorations; App applies the query and runs the
+  // replace transactions through the view. CodeMirror's own search keymap is
+  // off (basicSetup.searchKeymap) so F3 / Ctrl+F never open a second,
+  // built-in panel — the app's find bar is the only UI in both views.
+  const base = [
+    markdown({ codeLanguages }),
+    EditorView.contentAttributes.of({ spellcheck: "false" }),
+    ...sourceFindExtensions,
+  ];
   const extensions = wrap ? [...base, EditorView.lineWrapping] : base;
+
+  // Find bridge (plan 07 task 7.4): expose the live view to the search owned
+  // by App.tsx (the single-subscriber provider pattern the WYSIWYG find
+  // editor bridge uses). The provider reads the ref at call time so it stays
+  // valid if the view is ever re-created.
+  const viewRef = useRef<EditorView | null>(null);
+  useEffect(() => {
+    return registerSourceFindView(() => viewRef.current);
+  }, []);
+
   return (
     <div className="quillmd-source">
       <CodeMirror
@@ -45,6 +67,10 @@ export default function SourceView({
         readOnly={readOnly}
         height="100%"
         theme="dark"
+        basicSetup={{ searchKeymap: false }}
+        onCreateEditor={(view) => {
+          viewRef.current = view;
+        }}
         extensions={extensions}
       />
     </div>
