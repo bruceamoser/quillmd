@@ -498,6 +498,81 @@ button.quillmd-status-spellcheck:hover {
   background: rgba(255, 255, 255, 0.25);
 }
 
+/* Block-style indicator (plan 05 task 5.5, issue #58): styled like the
+   zoom/spellcheck readouts; the button opens the inspector popover above the
+   status bar, which names the block's style and offers the "jump to style"
+   action (the toolbar's style gallery). Hidden when the label is null. */
+.quillmd-status-style {
+  position: relative;
+  display: inline-flex;
+}
+
+.quillmd-status-style-btn {
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-radius: 3px;
+  padding: 1px 7px;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.quillmd-status-style-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.quillmd-status-style-btn.open {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.quillmd-status-style-label {
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-radius: 3px;
+  padding: 1px 7px;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.quillmd-status-style-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  z-index: 220;
+  min-width: 160px;
+}
+
+.quillmd-status-style-popover-text {
+  font-size: 12px;
+}
+
+.quillmd-status-style-jump {
+  border: none;
+  background: var(--accent);
+  color: #ffffff;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.quillmd-status-style-jump:hover {
+  opacity: 0.9;
+}
+
 .quillmd-status-toast {
   position: fixed;
   bottom: 32px;

@@ -177,8 +177,22 @@
     #                       CSS, and the styleOverrides.test.tsx suite
     #                       presence (AC3 H2 Georgia/18pt live restyle +
     #                       bytes untouched + restart persistence, the
-    #                       reset flows, the storage round-trips)
-    #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
+     #                       reset flows, the storage round-trips)
+     #           p2-style-inspector -> plan 05 task 5.5 acceptance gate (issue #58):
+     #                       the status-bar block-type indicator. styles.ts
+     #                       currentBlockStyle (the first built-in block style
+     #                       active at the selection, the same "first active
+     #                       wins" rule the Modify Style preselect uses), the
+     #                       editorCommands.ts block-style publish + gallery-
+     #                       open request channels, Editor.tsx publishing the
+     #                       label on every transaction (null on unmount), the
+     #                       StatusBar indicator + inspector popover ("This
+     #                       block is: ..." + "Jump to style"), StyleGallery
+     #                       registering the opener, App.tsx state + routing,
+     #                       the indicator CSS, and the styleinspector.test.tsx
+     #                       suite presence (style mapping + popover behavior +
+     #                       gallery-open request)
+     #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
 #           dragdrop -> p0-shell drag & drop open (issue #27)
@@ -2426,6 +2440,107 @@ test_stylemodify_suites_present() {
     fi
 }
 
+# --- p2-style-inspector: status-bar block-type indicator (issue #58, plan 05 task 5.5) ---
+# The block under the cursor is named by the first built-in block style active at
+# the selection (styles.ts currentBlockStyle, the same "first active wins" rule the
+# Modify Style preselect uses). The WYSIWYG Editor publishes that label on every
+# transaction; the status bar renders it as a button whose popover names the style
+# ("This block is: Heading 2") and whose "Jump to style" action opens the toolbar's
+# style gallery on the current style. The mapping/popover/gallery-open behavior is
+# covered by the vitest suite (src/lib/__tests__/styleinspector.test.tsx); this
+# section checks the wiring the GUI driver cannot reach headlessly.
+test_styleinspector_currentblockstyle() {
+    note "style-inspector styles.ts: currentBlockStyle first-active block style"
+    local file="$ROOT/src/lib/styles.ts"
+    if [ -f "$file" ] \
+        && grep -q 'export function currentBlockStyle' "$file" \
+        && grep -q 'style.kind === "block"' "$file" \
+        && grep -q 'styleActive(style, editor)' "$file"; then
+        pass "style-inspector styles.ts: currentBlockStyle first-active block style"
+    else
+        fail "style-inspector styles.ts: currentBlockStyle first-active block style"
+    fi
+}
+test_styleinspector_bridge() {
+    note "style-inspector editorCommands.ts: block-style + gallery-open channels"
+    if grep -q 'export function registerBlockStyleListener' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export function publishBlockStyle' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export function registerStylesGalleryListener' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'export function requestStylesGallery' "$ROOT/src/lib/editorCommands.ts"; then
+        pass "style-inspector editorCommands.ts: block-style + gallery-open channels"
+    else
+        fail "style-inspector editorCommands.ts: block-style + gallery-open channels"
+    fi
+}
+test_styleinspector_editor_publish() {
+    note "style-inspector Editor.tsx: publishes the current block style on transactions"
+    if grep -q 'publishBlockStyle' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'currentBlockStyle' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'onTransaction' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'publishBlockStyle(null)' "$ROOT/src/components/Editor.tsx"; then
+        pass "style-inspector Editor.tsx: publishes the current block style on transactions"
+    else
+        fail "style-inspector Editor.tsx: publishes the current block style on transactions"
+    fi
+}
+test_styleinspector_statusbar() {
+    note "style-inspector StatusBar.tsx: block-type indicator + inspector popover"
+    local file="$ROOT/src/components/StatusBar.tsx"
+    if [ -f "$file" ] \
+        && grep -q 'blockStyleLabel' "$file" \
+        && grep -q 'onJumpToStyle' "$file" \
+        && grep -q 'quillmd-status-style-popover' "$file" \
+        && grep -q 'This block is:' "$file" \
+        && grep -q 'quillmd-status-style-jump' "$file"; then
+        pass "style-inspector StatusBar.tsx: block-type indicator + inspector popover"
+    else
+        fail "style-inspector StatusBar.tsx: block-type indicator + inspector popover"
+    fi
+}
+test_styleinspector_gallery_open() {
+    note "style-inspector StyleGallery.tsx: registers the gallery-open listener"
+    if grep -q 'registerStylesGalleryListener' "$ROOT/src/components/StyleGallery.tsx"; then
+        pass "style-inspector StyleGallery.tsx: registers the gallery-open listener"
+    else
+        fail "style-inspector StyleGallery.tsx: registers the gallery-open listener"
+    fi
+}
+test_styleinspector_app_wiring() {
+    note "style-inspector App.tsx: block-style state + jump-to-style routing"
+    if grep -q 'registerBlockStyleListener' "$ROOT/src/App.tsx" \
+        && grep -q 'requestStylesGallery' "$ROOT/src/App.tsx" \
+        && grep -q 'blockStyleLabel' "$ROOT/src/App.tsx" \
+        && grep -q 'onJumpToStyle={jumpToStyle}' "$ROOT/src/App.tsx"; then
+        pass "style-inspector App.tsx: block-style state + jump-to-style routing"
+    else
+        fail "style-inspector App.tsx: block-style state + jump-to-style routing"
+    fi
+}
+test_styleinspector_css() {
+    note "style-inspector App.css: indicator + popover styles"
+    if grep -q '.quillmd-status-style {' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-status-style-btn' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-status-style-popover' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-status-style-jump' "$ROOT/src/App.css"; then
+        pass "style-inspector App.css: indicator + popover styles"
+    else
+        fail "style-inspector App.css: indicator + popover styles"
+    fi
+}
+test_styleinspector_suites_present() {
+    note "style-inspector vitest suite: mapping + popover + gallery-open request"
+    local suite="$ROOT/src/lib/__tests__/styleinspector.test.tsx"
+    if [ -f "$suite" ] \
+        && grep -q 'headings resolve to the first active alias in registry order' "$suite" \
+        && grep -q 'a horizontal rule (no built-in style) is null' "$suite" \
+        && grep -q 'Jump to style invokes onJumpToStyle and closes the popover' "$suite" \
+        && grep -q 'a mounted gallery opens on request and highlights the current style' "$suite"; then
+        pass "style-inspector vitest suite: mapping + popover + gallery-open request"
+    else
+        fail "style-inspector vitest suite: mapping + popover + gallery-open request"
+    fi
+}
+
 # --- p2-font-toolbar: toolbar font family / size selects (issue #49, plan 04 task 4.3) ---
 # The select behavior (family/size apply + Normal clear, "Npt" canonicalization,
 # non-point-count rejection, the Custom… prompt flow, off-list values as dynamic
@@ -3072,6 +3187,17 @@ case "$SUBSET" in
         test_stylemodify_css
         test_stylemodify_suites_present
         ;;
+    p2-style-inspector)
+        # Task 5.5 (issue #58): status-bar block-type indicator + jump-to-style
+        test_styleinspector_currentblockstyle
+        test_styleinspector_bridge
+        test_styleinspector_editor_publish
+        test_styleinspector_statusbar
+        test_styleinspector_gallery_open
+        test_styleinspector_app_wiring
+        test_styleinspector_css
+        test_styleinspector_suites_present
+        ;;
     shell)
         test_shell_new_bundled
         test_shell_new_menu_wiring
@@ -3247,7 +3373,7 @@ case "$SUBSET" in
         test_fonts_windows_crlf
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|p2-style-inspector|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac

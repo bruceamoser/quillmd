@@ -27,11 +27,13 @@ import { openLinkUrl } from "../lib/links";
 import {
   applyEditorFont,
   applyViewSettings,
+  publishBlockStyle,
   registerEditorCommandListener,
   requestImageEditDialog,
   runEditorCommand,
 } from "../lib/editorCommands";
 import type { EditorCommandId } from "../lib/editorCommands";
+import { currentBlockStyle } from "../lib/styles";
 import { loadEditorFont } from "../lib/editorFont";
 import { DEFAULT_DOC_SETTINGS } from "../lib/docSettings";
 import type { DocSettings } from "../lib/docSettings";
@@ -755,6 +757,13 @@ export default function Editor({
       lastEmittedRef.current = md;
       onChangeRef.current(md);
     },
+    // Style inspector (plan 05 task 5.5, issue #58): on every doc or
+    // selection transaction, publish the built-in style that owns the block
+    // under the cursor (or null for a block with no built-in style) so the
+    // status-bar indicator tracks the cursor.
+    onTransaction: ({ editor: ed }) => {
+      publishBlockStyle(currentBlockStyle(ed)?.label ?? null);
+    },
     onSelectionUpdate: ({ editor: ed }) => {
       const { $from } = ed.state.selection;
       const before = $from.parent.textBetween(0, $from.parentOffset, undefined, "\uFFFC");
@@ -785,7 +794,16 @@ export default function Editor({
 
   useEffect(() => {
     if (!editor) return;
-    return registerEditorCommandListener((id, param) => runEditorCommand(editor, id, param));
+    const unregister = registerEditorCommandListener((id, param) =>
+      runEditorCommand(editor, id, param),
+    );
+    return () => {
+      unregister();
+      // Style inspector (plan 05 task 5.5, issue #58): no WYSIWYG editor is
+      // mounted anymore (source/split/preview, or the tab closed), so clear
+      // the status-bar block-style indicator.
+      publishBlockStyle(null);
+    };
   }, [editor]);
 
   // Find & replace bridge (plan 07 task 7.2, issue #70): expose the live

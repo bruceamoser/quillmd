@@ -241,6 +241,19 @@ export function activeStyles(editor: CoreEditor): QuillStyle[] {
   return BUILT_IN_STYLES.filter((style) => styleActive(style, editor));
 }
 
+// The block-kind style that owns the block under the cursor (plan 05 task
+// 5.5, issue #58): the first "block" style active at the selection in
+// registry order — the same "first active wins" rule the Modify Style
+// preselect uses. Aliases of one block (Title + Heading 1 on an H1) resolve
+// to the earlier registry row, and blocks with no built-in style (a
+// horizontal rule, an empty doc) resolve to null.
+export function currentBlockStyle(editor: CoreEditor): QuillStyle | null {
+  for (const style of BUILT_IN_STYLES) {
+    if (style.kind === "block" && styleActive(style, editor)) return style;
+  }
+  return null;
+}
+
 // The Format > Styles submenu id prefix (plan 05 task 5.2, issue #55). The
 // native menu carries no parameters, so every built-in style is its own menu
 // id (built in src-tauri/src/menu.rs from the same registry rows, mirrored in

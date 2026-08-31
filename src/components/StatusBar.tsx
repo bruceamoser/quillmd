@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type { ViewMode } from "./viewModes";
 
 const MODES: ViewMode[] = ["wysiwyg", "source", "split", "preview"];
@@ -21,6 +22,16 @@ interface StatusBarProps {
   // (View > Spellcheck). Absent (tests, embedded) it renders as a plain
   // label.
   onSpellcheckToggle?: () => void;
+  // Style inspector (plan 05 task 5.5, issue #58): the built-in style that
+  // owns the block under the cursor (e.g. "Heading 2"), published by the
+  // WYSIWYG editor. Null outside WYSIWYG or for a block with no built-in
+  // style hides the indicator entirely.
+  blockStyleLabel?: string | null;
+  // When provided, the block-style indicator is a button that opens the
+  // inspector popover; its "Jump to style" action invokes this (the app
+  // routes it to the toolbar's style gallery). Absent (tests, embedded) the
+  // indicator renders as a plain label.
+  onJumpToStyle?: () => void;
 }
 
 export default function StatusBar({
@@ -35,7 +46,31 @@ export default function StatusBar({
   onModeChange,
   onZoomReset,
   onSpellcheckToggle,
+  blockStyleLabel = null,
+  onJumpToStyle,
 }: StatusBarProps) {
+  // The inspector popover's open state (toggled by the block-style button).
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const styleRootRef = useRef<HTMLSpanElement>(null);
+
+  // Close the inspector popover on an outside click or an Escape press (the
+  // same model as the style gallery and the toolbar's image dropdown).
+  useEffect(() => {
+    if (!inspectorOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (!styleRootRef.current?.contains(e.target as Node)) setInspectorOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setInspectorOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [inspectorOpen]);
+
   return (
     <div className="quillmd-statusbar">
       {onModeChange ? (
@@ -57,6 +92,42 @@ export default function StatusBar({
       <span className="quillmd-status-sep">|</span>
       <span>{fileName ?? "untitled"}</span>
       {dirty && <span className="quillmd-status-dirty">*</span>}
+      {blockStyleLabel !== null && (
+        <>
+          <span className="quillmd-status-sep">|</span>
+          <span className="quillmd-status-style" ref={styleRootRef}>
+            {onJumpToStyle ? (
+              <button
+                type="button"
+                className={inspectorOpen ? "quillmd-status-style-btn open" : "quillmd-status-style-btn"}
+                title="Current block style — click to inspect"
+                onClick={() => setInspectorOpen((open) => !open)}
+              >
+                {blockStyleLabel}
+              </button>
+            ) : (
+              <span className="quillmd-status-style-label">{blockStyleLabel}</span>
+            )}
+            {inspectorOpen && onJumpToStyle && (
+              <span className="quillmd-status-style-popover" role="dialog">
+                <span className="quillmd-status-style-popover-text">
+                  This block is: {blockStyleLabel}
+                </span>
+                <button
+                  type="button"
+                  className="quillmd-status-style-jump"
+                  onClick={() => {
+                    setInspectorOpen(false);
+                    onJumpToStyle();
+                  }}
+                >
+                  Jump to style…
+                </button>
+              </span>
+            )}
+          </span>
+        </>
+      )}
       <span className="quillmd-status-spacer" />
       <span>EOL: {eol.toUpperCase()}</span>
       <span className="quillmd-status-sep">|</span>
