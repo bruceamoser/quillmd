@@ -251,9 +251,26 @@
        #                       and the Windows manual pass (insert -> edit
        #                       -> export PDF/DOCX: the CRLF save-pipeline
        #                       round-trip for diagram docs, the
-       #                       reserved-name-safe PNG asset gate, and the
-       #                       pandoc PDF/DOCX conversion)
-       #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
+        #                       reserved-name-safe PNG asset gate, and the
+        #                       pandoc PDF/DOCX conversion)
+        #           p3-context -> plan 03 full acceptance gate (task 3.7,
+        #                       issue #45): the plan 03 §4 acceptance
+        #                       criteria AC1-AC7 (WYSIWYG/source/preview text
+        #                       menus with 1:1 registry dispatch, table menu
+        #                       3x3 -> 3x4 GFM + confirm-gated delete, image
+        #                       menu edit/replace/undoable remove, tab menu
+        #                       close/close-others/close-all with dirty
+        #                       confirms, explorer menu with on-disk fs_*
+        #                       commands + trash Undo + reveal, keyboard
+        #                       navigation, all suites green) pinned in the
+        #                       context-menu vitest suites + the app-level
+        #                       wiring the GUI driver cannot reach
+        #                       headlessly, the AC suites actually run here,
+        #                       and the Windows + Linux manual matrix
+        #                       (every menu x every surface: CRLF save
+        #                       pipeline, reserved-name refusal,
+        #                       plugin-opener reveal, native confirms)
+        #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
 #           dragdrop -> p0-shell drag & drop open (issue #27)
@@ -3590,6 +3607,387 @@ test_mermaid_windows_manual() {
     fi
 }
 
+# ===========================================================================
+# P3 right-click context menus (plan 03, tasks 3.1-3.7)
+#
+# Parent issue: #38. Task wiring:
+#   3.1 #39 shared ContextMenu component            ContextMenu.tsx,
+#                                               contextMenu.test.tsx
+#   3.2 #40 editor text menu (WYSIWYG/source/      textMenu.ts, Editor.tsx,
+#       preview) + selection resolution             SourceView.tsx,
+#                                               PreviewView.tsx,
+#                                               textMenu.test.tsx
+#   3.3 #41 table menu (row/column insert &        tableMenu.ts, Editor.tsx,
+#       delete, alignment, header, delete table)   tableContextMenu.test.tsx
+#   3.4 #42 image menu (edit/alt/replace/remove)   imageMenu.ts, Editor.tsx,
+#                                               imageContextMenu.test.tsx
+#   3.5 #43 link menu (open/edit/copy/remove in    markdownLinks.ts, links.ts,
+#       WYSIWYG + preview; preview splices the    PreviewView.tsx, App.tsx,
+#       markdown source)                            markdownLinks.test.ts,
+#                                               textMenu.test.tsx (e2e)
+#   3.6 #44 tab bar + explorer menus + fs_* Rust   tabMenu.ts, TabBar.tsx,
+#       commands (new/rename/trash) + trash Undo   explorerMenu.ts,
+#                                               Explorer.tsx, commands.rs,
+#                                               App.tsx, tabMenu.test.tsx,
+#                                               explorerContextMenu.test.tsx
+#   3.7 #45 this section: the plan 03 §4 acceptance
+#       gate (AC1-AC7) + the Windows + Linux manual
+#       matrix (every menu x every surface; the
+#       headlessly checkable platform wiring below,
+#       the manual steps in plan doc §6)
+#
+# The per-surface behavior is pinned in the vitest suites that `npm test`
+# runs; this section checks the app-level wiring a GUI driver cannot reach
+# headlessly, pins each AC's suite coverage, and actually runs the AC suites
+# here (AC7 runs the entire vitest gate).
+# ===========================================================================
+
+# --- p3-context: shared ContextMenu component (task 3.1, issue #39) -----------
+# One shared component for every surface (plan 03 §2): declarative item model,
+# cursor positioning with scroll/viewport clamping, submenu positioning,
+# full keyboard navigation, and screen-reader labels on the menu and every
+# item. The behavior is pinned in contextMenu.test.tsx (which AC6 runs); this
+# checks that all five surfaces render through this one component.
+test_context_component() {
+    note "context.component shared ContextMenu component used by all five surfaces"
+    local c="$ROOT/src/components/ContextMenu.tsx"
+    if [ -f "$c" ] \
+        && grep -q 'export function clampMenuPosition' "$c" \
+        && grep -q 'export function submenuPosition' "$c" \
+        && grep -q 'role="menu"' "$c" \
+        && grep -q 'case "ArrowDown"' "$c" \
+        && grep -q 'case "ArrowRight"' "$c" \
+        && grep -q 'case "Enter"' "$c" \
+        && grep -q 'case "Escape"' "$c" \
+        && grep -q 'from "./ContextMenu"' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'from "./ContextMenu"' "$ROOT/src/components/SourceView.tsx" \
+        && grep -q 'from "./ContextMenu"' "$ROOT/src/components/PreviewView.tsx" \
+        && grep -q 'from "./ContextMenu"' "$ROOT/src/components/TabBar.tsx" \
+        && grep -q 'from "./ContextMenu"' "$ROOT/src/components/Explorer.tsx" \
+        && [ -f "$ROOT/src/lib/__tests__/contextMenu.test.tsx" ]; then
+        pass "context.component shared ContextMenu component used by all five surfaces"
+    else
+        fail "context.component shared ContextMenu component used by all five surfaces"
+    fi
+}
+
+# --- p3-context: AC1 editor text menu (task 3.2, issue #40) --------------------
+# Right-click in WYSIWYG shows the text menu with the Format/Insert submenus;
+# every registry item maps 1:1 to a registry command and behaves identically
+# to the toolbar/menu trigger (the suite picks Format > Bold through the menu
+# and asserts the same registry command runs). The source and preview
+# surfaces carry their own fixed item sets.
+test_context_ac1_text_menu() {
+    note "context.AC1 WYSIWYG text menu (Format/Insert submenus) + 1:1 registry dispatch (plan 03 AC1)"
+    local t="$ROOT/src/lib/textMenu.ts"
+    local f="$ROOT/src/lib/__tests__/textMenu.test.tsx"
+    if grep -q 'export function buildTextMenu' "$t" \
+        && grep -q 'export function buildSourceMenu' "$t" \
+        && grep -q 'export function buildPreviewMenu' "$t" \
+        && grep -q 'export function toContextEntries' "$t" \
+        && grep -q 'export function textSelectionKind' "$t" \
+        && grep -q 'contextmenu: (_view, event) =>' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'items: buildTextMenu(active)' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'buildSourceMenu()' "$ROOT/src/components/SourceView.tsx" \
+        && grep -q 'buildPreviewMenu(anchor !== null, href)' "$ROOT/src/components/PreviewView.tsx" \
+        && grep -q 'maps every registry item 1:1 to a registered command (plan 03 AC1)' "$f" \
+        && grep -q 'right-click opens the text menu and a pick dispatches the registry command' "$f" \
+        && grep -q 'dispatching the same' "$f" \
+        && grep -q 'registry command the toolbar dispatches' "$f"; then
+        pass "AC1: WYSIWYG/source/preview item sets + 1:1 registry dispatch pinned in textMenu.test.tsx"
+    else
+        fail "AC1 coverage missing (textMenu.ts, Editor/SourceView/PreviewView wiring, textMenu.test.tsx)"
+    fi
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (running the text-menu suite needs node + node_modules)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/textMenu.test.tsx) 2>&1 ); then
+        pass "text-menu suite green (also runs in CI via npm test)"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "text-menu suite failed (plan 03 AC1)"
+    fi
+}
+
+# --- p3-context: AC2 table menu (task 3.3, issue #41) ---------------------------
+# Right-click inside a table cell shows the table menu instead of the text
+# menu; every item is a registry command (the P2 table commands). "Insert
+# column right" on a 3x3 table yields a valid 3x4 GFM table in the saved
+# text; "Delete table" requires the native confirm and removes the block
+# cleanly.
+test_context_ac2_table_menu() {
+    note "context.AC2 table menu: 3x3 -> 3x4 GFM via the menu, delete table confirm-gated (plan 03 AC2)"
+    local t="$ROOT/src/lib/tableMenu.ts"
+    local f="$ROOT/src/lib/__tests__/tableContextMenu.test.tsx"
+    if grep -q 'export function buildTableMenu' "$t" \
+        && grep -q 'export function toTableContextEntries' "$t" \
+        && grep -q 'else if (inTable(active))' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'items: buildTableMenu(active)' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'right-click in a table shows the table menu, not the text menu' "$f" \
+        && grep -q 'insert column right on a 3x3 table yields a valid 3x4 GFM table' "$f" \
+        && grep -q 'insert column right through the menu yields a valid 3x4 GFM table in the saved text' "$f" \
+        && grep -q 'delete table requires the native confirm and removes the block cleanly' "$f"; then
+        pass "AC2: table menu 1:1 registry dispatch + 3x4 GFM + confirm-gated delete pinned"
+    else
+        fail "AC2 coverage missing (tableMenu.ts, Editor.tsx builder pick, tableContextMenu.test.tsx)"
+    fi
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (running the table-menu suite needs node + node_modules)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/tableContextMenu.test.tsx) 2>&1 ); then
+        pass "table-menu suite green (also runs in CI via npm test)"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "table-menu suite failed (plan 03 AC2)"
+    fi
+}
+
+# --- p3-context: AC3 image menu (task 3.4, issue #42) ---------------------------
+# Right-click an image node shows the image menu (checked before the table
+# builder, so an image in a table cell still gets it): edit opens the URL
+# dialog, replace uses the file picker, remove deletes the node and is
+# undoable via Ctrl+Z.
+test_context_ac3_image_menu() {
+    note "context.AC3 image menu: edit dialog / file picker / undoable remove (plan 03 AC3)"
+    local t="$ROOT/src/lib/imageMenu.ts"
+    local f="$ROOT/src/lib/__tests__/imageContextMenu.test.tsx"
+    if grep -q 'export function buildImageMenu' "$t" \
+        && grep -q 'if (inImage(active))' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'items: buildImageMenu(active)' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'right-clicking a selected image shows the image menu, not the text menu' "$f" \
+        && grep -q 'an image node inside a table cell still gets the image menu' "$f" \
+        && grep -q 'undo (Ctrl+Z) restores the image exactly (plan 03 AC3)' "$f"; then
+        pass "AC3: image menu builder pick + edit/replace flows + Ctrl+Z undo pinned"
+    else
+        fail "AC3 coverage missing (imageMenu.ts, Editor.tsx builder pick, imageContextMenu.test.tsx)"
+    fi
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (running the image-menu suite needs node + node_modules)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/imageContextMenu.test.tsx) 2>&1 ); then
+        pass "image-menu suite green (also runs in CI via npm test)"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "image-menu suite failed (plan 03 AC3)"
+    fi
+}
+
+# --- p3-context: link menu, all views (task 3.5, issue #43) ---------------------
+# The link item set (Open / Edit / Copy address / Remove) in WYSIWYG and
+# preview. Open goes through plugin-opener (openLinkUrl); in the preview the
+# caret's anchor is resolved and Edit / Remove splice the markdown source
+# (markdownLinks.ts) through the app — the preview itself never touches the
+# document. The WYSIWYG e2e coverage rides the text-menu suite (AC1 above).
+test_context_link_menu() {
+    note "context.link link menu in WYSIWYG + preview (open/edit/copy/remove; preview splices markdown)"
+    local m="$ROOT/src/lib/markdownLinks.ts"
+    local f="$ROOT/src/lib/__tests__/markdownLinks.test.ts"
+    local e2e="$ROOT/src/lib/__tests__/textMenu.test.tsx"
+    if grep -q 'export function findMarkdownLink' "$m" \
+        && grep -q 'export function unlinkMarkdownLink' "$m" \
+        && grep -q 'export function relinkMarkdownLink' "$m" \
+        && grep -q 'export async function openLinkUrl' "$ROOT/src/lib/links.ts" \
+        && grep -q '"text-link-open"' "$ROOT/src/lib/textMenu.ts" \
+        && grep -q '"text-link-remove"' "$ROOT/src/lib/textMenu.ts" \
+        && grep -q '"preview-link-remove"' "$ROOT/src/lib/textMenu.ts" \
+        && grep -q 'onEditLink' "$ROOT/src/components/PreviewView.tsx" \
+        && grep -q 'onRemoveLink' "$ROOT/src/components/PreviewView.tsx" \
+        && grep -q 'findMarkdownLink(activeDoc.currentText' "$ROOT/src/App.tsx" \
+        && grep -q 'unlinkMarkdownLink(activeDoc.currentText' "$ROOT/src/App.tsx" \
+        && grep -q 'relinkMarkdownLink(activeDoc.currentText' "$ROOT/src/App.tsx" \
+        && [ -f "$f" ] \
+        && grep -q 'addresses offsets in CRLF source correctly' "$f" \
+        && [ -f "$ROOT/src/lib/__tests__/openLinks.test.tsx" ] \
+        && grep -q 'right-click on a link offers the full link submenu (Open / Edit / Copy address / Remove)' "$e2e"; then
+        pass "context.link link menu wiring (plugin-opener open, preview markdown splices, CRLF-safe offsets)"
+    else
+        fail "context.link coverage missing (markdownLinks.ts, links.ts, textMenu.ts, PreviewView/App wiring, suites)"
+    fi
+}
+
+# --- p3-context: AC4 tab bar menu (task 3.6, issue #44) -------------------------
+# Right-click a tab: Close / Close Others / Close All. Close targets the
+# right-clicked tab; Close All (and Close Others) run the same confirmCloseAll
+# flow the File menu uses, so the dirty confirm is honored.
+test_context_ac4_tab_menu() {
+    note "context.AC4 tab menu closes the right tab; Close All honors dirty confirms (plan 03 AC4)"
+    local t="$ROOT/src/lib/tabMenu.ts"
+    local f="$ROOT/src/lib/__tests__/tabMenu.test.tsx"
+    if grep -q 'export function buildTabMenu' "$t" \
+        && grep -q 'onContextMenu={(e) =>' "$ROOT/src/components/TabBar.tsx" \
+        && grep -q 'buildTabMenu(tabs.map((t) => t.path), menu.path)' "$ROOT/src/components/TabBar.tsx" \
+        && grep -q 'onCloseOthers={(keep) => void closeOthers(keep)}' "$ROOT/src/App.tsx" \
+        && grep -q 'onCloseAll={() => void closeAll()}' "$ROOT/src/App.tsx" \
+        && grep -q 'const ok = await confirmCloseAll(' "$ROOT/src/App.tsx" \
+        && grep -q 'confirmCloseTab(' "$ROOT/src/App.tsx" \
+        && grep -q 'Close dispatches onClose with the right-clicked tab'"'"'s path and closes the menu' "$f" \
+        && grep -q 'Close All dispatches onCloseAll' "$f" \
+        && grep -q 'TabBar receives the close-others / close-all flows from the App' "$f" \
+        && grep -q 'from "./dialogs"' "$ROOT/src/lib/tabClose.ts"; then
+        pass "AC4: tab menu dispatches the right tab's close + confirmCloseAll wiring pinned"
+    else
+        fail "AC4 coverage missing (tabMenu.ts, TabBar.tsx, App.tsx close flows, tabMenu.test.tsx)"
+    fi
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (running the tab-menu suite needs node + node_modules)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/tabMenu.test.tsx) 2>&1 ); then
+        pass "tab-menu suite green (also runs in CI via npm test)"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "tab-menu suite failed (plan 03 AC4)"
+    fi
+}
+
+# --- p3-context: AC5 explorer menu (task 3.6, issue #44) ------------------------
+# New file / New folder create real entries (verified on disk by the Rust
+# tests in commands.rs), Rename moves them, Delete moves to the app-local
+# trash (never unlinks) and is undoable from the status bar (fs_rename back),
+# and Reveal opens the OS file manager through plugin-opener.
+test_context_ac5_explorer_menu() {
+    note "context.AC5 explorer menu: on-disk create/rename, trash + status-bar Undo, reveal (plan 03 AC5)"
+    local t="$ROOT/src/lib/explorerMenu.ts"
+    local f="$ROOT/src/lib/__tests__/explorerContextMenu.test.tsx"
+    local rs="$ROOT/src-tauri/src/commands.rs"
+    if grep -q 'export function buildExplorerMenu' "$t" \
+        && grep -q 'onContextMenu' "$ROOT/src/components/Explorer.tsx" \
+        && grep -q 'buildExplorerMenu(' "$ROOT/src/components/Explorer.tsx" \
+        && grep -q 'await fsNewDir(dir, name) : await fsNewFile(dir, name)' "$ROOT/src/components/Explorer.tsx" \
+        && grep -q 'await fsRename(target.path' "$ROOT/src/components/Explorer.tsx" \
+        && grep -q 'await fsTrash(target.path)' "$ROOT/src/components/Explorer.tsx" \
+        && grep -q 'revealItemInDir(target.path)' "$ROOT/src/components/Explorer.tsx" \
+        && grep -q '"fs_new_file"' "$ROOT/src/lib/fileIo.ts" \
+        && grep -q '"fs_new_dir"' "$ROOT/src/lib/fileIo.ts" \
+        && grep -q '"fs_rename"' "$ROOT/src/lib/fileIo.ts" \
+        && grep -q '"fs_trash"' "$ROOT/src/lib/fileIo.ts" \
+        && grep -q 'pub fn fs_new_file' "$rs" \
+        && grep -q 'pub fn fs_new_dir' "$rs" \
+        && grep -q 'pub fn fs_rename' "$rs" \
+        && grep -q 'pub fn fs_trash' "$rs" \
+        && grep -q 'commands::fs_trash' "$ROOT/src-tauri/src/lib.rs" \
+        && grep -q 'fn fs_new_file_creates_empty_file' "$rs" \
+        && grep -q 'fn fs_new_dir_creates_directory' "$rs" \
+        && grep -q 'fn move_to_trash_moves_file_and_never_unlinks' "$rs" \
+        && grep -q 'fn move_to_trash_restorable_via_fs_rename' "$rs" \
+        && grep -q 'offerTrashUndo' "$ROOT/src/App.tsx" \
+        && grep -q 'undoTrashDelete' "$ROOT/src/App.tsx" \
+        && grep -q 'onUndoTrash' "$ROOT/src/components/StatusBar.tsx" \
+        && grep -q 'Delete asks the native confirm, moves to the trash (no unlink), and reports the trash path for Undo' "$f" \
+        && grep -q 'Reveal opens the OS file manager at the entry (plugin-opener)' "$f" \
+        && grep -q 'the App offers a ~30s status-bar Undo after an explorer delete' "$f"; then
+        pass "AC5: explorer fs_* wiring (Rust on-disk tests, trash Undo, reveal) pinned"
+    else
+        fail "AC5 coverage missing (explorerMenu.ts, Explorer.tsx, fileIo.ts, commands.rs, App/StatusBar, suites)"
+    fi
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (running the explorer-menu suite needs node + node_modules)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/explorerContextMenu.test.tsx) 2>&1 ); then
+        pass "explorer-menu suite green (also runs in CI via npm test)"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "explorer-menu suite failed (plan 03 AC5)"
+    fi
+}
+
+# --- p3-context: AC6 keyboard navigation (task 3.1, issue #39) ------------------
+# The menu is keyboard-navigable end-to-end: arrows/Home/End between enabled
+# items, Enter/Space activate, ArrowRight/ArrowLeft into and out of submenus,
+# Escape closes submenu-first. Verified by the interaction test suite.
+test_context_ac6_keyboard() {
+    note "context.AC6 menu keyboard-navigable end-to-end (arrows/Enter/Escape) (plan 03 AC6)"
+    local f="$ROOT/src/lib/__tests__/contextMenu.test.tsx"
+    if grep -q 'ArrowDown/ArrowUp navigate the enabled items, wrapping at the ends' "$f" \
+        && grep -q 'Home and End jump to the first and last enabled item' "$f" \
+        && grep -q 'Enter (and Space) activate the focused leaf item and close' "$f" \
+        && grep -q 'ArrowRight opens the focused item'"'"'s submenu and focuses its first child' "$f" \
+        && grep -q 'Escape closes an open submenu first, then the menu; Tab dismisses' "$f" \
+        && grep -q 'a disabled item is inert on click and skipped by arrow navigation' "$f"; then
+        pass "AC6: keyboard navigation (arrows/Enter/Escape/submenus) pinned in contextMenu.test.tsx"
+    else
+        fail "AC6 coverage missing (contextMenu.test.tsx keyboard interaction tests)"
+    fi
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (running the component suite needs node + node_modules)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/contextMenu.test.tsx) 2>&1 ); then
+        pass "context-menu component suite green (also runs in CI via npm test)"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "context-menu component suite failed (plan 03 AC6)"
+    fi
+}
+
+# --- p3-context: AC7 no regressions (plan 03 §4 AC7) -----------------------------
+# All existing suites green: the entire vitest gate (1200+ tests across the
+# round-trip fixtures, every earlier plan's suites, and the P3 context-menu
+# suites) is run here, not just asserted present. Left-click editing is
+# untouched because the context menu hooks only the contextmenu event (the
+# Editor.tsx handler returns true solely for right-click) and the menu picks
+# dispatch through the same registry the toolbar already used.
+test_context_ac7_all_suites_green() {
+    note "context.AC7 all existing suites green (full vitest gate)"
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (running the full vitest gate needs node + node_modules)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run) 2>&1 ); then
+        pass "full vitest gate green (npm test)"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "full vitest gate failed (plan 03 AC7)"
+    fi
+}
+
+# --- p3-context: Windows + Linux manual matrix (every menu x every surface) -----
+# The manual matrix itself (plan doc §6) is run on a real desktop after
+# `npm run tauri build`; these checks gate the platform behavior the matrix
+# exercises, on both platforms (the Windows runner gets them under Git Bash):
+#  - CRLF: every context-menu edit flows through the save pipeline, which
+#    restores the document's CRLF ending (pipeline.ts); the preview link
+#    splices address CRLF source offsets and keep every other byte intact.
+#  - Reserved names: the explorer fs_* commands refuse Windows reserved
+#    names (CON, NUL, COM1, trailing dots/spaces) on every platform
+#    (golden rule 4).
+#  - Reveal: plugin-opener's revealItemInDir (Windows: Explorer focused on
+#    the entry; Linux: the default file manager) with the opener:default
+#    capability.
+#  - Confirms: the destructive items (delete table / remove image / explorer
+#    delete / close all) use the P0 native confirm dialog, never
+#    window.confirm.
+test_context_manual_matrix() {
+    note "context.matrix Windows + Linux manual-matrix wiring (CRLF, reserved names, reveal, native confirms)"
+    local ml="$ROOT/src/lib/__tests__/markdownLinks.test.ts"
+    if grep -q 'if (opts.eol === "crlf")' "$ROOT/src/lib/pipeline.ts" \
+        && grep -q 'source.includes("\\r\\n") ? "crlf" : "lf"' "$ROOT/src/lib/fileIo.ts" \
+        && grep -q 'addresses offsets in CRLF source correctly' "$ml" \
+        && grep -q 'keeps every other byte (CRLF, surrounding blocks) intact' "$ml" \
+        && grep -q 'is_windows_reserved' "$ROOT/src-tauri/src/fs/paths.rs" \
+        && grep -q 'is_windows_reserved' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q '"CON"' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'revealItemInDir' "$ROOT/src/components/Explorer.tsx" \
+        && grep -q 'opener:default' "$ROOT/src-tauri/capabilities/default.json" \
+        && grep -q 'confirmMessage' "$ROOT/src/lib/tabClose.ts" \
+        && grep -q 'confirmMessage' "$ROOT/src/components/Explorer.tsx"; then
+        pass "windows+linux: CRLF save pipeline + CRLF-safe splices + reserved-name refusal + reveal + native confirms"
+    else
+        fail "manual-matrix wiring missing (CRLF pipeline, reserved-name gate, plugin-opener reveal, native confirms)"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -3960,6 +4358,28 @@ case "$SUBSET" in
         # Windows manual pass (insert -> edit -> export PDF/DOCX)
         test_mermaid_windows_manual
         ;;
+    p3-context)
+        # Task 3.1 (issue #39): shared ContextMenu component
+        test_context_component
+        # Task 3.2 (issue #40): editor text menu (plan 03 AC1)
+        test_context_ac1_text_menu
+        # Task 3.3 (issue #41): table menu (plan 03 AC2)
+        test_context_ac2_table_menu
+        # Task 3.4 (issue #42): image menu (plan 03 AC3)
+        test_context_ac3_image_menu
+        # Task 3.5 (issue #43): link menu, all views
+        test_context_link_menu
+        # Task 3.6 (issue #44): tab bar menu (plan 03 AC4)
+        test_context_ac4_tab_menu
+        # Task 3.6 (issue #44): explorer menu + fs_* Rust commands (plan 03 AC5)
+        test_context_ac5_explorer_menu
+        # Task 3.1 (issue #39): keyboard navigation (plan 03 AC6)
+        test_context_ac6_keyboard
+        # Plan 03 §4 AC7: all existing suites green
+        test_context_ac7_all_suites_green
+        # Windows + Linux manual matrix (every menu x every surface)
+        test_context_manual_matrix
+        ;;
     shell)
         test_shell_new_bundled
         test_shell_new_menu_wiring
@@ -4206,9 +4626,19 @@ case "$SUBSET" in
         test_mermaid_ac7_undo
         test_mermaid_ac8_startup_perf
         test_mermaid_windows_manual
+        test_context_component
+        test_context_ac1_text_menu
+        test_context_ac2_table_menu
+        test_context_ac3_image_menu
+        test_context_link_menu
+        test_context_ac4_tab_menu
+        test_context_ac5_explorer_menu
+        test_context_ac6_keyboard
+        test_context_ac7_all_suites_green
+        test_context_manual_matrix
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|p2-style-inspector|p2-tables|p2-mermaid-export|p2-mermaid|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|p2-style-inspector|p2-tables|p2-mermaid-export|p2-mermaid|p3-context|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac

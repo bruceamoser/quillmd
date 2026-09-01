@@ -105,3 +105,98 @@ parked), per-item icons beyond a small SVG set.
    new/rename/trash/reveal + `fs_*` Rust commands + trash undo.
 7. **Acceptance** — `p3-context` section in the harness; Windows + Linux
    manual matrix (every menu × every surface).
+
+## 6. Manual acceptance matrix (Windows + Linux)
+
+The headless suites (`npm test`, `tests\acceptance-test.sh p3-context` /
+`npm run build` on a Windows box under Git Bash; `bash
+tests/acceptance-test.sh p3-context` on Linux) run everywhere, but real
+right-click menus, the native confirm dialogs, the OS file manager, and the
+system clipboard can only be observed on a real desktop. After
+`npm run tauri build` on a Windows 10/11 machine and on a Linux desktop, run
+the `p3-context` harness subset and then check the matrix below by hand —
+every menu × every surface, both platforms.
+
+Platform notes that apply to every row:
+
+- **Save pipeline (Windows first-class).** After any menu-driven edit,
+  `Ctrl+S` a CRLF document: `git diff` on the file must be empty for an
+  untouched document, and menu-made edits (a 3×4 table, a removed link, a
+  resized image) must save with CRLF endings preserved.
+- **Keyboard (both platforms).** Every menu: right-click opens it;
+  ArrowDown/ArrowUp/Home/End move; Enter/Space activate; ArrowRight/
+  ArrowLeft enter/leave submenus; Escape closes submenu-first, then the
+  menu; a disabled item is grayed and skipped.
+- **Native dialogs (both platforms).** Destructive picks (Delete table,
+  Remove image, Explorer Delete, Close All over dirty tabs) show the native
+  confirm; declining leaves the document / file untouched.
+
+### Editor text menu
+
+- [ ] **WYSIWYG — empty caret.** Right-click in a paragraph: Cut/Copy
+      disabled, Paste/Paste as text/Select all enabled; Format and Insert
+      submenus open; pick Format > Bold on a selection → the same `**…`
+      the toolbar button writes; pick Insert > Heading 3 → the block
+      becomes `### …`.
+- [ ] **WYSIWYG — on a link.** Right-click inside a link: the Link item is
+      a submenu (Open link / Edit link / Copy address / Remove link). Open
+      launches the system browser (Windows: default browser; Linux:
+      xdg-open default); Copy address puts the raw href on the system
+      clipboard; Remove unlinks and keeps the text; the unlink is undoable
+      via Ctrl+Z.
+- [ ] **Source view.** Right-click in the CodeMirror source: Copy / Paste /
+      Paste as text / Select All + Open in WYSIWYG; the last switches the
+      tab back to WYSIWYG keeping the cursor.
+- [ ] **Preview.** Right-click in the rendered preview: Copy copies the
+      rendered text under the caret; on a rendered link the Link submenu
+      offers Open / Edit / Copy address / Remove — Edit reopens the link
+      dialog prefilled, Remove splices the markdown source (the document
+      text changes, the preview re-renders); Open in WYSIWYG switches
+      modes.
+
+### Table menu
+
+- [ ] **WYSIWYG, inside a cell.** Right-click in a 3×3 table: the table
+      menu (not the text menu) with row/column insert & delete, cell
+      alignment (the current alignment checked), Toggle header row, Delete
+      table (danger). Insert column right → the saved file holds a valid
+      3×4 GFM table; Delete table → native confirm, the block is removed
+      cleanly and surrounding text survives.
+- [ ] **WYSIWYG, outside a table.** The text menu still shows (the table
+      menu never leaks out of the table).
+
+### Image menu
+
+- [ ] **WYSIWYG, on an image.** Click an image (it selects), right-click:
+      Edit image (URL dialog prefilled) / Change alt text (dialog, alt
+      focused) / Replace image (native file picker; the file is copied into
+      the asset folder and the src updated) / Remove image (native
+      confirm; Ctrl+Z restores the image byte-identically).
+- [ ] **WYSIWYG, image inside a table cell.** The image menu still wins
+      over the table menu.
+
+### Tab bar menu
+
+- [ ] **Tab strip.** Right-click a tab: Close / Close Others / Close All.
+      Close closes that tab (dirty → native confirm); Close Others keeps
+      the right-clicked tab and confirms the rest as one batch; Close All
+      honors the dirty confirms (declining keeps every tab).
+
+### Explorer menu
+
+- [ ] **File row.** Right-click a file: Rename / Delete / Copy Path /
+      Reveal in File Manager. Rename prompts and moves the entry; Delete →
+      native confirm → the file disappears from the tree and lands in the
+      app trash (not unlinked), and the status bar offers ~30 s of Undo
+      (clicking it restores the file at its original path); Copy Path puts
+      the full path on the system clipboard; Reveal opens **Windows:
+      Explorer focused on the file** / **Linux: the default file manager
+      with the file selected**.
+- [ ] **Folder row.** Right-click a folder: New File / New Folder (inside
+      it) plus the file-row items. New file/folder create real empty
+      entries on disk (check the folder in the OS file manager).
+- [ ] **Folder section (no entry).** New File / New Folder at the opened
+      root + Collapse All (folds every expanded directory).
+- [ ] **Reserved names (Windows).** New File / Rename to `CON`, `NUL.md`,
+      `COM1`, or a trailing-dot/space name are refused with an error — on
+      both platforms (the guard is platform-independent).
