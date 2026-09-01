@@ -27,6 +27,7 @@ import { openLinkUrl, removeLink } from "../lib/links";
 import {
   applyEditorFont,
   applyViewSettings,
+  inImage,
   inTable,
   publishBlockStyle,
   registerEditorCommandListener,
@@ -53,6 +54,8 @@ import { buildTextMenu, linkHrefAtCaret, toContextEntries } from "../lib/textMen
 import type { TextMenuItem, TextMenuEntry } from "../lib/textMenu";
 import { buildTableMenu, toTableContextEntries } from "../lib/tableMenu";
 import type { TableMenuItem, TableMenuEntry } from "../lib/tableMenu";
+import { buildImageMenu, toImageContextEntries } from "../lib/imageMenu";
+import type { ImageMenuItem } from "../lib/imageMenu";
 import { readClipboardText } from "../lib/clipboard";
 import { confirmMessage } from "../lib/dialogs";
 
@@ -763,15 +766,17 @@ export default function Editor({
     left: number;
   } | null>(null);
 
-  // The open editor context menu (plan 03 tasks 3.2-3.3, issues #40/#41):
-  // the cursor position in viewport coordinates (the contextmenu event's
-  // clientX/clientY) plus the item set built for the selection that was
-  // current when the menu opened — the table menu (row/column insert &
-  // delete, alignment, header row, delete table) when the selection is
-  // inside a table, the text menu otherwise.
+  // The open editor context menu (plan 03 tasks 3.2-3.4, issues
+  // #40/#41/#42): the cursor position in viewport coordinates (the
+  // contextmenu event's clientX/clientY) plus the item set built for the
+  // selection that was current when the menu opened — the image menu (edit /
+  // alt / replace / remove) when the selection is an image node, the table
+  // menu (row/column insert & delete, alignment, header row, delete table)
+  // when the selection is inside a table, the text menu otherwise.
   const [textMenu, setTextMenu] = useState<
     | { x: number; y: number; kind: "text"; items: readonly TextMenuEntry[] }
     | { x: number; y: number; kind: "table"; items: readonly TableMenuEntry[] }
+    | { x: number; y: number; kind: "image"; items: readonly ImageMenuItem[] }
     | null
   >(null);
 
@@ -845,19 +850,28 @@ export default function Editor({
       // (download/save-as for file://, nothing useful for http/https).
       handleDOMEvents: {
         auxclick: (view, event) => handleEditorMiddleClick(view, event as MouseEvent),
-        // Right-click (plan 03 tasks 3.2-3.3, issues #40/#41): the editor
-        // context menu. The builder is picked from the selection: inside a
-        // table the table menu (buildTableMenu) replaces the text menu
-        // (buildTextMenu), which resolves the selection (empty / range /
-        // node) into its item set. The shared ContextMenu renders at the
-        // cursor, and picks dispatch through the registry (plan 03 AC1,
-        // 1:1 mapping). Returning true suppresses the browser's own context
-        // menu.
+        // Right-click (plan 03 tasks 3.2-3.4, issues #40/#41/#42): the
+        // editor context menu. The builder is picked from the selection
+        // (plan 03 §3: resolve empty vs range vs node): a NodeSelection on
+        // an image node shows the image menu (buildImageMenu) — checked
+        // first, so an image inside a table cell still gets its own menu —
+        // inside a table the table menu (buildTableMenu) replaces the text
+        // menu (buildTextMenu), which resolves the selection into its item
+        // set. The shared ContextMenu renders at the cursor, and picks
+        // dispatch through the registry (plan 03 AC1, 1:1 mapping).
+        // Returning true suppresses the browser's own context menu.
         contextmenu: (_view, event) => {
           const active = editorRef.current;
           if (!active || !active.isEditable) return false;
           const mouseEvent = event as MouseEvent;
-          if (inTable(active)) {
+          if (inImage(active)) {
+            setTextMenu({
+              x: mouseEvent.clientX,
+              y: mouseEvent.clientY,
+              kind: "image",
+              items: buildImageMenu(active),
+            });
+          } else if (inTable(active)) {
             setTextMenu({
               x: mouseEvent.clientX,
               y: mouseEvent.clientY,
@@ -1083,6 +1097,30 @@ export default function Editor({
     runEditorCommand(ed, item.command);
   };
 
+  // The image context menu's pick handler (plan 03 task 3.4, issue #42):
+  // every item dispatches its registry command through the shared registry —
+  // the same ids the image click (imageEdit) and the image menu dispatch
+  // (plan 03 AC1, 1:1 mapping). "Remove image" is the destructive item: the
+  // plan (03 §3) gates it on the native confirm dialog before the command
+  // runs, so a declined confirm leaves the document untouched (the delete
+  // itself is a plain undoable ProseMirror delete — plan 03 AC3).
+  const dispatchImageMenu = (item: ImageMenuItem): void => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    if (item.command === "imageDelete") {
+      void confirmMessage({
+        title: "QuillMD",
+        message: "Remove this image?",
+        kind: "warning",
+        buttons: "yesNo",
+      }).then((result) => {
+        if (result === "yes") runEditorCommand(ed, "imageDelete");
+      });
+      return;
+    }
+    runEditorCommand(ed, item.command);
+  };
+
   const filtered = slash
     ? SLASH_ACTIONS.filter((a) => a.key.startsWith(slash.query))
     : [];
@@ -1129,10 +1167,18 @@ export default function Editor({
           items={
             textMenu.kind === "table"
               ? toTableContextEntries(textMenu.items, dispatchTableMenu)
-              : toContextEntries(textMenu.items, dispatchTextMenu)
+              : textMenu.kind === "image"
+                ? toImageContextEntries(textMenu.items, dispatchImageMenu)
+                : toContextEntries(textMenu.items, dispatchTextMenu)
           }
           onClose={() => setTextMenu(null)}
-          label={textMenu.kind === "table" ? "Table menu" : "Text menu"}
+          label={
+            textMenu.kind === "table"
+              ? "Table menu"
+              : textMenu.kind === "image"
+                ? "Image menu"
+                : "Text menu"
+          }
         />
       )}
     </div>

@@ -26,6 +26,10 @@ export interface ImageEditDialogProps {
   // Opening values: the image under the caret when isEditing, otherwise the
   // empty values (the dialog then acts as an insert at the caret).
   prefill: ImageEditPrefill;
+  // Which field gets the initial focus: the URL field by default (plan 08
+  // §3), or the alt-text field when the dialog was opened from the image
+  // menu's "Change alt text" item (plan 03 task 3.4, issue #42).
+  focusField?: "url" | "alt";
   // Submits the dialog with the field values.
   onApply: (payload: ImageEditPayload) => void;
   // Cancel (Esc, Cancel button, or the backdrop).
@@ -34,6 +38,7 @@ export interface ImageEditDialogProps {
 
 export default function ImageEditDialog({
   prefill,
+  focusField = "url",
   onApply,
   onClose,
 }: ImageEditDialogProps) {
@@ -44,13 +49,16 @@ export default function ImageEditDialog({
   // non-empty cases while typing.
   const [error, setError] = useState<string | null>(null);
   const urlRef = useRef<HTMLInputElement>(null);
+  const altRef = useRef<HTMLInputElement>(null);
 
   // Plan 08 §3: autofocus the URL field on open, selected for replacement.
+  // Plan 03 task 3.4 (issue #42): the alt-text item of the image menu opens
+  // the same dialog with the alt field focused instead.
   useEffect(() => {
-    const el = urlRef.current;
+    const el = focusField === "alt" ? altRef.current : urlRef.current;
     if (el) {
       el.focus();
-      el.select();
+      if (el === urlRef.current) el.select();
     }
   }, []);
 
@@ -136,6 +144,7 @@ export default function ImageEditDialog({
           <label className="quillmd-image-field">
             <span className="quillmd-image-label">Alt text</span>
             <input
+              ref={altRef}
               className="quillmd-image-input"
               type="text"
               value={alt}
