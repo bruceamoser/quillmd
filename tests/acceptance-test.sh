@@ -4811,6 +4811,71 @@ test_settings_suites_green() {
     fi
 }
 
+# --- p4-view-settings: full screen (task 10.3, issue #95) ------------------------
+# View > Full Screen (F11): hides the menu bar, toolbar, status bar, and side
+# rails, leaving the editor only; F11 or Esc exits. Enter applies the
+# quillmd-fullscreen class on the app root (the chrome-hide CSS) and requests
+# the fullscreen API so the OS takes the window (and the native menu bar) with
+# it; when the API is absent or blocked the mode falls back to chrome-hide-only
+# and the frontend keydown handles Esc. The menu item lives in menu.rs (F11
+# accelerator), the routing in App.tsx, and the chrome hide in App.css. The
+# deep behavior (every exit path, the blocked-API fallback, the rapid
+# F11-F11 race, and the byte-identity guarantee) is pinned in
+# fullscreen.test.tsx, which runs below.
+
+test_fullscreen_menu_wiring() {
+    note "fullscreen.menu View > Full Screen (view-fullscreen, F11) present"
+    if grep -q 'MenuItem::with_id(app, "view-fullscreen", "Full Screen", true, Some("F11"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '\.items(&\[&explorer, &navigation, &statusbar, &full_screen\])' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "fullscreen.menu View > Full Screen (view-fullscreen, F11) present"
+    else
+        fail "fullscreen.menu View > Full Screen (view-fullscreen, F11) present"
+    fi
+}
+
+test_fullscreen_app_wiring() {
+    note "fullscreen.app App.tsx routes view-fullscreen + F11/Esc + API fullscreen"
+    if grep -q 'id === "view-fullscreen"' "$ROOT/src/App.tsx" \
+        && grep -q 'e.key === "F11"' "$ROOT/src/App.tsx" \
+        && grep -q 'requestFullscreen' "$ROOT/src/App.tsx" \
+        && grep -q '"fullscreenchange"' "$ROOT/src/App.tsx" \
+        && grep -q 'document.exitFullscreen' "$ROOT/src/App.tsx" \
+        && grep -q '"quillmd-app quillmd-fullscreen"' "$ROOT/src/App.tsx"; then
+        pass "fullscreen.app App.tsx routes view-fullscreen + F11/Esc + API fullscreen"
+    else
+        fail "fullscreen.app App.tsx routes view-fullscreen + F11/Esc + API fullscreen"
+    fi
+}
+
+test_fullscreen_css() {
+    note "fullscreen.css App.css hides header/tabbar/statusbar/rails/toolbar in full screen"
+    if grep -q '.quillmd-app.quillmd-fullscreen .quillmd-header' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-app.quillmd-fullscreen .quillmd-tabbar' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-app.quillmd-fullscreen .quillmd-statusbar' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-app.quillmd-fullscreen .quillmd-explorer' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-app.quillmd-fullscreen .quillmd-outline' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-app.quillmd-fullscreen .quillmd-toolbar' "$ROOT/src/App.css"; then
+        pass "fullscreen.css App.css hides header/tabbar/statusbar/rails/toolbar in full screen"
+    else
+        fail "fullscreen.css App.css hides header/tabbar/statusbar/rails/toolbar in full screen"
+    fi
+}
+
+test_fullscreen_suites_green() {
+    note "fullscreen.green fullscreen vitest suite passes"
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (node / node_modules not available)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/fullscreen.test.tsx) 2>&1 ); then
+        pass "fullscreen.green fullscreen vitest suite passes"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "fullscreen.green fullscreen vitest suite failed (plan 10 task 10.3)"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -5261,6 +5326,11 @@ case "$SUBSET" in
         test_settings_dialog_component
         test_settings_app_wiring
         test_settings_suites_green
+        # Task 10.3 (issue #95): full screen
+        test_fullscreen_menu_wiring
+        test_fullscreen_app_wiring
+        test_fullscreen_css
+        test_fullscreen_suites_green
         ;;
     shell)
         test_shell_new_bundled
