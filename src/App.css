@@ -1805,6 +1805,102 @@ button.quillmd-status-spellcheck:hover {
   font-size: 13px;
 }
 
+/* --- context menu --------------------------------------------------------- */
+/* Shared right-click context menu (plan 03 task 3.1, issue #39): the fixed
+   surface every right-click menu renders through. Mirrors the slash menu's
+   floating-panel styling; the item set (labels, shortcuts, checks, danger,
+   submenus) comes from the declarative model in ContextMenu.tsx. */
+
+.quillmd-context-menu {
+  position: fixed;
+  z-index: 100;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+  min-width: 220px;
+  max-height: 70vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.quillmd-context-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  border-radius: 4px;
+  text-align: left;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* Roving focus / hover highlight — the same accent as the toolbar and
+   slash-menu selection. */
+.quillmd-context-item:focus-visible,
+.quillmd-context-focused {
+  background: var(--accent-soft);
+}
+
+.quillmd-context-item.quillmd-context-danger {
+  color: var(--danger);
+}
+
+.quillmd-context-icon {
+  flex: 0 0 auto;
+  width: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+}
+
+.quillmd-context-check {
+  flex: 0 0 auto;
+  width: 14px;
+  text-align: center;
+}
+
+.quillmd-context-label {
+  flex: 1 1 auto;
+}
+
+.quillmd-context-shortcut {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.quillmd-context-caret {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  padding-left: 8px;
+}
+
+.quillmd-context-item[aria-disabled="true"] {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.quillmd-context-sep {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 4px 2px;
+}
+
+/* Submenus share the panel chrome and sit just above the base menu's
+   stacking (both are fixed; the submenu is a child so it paints above). */
+.quillmd-context-submenu {
+  min-width: 180px;
+}
+
 /* --- source (CodeMirror) ------------------------------------------------- */
 
 .quillmd-source {
