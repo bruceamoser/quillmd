@@ -52,10 +52,11 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, recent: &[String]) -> tauri::Result
     let view = build_view_menu(app)?;
     let insert = build_insert_menu(app)?;
     let format = build_format_menu(app)?;
+    let tools = build_tools_menu(app)?;
     let help = build_help_menu(app)?;
 
     let menu = MenuBuilder::new(app)
-        .items(&[&file, &edit, &view, &insert, &format, &help])
+        .items(&[&file, &edit, &view, &insert, &format, &tools, &help])
         .build()?;
     Ok(menu)
 }
@@ -534,6 +535,17 @@ fn build_format_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
         .item(&clear)
         .build()?;
     Ok(format)
+}
+
+fn build_tools_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> {
+    // Word count (plan 09 task 9.4, issue #87): the read-only counts dialog
+    // (words, characters, sentences, paragraphs, reading time). The frontend
+    // (App.tsx) resolves the id and scopes the counts to the selection when
+    // text is selected; the accelerator matches the browser-dev shortcut.
+    let word_count =
+        MenuItem::with_id(app, "tools-word-count", "Word Count", true, Some("Ctrl+Shift+F5"))?;
+    let tools = SubmenuBuilder::new(app, "Tools").item(&word_count).build()?;
+    Ok(tools)
 }
 
 fn build_help_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> {

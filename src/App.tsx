@@ -37,6 +37,8 @@ import {
 import { templateById } from "./lib/templates";
 import { collectDocInfo } from "./lib/docInfo";
 import type { DocInfo } from "./lib/docInfo";
+import { countSelection, countText } from "./lib/counts";
+import type { TextCounts } from "./lib/counts";
 import {
   ZOOM_DEFAULT,
   ZOOM_STEP,
@@ -51,6 +53,7 @@ import {
   registerImageReplaceListener,
   registerLinkDialogListener,
   registerTableDialogListener,
+  registerWordCountDialogListener,
   requestStylesGallery,
   runEditorCommand,
 } from "./lib/editorCommands";
@@ -154,6 +157,7 @@ import LinkDialog from "./components/LinkDialog";
 import ImageDialog from "./components/ImageDialog";
 import ImageEditDialog from "./components/ImageEditDialog";
 import InsertTableDialog from "./components/InsertTableDialog";
+import WordCountDialog from "./components/WordCountDialog";
 import type { TableInsertSpec } from "./lib/tables";
 import { loadViewMode, saveViewMode } from "./components/viewModes";
 import type { ViewMode } from "./components/viewModes";
@@ -273,6 +277,7 @@ const SHORTCUTS_TEXT = [
   "Ctrl+Shift+V: paste as plain text (Edit > Paste as Text)",
   "Ctrl+Shift+E: toggle explorer",
   "Ctrl+Shift+8: toggle navigation pane",
+  "Ctrl+Shift+F5: word count (Tools > Word Count)",
 ].join("\n");
 
 export default function App() {
@@ -334,6 +339,16 @@ export default function App() {
   // into the same instance (same shape as the link dialog).
   const [tableDialog, setTableDialog] = useState<{
     editor: CoreEditor;
+  } | null>(null);
+  // Word count dialog (plan 09 task 9.4, issue #87): the registry "wordCount"
+  // command (Tools > Word Count, Ctrl+Shift+F5) requests the dialog. The
+  // counts are a snapshot taken at request time: scoped to the requesting
+  // editor's selection when text is selected, otherwise the whole document —
+  // computed by the same counts.ts the status bar uses, so the dialog and the
+  // status bar always agree (plan 09 AC3).
+  const [wordCountDialog, setWordCountDialog] = useState<{
+    scoped: boolean;
+    counts: TextCounts;
   } | null>(null);
   // Broken-image detection (plan 08 task 8.5, issue #80, AC6): the srcs of
   // the active doc whose local file no longer exists on disk (drives the
@@ -426,12 +441,14 @@ export default function App() {
         ? "source"
         : "none";
 
-  const wordCount = useMemo(() => {
-    const trimmed = currentText.trim();
-    return trimmed.length === 0 ? 0 : trimmed.split(/\s+/).length;
-  }, [currentText]);
+  // Status-bar counts (plan 09 task 9.4, issue #87): the same counts.ts the
+  // Word Count dialog uses, so the two surfaces always agree — the word rule
+  // (whitespace-split of the trimmed text) is unchanged from before.
+  const docCounts = useMemo(() => countText(currentText), [currentText]);
 
-  const charCount = currentText.length;
+  const wordCount = docCounts.words;
+
+  const charCount = docCounts.chars;
 
   const updateDoc = useCallback((path: string, patch: Partial<DocState>) => {
     setDocs((prev) => {
@@ -1400,6 +1417,60 @@ export default function App() {
     [tableDialog],
   );
 
+  // --- word count dialog (plan 09 task 9.4, issue #87) ------------------------
+  //
+  // The registry "wordCount" command (Tools > Word Count, Ctrl+Shift+F5)
+  // requests the dialog; this listener is the single renderer. The counts are
+  // computed at request time: scoped to the requesting editor's selection when
+  // text is selected, otherwise the whole document — the same counts the
+  // status bar shows (counts.ts), so the dialog and the status bar always
+  // agree (plan 09 AC3).
+  const openWordCount = useCallback((editor: CoreEditor | null) => {
+    const selection = editor?.state.selection;
+    if (editor && selection && selection.from !== selection.to) {
+      setWordCountDialog({
+        scoped: true,
+        counts: countSelection(editor.state.doc, selection.from, selection.to),
+      });
+      return;
+    }
+    setWordCountDialog({ scoped: false, counts: countText(currentText) });
+  }, [currentText]);
+
+  const openWordCountRef = useRef(openWordCount);
+  openWordCountRef.current = openWordCount;
+
+  useEffect(() => {
+    return registerWordCountDialogListener((editor) => {
+      openWordCountRef.current(editor);
+    });
+  }, []);
+
+  // The dialog's counts are a snapshot of one doc; a tab switch or view-mode
+  // change would leave it showing another doc's numbers, so close it then
+  // (same rule as the other editor dialogs).
+  useEffect(() => {
+    setWordCountDialog(null);
+  }, [activePath, viewMode]);
+
+  const closeWordCountDialog = useCallback(() => {
+    setWordCountDialog(null);
+  }, []);
+
+  // Word count entry point for the menu and the Ctrl+Shift+F5 shortcut: with
+  // a mounted WYSIWYG editor the registry command is dispatched (its request
+  // carries the live editor so the dialog can scope to the selection); in
+  // source/preview modes there is no TipTap instance, so the dialog counts the
+  // whole document from the live text.
+  const openWordCountDialog = useCallback(() => {
+    const editor = currentFindEditor();
+    if (!editor) {
+      openWordCount(null);
+      return;
+    }
+    if (!dispatchEditorCommand("wordCount")) openWordCount(editor);
+  }, [openWordCount]);
+
   // --- broken-image re-link (plan 08 task 8.5, issue #80, AC6) ----------------
   //
   // The placeholder's "Re-link…" button (Editor.tsx node view) calls this with
@@ -1876,6 +1947,11 @@ export default function App() {
           dispatchEditorCommand(action.command, action.param);
           if (action.with) dispatchEditorCommand(action.with);
         }
+      } else if (id === "tools-word-count") {
+        // Plan 09 task 9.4 (issue #87): Tools > Word Count — the same path as
+        // the Ctrl+Shift+F5 shortcut (selection-scoped in WYSIWYG, whole
+        // document otherwise).
+        openWordCountDialog();
       } else if (MENU_TO_COMMAND[id]) {
         dispatchEditorCommand(MENU_TO_COMMAND[id]);
       } else if (id === "help-about") {
@@ -1911,6 +1987,7 @@ export default function App() {
       changeDocTheme,
       changeAppTheme,
       openModifyStyle,
+      openWordCountDialog,
       recentFiles,
       activePath,
       openByPath,
@@ -2107,6 +2184,10 @@ export default function App() {
       } else if (key === "0") {
         e.preventDefault();
         changeZoom(ZOOM_DEFAULT);
+      } else if (key === "f5" && e.shiftKey) {
+        // Word count (plan 09 task 9.4, issue #87): Tools > Word Count.
+        e.preventDefault();
+        openWordCountDialog();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -2125,6 +2206,7 @@ export default function App() {
     findNext,
     findPrev,
     toggleNavigationPane,
+    openWordCountDialog,
     findPanel.open,
   ]);
 
@@ -2338,6 +2420,13 @@ export default function App() {
               )}
               {tableDialog && (
                 <InsertTableDialog onApply={applyTableDialog} onClose={closeTableDialog} />
+              )}
+              {wordCountDialog && (
+                <WordCountDialog
+                  counts={wordCountDialog.counts}
+                  scoped={wordCountDialog.scoped}
+                  onClose={closeWordCountDialog}
+                />
               )}
               {modifyStyleKey !== null && (
                 <ModifyStyleDialog
