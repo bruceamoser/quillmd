@@ -43,15 +43,22 @@ import {
   fontMenuCommand,
   isLineSpacingValue,
   registerBlockStyleListener,
+  registerImageAltDialogListener,
   registerImageEditDialogListener,
   registerImageInsertListener,
+  registerImageReplaceListener,
   registerLinkDialogListener,
   registerTableDialogListener,
   requestStylesGallery,
   runEditorCommand,
 } from "./lib/editorCommands";
 import { IMAGE_FILTER, pickOpenFile } from "./lib/dialogs";
-import { applyImageEdit, insertImage, readImagePrefill } from "./lib/images";
+import {
+  applyImageEdit,
+  imageAtCaret,
+  insertImage,
+  readImagePrefill,
+} from "./lib/images";
 import type { ImageEditPayload, ImageEditPrefill, ImagePayload } from "./lib/images";
 import { assetSrcForPickedFile, loadAssetFolder } from "./lib/assets";
 import { findMissingImageSrcs, relinkFolderFor } from "./lib/missingImages";
@@ -64,6 +71,7 @@ import {
 } from "./lib/links";
 import type { LinkPayload, LinkPrefill } from "./lib/links";
 import type { Editor as CoreEditor } from "@tiptap/core";
+import { NodeSelection } from "@tiptap/pm/state";
 import { loadDocSettings, saveDocSettings } from "./lib/docSettings";
 import type { DocSettings } from "./lib/docSettings";
 import {
@@ -296,6 +304,10 @@ export default function App() {
   const [imageEditDialog, setImageEditDialog] = useState<{
     editor: CoreEditor;
     prefill: ImageEditPrefill;
+    // Which field the dialog opens focused (plan 03 task 3.4, issue #42):
+    // "url" for the edit item (plan 08 §3 default), "alt" for the image
+    // menu's "Change alt text" item.
+    focus: "url" | "alt";
   } | null>(null);
   // Insert-table dialog (plan 06 task 6.3, issue #63): the registry
   // "tableDialog" command (toolbar Table dropdown, Insert > Table) requests
@@ -1121,11 +1133,30 @@ export default function App() {
   // (the image under the caret, or empty values when there is none) is read
   // at request time so a tab switch while the dialog is open can never
   // prefill from the wrong document (same rule as the link dialog).
+  //
+  // Plan 03 task 3.4 (issue #42) adds the image menu's "Change alt text"
+  // item: the same dialog, requested through its own listener with the alt
+  // field focused.
 
   useEffect(() => {
-    return registerImageEditDialogListener((editor) => {
-      setImageEditDialog({ editor, prefill: readImagePrefill(editor) });
+    const unregisterEdit = registerImageEditDialogListener((editor) => {
+      setImageEditDialog({
+        editor,
+        prefill: readImagePrefill(editor),
+        focus: "url",
+      });
     });
+    const unregisterAlt = registerImageAltDialogListener((editor) => {
+      setImageEditDialog({
+        editor,
+        prefill: readImagePrefill(editor),
+        focus: "alt",
+      });
+    });
+    return () => {
+      unregisterEdit();
+      unregisterAlt();
+    };
   }, []);
 
   // The dialog edits a specific TipTap instance, which unmounts on a tab
@@ -1149,6 +1180,49 @@ export default function App() {
     },
     [imageEditDialog],
   );
+
+  // --- image replace (plan 03 task 3.4, issue #42) ----------------------------
+  //
+  // The image menu's "Replace image" item requests the replace flow: run the
+  // P0 native image picker (the same pickOpenFile + IMAGE_FILTER the from-file
+  // insert uses) and swap the selected image's src for the picked file's, run
+  // through the asset pipeline (assets.ts) — referenced relatively when the
+  // pick already sits inside the active doc's folder, otherwise copied next to
+  // the doc. The image node keeps its alt/width/title; only the src changes.
+  // The selected node is re-selected so the image stays selected afterwards.
+
+  const replaceImage = useCallback(
+    async (editor: CoreEditor) => {
+      const picked = await pickOpenFile({ title: "Replace image", filters: [IMAGE_FILTER] });
+      if (!picked || picked.length === 0) return;
+      const target = imageAtCaret(editor);
+      if (!target) return;
+      const docPath = activeDoc?.open.path ?? "";
+      try {
+        const src = await assetSrcForPickedFile(docPath, picked[0], loadAssetFolder());
+        const { state } = editor;
+        const tr = state.tr;
+        tr.setNodeMarkup(target.pos, null, { ...target.node.attrs, src });
+        tr.setSelection(NodeSelection.create(tr.doc, target.pos));
+        editor.view.dispatch(tr);
+        setStatus(`Replaced image ${src}`);
+        // The image's src changed: re-run the check.
+        setMissingRefresh((n) => n + 1);
+      } catch (e) {
+        setStatus(`Could not replace image: ${String(e)}`);
+      }
+    },
+    [activeDoc, setStatus],
+  );
+
+  const replaceImageRef = useRef(replaceImage);
+  replaceImageRef.current = replaceImage;
+
+  useEffect(() => {
+    return registerImageReplaceListener((editor) => {
+      void replaceImageRef.current(editor);
+    });
+  }, []);
 
   // --- insert-table dialog (plan 06 task 6.3, issue #63) ---------------------
   //
@@ -2102,6 +2176,7 @@ export default function App() {
               {imageEditDialog && (
                 <ImageEditDialog
                   prefill={imageEditDialog.prefill}
+                  focusField={imageEditDialog.focus}
                   onApply={applyImageEditDialog}
                   onClose={closeImageEditDialog}
                 />

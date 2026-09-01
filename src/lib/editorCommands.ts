@@ -42,6 +42,9 @@ export type EditorCommandId =
   | "image"
   | "imageFromFile"
   | "imageEdit"
+  | "imageAlt"
+  | "imageReplace"
+  | "imageDelete"
   | "highlight"
   | "subscript"
   | "superscript"
@@ -702,6 +705,16 @@ export function inTable(editor: CoreEditor): boolean {
   return tableColumnsOf(editor.state) !== null;
 }
 
+// Whether the selection is an image node (the image context menu's
+// applicability, plan 03 task 3.4, issue #42 — the same shape as inTable /
+// inDiagram). Only a NodeSelection on an image node qualifies: the image
+// menu acts on the selected node, and a caret beside an image is not the
+// node itself.
+export function inImage(editor: CoreEditor): boolean {
+  const sel = editor.state.selection;
+  return isNodeSelection(sel) && sel.node.type.name === "image";
+}
+
 // The position of the table node under the selection (the node the floating
 // table toolbar, plan 06 task 6.4, issue #64, positions itself over), or
 // null when the selection is not inside a table. A cursor / text selection
@@ -1008,6 +1021,47 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
     // command; the dialog prefills from the image under the caret and applies
     // URL/alt/width back to the same instance.
     run: (editor) => requestImageEditDialog(editor),
+    active: inImage,
+  },
+  {
+    id: "imageAlt",
+    label: "Change alt text",
+    // Plan 03 task 3.4 (issue #42): the image menu's alt-text item. Requests
+    // the image edit dialog with the alt field focused (App.tsx renders it);
+    // the dialog prefills from the selected image and applies the result back
+    // to the same instance (plan 08 task 8.4 plumbing).
+    run: (editor) => requestImageAltDialog(editor),
+    active: inImage,
+  },
+  {
+    id: "imageReplace",
+    label: "Replace image",
+    // Plan 03 task 3.4 (issue #42): the image menu's replace item. Requests
+    // the replace flow; the app shell (App.tsx) runs the native file picker
+    // and swaps the selected image's src through the asset pipeline — the
+    // same request/listener shape as the image insert "file" flow.
+    run: (editor) => requestImageReplace(editor),
+    active: inImage,
+  },
+  {
+    id: "imageDelete",
+    label: "Remove image",
+    // Plan 03 task 3.4 (issue #42): the image menu's destructive item.
+    // Deletes the image node under the selection and drops the cursor where
+    // the node stood. A plain ProseMirror delete, so undo (Ctrl+Z) restores
+    // the image exactly (plan 03 AC3). The surface gates the pick on its
+    // native confirm dialog before this runs (plan 03 §3), the same rule as
+    // the table and diagram delete commands.
+    run: (editor) => {
+      const sel = editor.state.selection;
+      if (!isNodeSelection(sel) || sel.node.type.name !== "image") return false;
+      const { state } = editor;
+      const tr = state.tr.delete(sel.from, sel.to);
+      tr.setSelection(TextSelection.near(tr.doc.resolve(sel.from)));
+      editor.view.dispatch(tr);
+      return true;
+    },
+    active: inImage,
   },
   {
     id: "highlight",
@@ -1700,6 +1754,49 @@ export function registerImageEditDialogListener(fn: ImageEditDialogListener): ()
 export function requestImageEditDialog(editor: CoreEditor): boolean {
   if (!imageEditDialogListener) return false;
   imageEditDialogListener(editor);
+  return true;
+}
+
+// Image alt-text dialog plumbing (plan 03 task 3.4, issue #42): the image
+// menu's "Change alt text" item requests the image edit dialog with the alt
+// field focused. The same request/listener shape as the image edit dialog
+// above — the app shell (App.tsx) is the single renderer.
+let imageAltDialogListener: ImageEditDialogListener | null = null;
+
+export function registerImageAltDialogListener(fn: ImageEditDialogListener): () => void {
+  imageAltDialogListener = fn;
+  return () => {
+    if (imageAltDialogListener === fn) imageAltDialogListener = null;
+  };
+}
+
+// Requests the alt-text-focused image edit dialog for the given editor.
+// Returns false (no-op) when no renderer is registered.
+export function requestImageAltDialog(editor: CoreEditor): boolean {
+  if (!imageAltDialogListener) return false;
+  imageAltDialogListener(editor);
+  return true;
+}
+
+// Image replace plumbing (plan 03 task 3.4, issue #42): the image menu's
+// "Replace image" item requests the replace flow. The same request/listener
+// shape as the image insert "file" flow — the app shell (App.tsx) runs the
+// native file picker and swaps the selected image's src through the asset
+// pipeline.
+let imageReplaceListener: ImageEditDialogListener | null = null;
+
+export function registerImageReplaceListener(fn: ImageEditDialogListener): () => void {
+  imageReplaceListener = fn;
+  return () => {
+    if (imageReplaceListener === fn) imageReplaceListener = null;
+  };
+}
+
+// Requests the image replace flow for the given editor. Returns false (no-op)
+// when no renderer is registered.
+export function requestImageReplace(editor: CoreEditor): boolean {
+  if (!imageReplaceListener) return false;
+  imageReplaceListener(editor);
   return true;
 }
 
