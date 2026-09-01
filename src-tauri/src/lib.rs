@@ -329,6 +329,226 @@ pub fn export_toc_baseline() -> Result<(), SelfTestError> {
     Ok(())
 }
 
+/// The fixed page-break block the pagebreak fixture carries. Kept in sync with
+/// `PAGE_BREAK_HTML` in src-tauri/src/convert.rs (that marker constant is
+/// private to the conversion module).
+const PAGE_BREAK_MARKER: &str = "<div class=\"quillmd-page-break\"></div>";
+
+/// Runs `pdftotext <pdf> -` and returns the extracted text.
+fn pdftotext_text(pdf: &std::path::Path) -> Result<String, SelfTestError> {
+    let output = std::process::Command::new("pdftotext")
+        .arg(pdf)
+        .arg("-")
+        .output()
+        .map_err(|e| SelfTestError(format!("pdftotext: {e}")))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(SelfTestError(format!("pdftotext failed: {stderr}")));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// The document's H1-H4 heading titles in order: a line whose leading `#` run
+/// is 1-4 long and followed by a space (H5 and deeper are out of TOC policy).
+fn heading_titles(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|line| {
+            let trimmed = line.trim_start();
+            let hashes = trimmed.chars().take_while(|c| *c == '#').count();
+            if (1..=4).contains(&hashes) && trimmed.as_bytes().get(hashes) == Some(&b' ') {
+                Some(trimmed[hashes..].trim().to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// For every page-break marker in `text`, the title of the first heading after
+/// it — the chapter that a physical page break must start on a fresh page.
+fn chapters_after_breaks(text: &str) -> Vec<String> {
+    let mut chapters = Vec::new();
+    let mut rest = text;
+    while let Some(idx) = rest.find(PAGE_BREAK_MARKER) {
+        let after = &rest[idx + PAGE_BREAK_MARKER.len()..];
+        for line in after.lines() {
+            if let Some(title) = heading_titles(line).into_iter().next() {
+                chapters.push(title);
+                break;
+            }
+        }
+        rest = after;
+    }
+    chapters
+}
+
+/// Baseline for the plan 09 acceptance PDF visual check (plan 09 task 9.8,
+/// issue #91): exports the two committed acceptance fixtures through the real
+/// `export_pdf` pipeline (marker expansion in a throwaway copy + pandoc/typst)
+/// and inspects the rendered PDFs with pdftotext:
+///
+/// - `toc.md`: the `<!-- quillmd:toc -->` token renders a real outline — the
+///   "Contents" title plus an entry for every H1-H4 heading of the document
+///   (each heading appears once in the body, so a second occurrence can only
+///   be the outline entry) — and the PDF itself carries a bookmark outline
+///   (plan 09 AC1: "exported PDF contains a real outline").
+/// - `pagebreak.md`: every page-break block renders a physical page break at
+///   its position — the no-break control of the same document uses strictly
+///   fewer pages, and each post-break chapter starts at the top of its page
+///   (plan 09 AC6: "exported PDF shows a physical page break at that
+///   position").
+///
+/// Both fixture paths are required (the harness passes the on-disk fixtures,
+/// so this checks what ships) and the source documents are never rewritten
+/// (golden rule 1). Requires pandoc + typst + pdftotext; the harness skips
+/// the check when any of them is absent.
+pub fn export_p4_visual_baseline(
+    toc_md: Option<&std::path::Path>,
+    pagebreak_md: Option<&std::path::Path>,
+) -> Result<(), SelfTestError> {
+    if !convert::pandoc_available() || !convert::typst_available() {
+        return Err(SelfTestError(
+            "export-p4-visual: requires pandoc + typst".into(),
+        ));
+    }
+    // Note: poppler's pdftotext has no --version (it treats the flag as a
+    // filename), so probe with -v (same note as the convert.rs outline test).
+    let pdftotext_ok = std::process::Command::new("pdftotext")
+        .arg("-v")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !pdftotext_ok {
+        return Err(SelfTestError(
+            "export-p4-visual: requires pdftotext".into(),
+        ));
+    }
+
+    let dir = std::env::temp_dir().join(format!("quillmd-export-p4-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|e| SelfTestError(format!("mkdir: {e}")))?;
+
+    // --- AC1: the toc fixture exports a PDF with a real outline ------------
+    let toc_src = toc_md.ok_or_else(|| {
+        SelfTestError("export-p4-visual: missing the toc fixture path".into())
+    })?;
+    let toc_bytes = std::fs::read(toc_src)
+        .map_err(|e| SelfTestError(format!("export-p4-visual: read {}: {e}", toc_src.display())))?;
+    let toc_path = dir.join("toc.md");
+    std::fs::write(&toc_path, &toc_bytes).map_err(|e| SelfTestError(format!("write: {e}")))?;
+    let toc_pdf = dir.join("toc.pdf");
+    convert::export_pdf(&toc_path, &toc_pdf)
+        .map_err(|e| SelfTestError(format!("export_pdf(toc): {e:?}")))?;
+    let toc_pdf_bytes = std::fs::read(&toc_pdf).map_err(|e| SelfTestError(format!("read pdf: {e}")))?;
+    if toc_pdf_bytes.len() < 4 || &toc_pdf_bytes[..4] != b"%PDF" {
+        return Err(SelfTestError(
+            "export-p4-visual: toc PDF export invalid".into(),
+        ));
+    }
+    let text = pdftotext_text(&toc_pdf)?;
+    if !text.contains("Contents") {
+        return Err(SelfTestError(
+            "export-p4-visual: outline title missing from the toc PDF".into(),
+        ));
+    }
+    for heading in heading_titles(&String::from_utf8_lossy(&toc_bytes)) {
+        let count = text.matches(&heading).count();
+        if count < 2 {
+            return Err(SelfTestError(format!(
+                "export-p4-visual: no outline entry for {heading:?} ({count} occurrence(s))"
+            )));
+        }
+    }
+    // The PDF carries a real bookmark outline, not just outline-shaped text.
+    if !toc_pdf_bytes.windows(8).any(|w| w == b"/Outline") {
+        return Err(SelfTestError(
+            "export-p4-visual: toc PDF has no /Outline bookmark structure".into(),
+        ));
+    }
+    if std::fs::read(toc_src).map_err(|e| SelfTestError(format!("re-read: {e}")))? != toc_bytes {
+        return Err(SelfTestError(
+            "export-p4-visual: toc source document was rewritten".into(),
+        ));
+    }
+
+    // --- AC6: the pagebreak fixture exports a PDF with physical breaks ------
+    let pb_src = pagebreak_md.ok_or_else(|| {
+        SelfTestError("export-p4-visual: missing the pagebreak fixture path".into())
+    })?;
+    let pb_bytes = std::fs::read(pb_src)
+        .map_err(|e| SelfTestError(format!("export-p4-visual: read {}: {e}", pb_src.display())))?;
+    let pb_text = String::from_utf8_lossy(&pb_bytes).to_string();
+    let chapters = chapters_after_breaks(&pb_text);
+    if chapters.is_empty() {
+        return Err(SelfTestError(
+            "export-p4-visual: pagebreak fixture has no page-break block".into(),
+        ));
+    }
+    let pb_path = dir.join("pagebreak.md");
+    std::fs::write(&pb_path, &pb_bytes).map_err(|e| SelfTestError(format!("write: {e}")))?;
+    let pb_pdf = dir.join("pagebreak.pdf");
+    convert::export_pdf(&pb_path, &pb_pdf)
+        .map_err(|e| SelfTestError(format!("export_pdf(pagebreak): {e:?}")))?;
+    let pb_pdf_bytes = std::fs::read(&pb_pdf).map_err(|e| SelfTestError(format!("read pdf: {e}")))?;
+    if pb_pdf_bytes.len() < 4 || &pb_pdf_bytes[..4] != b"%PDF" {
+        return Err(SelfTestError(
+            "export-p4-visual: pagebreak PDF export invalid".into(),
+        ));
+    }
+    let text = pdftotext_text(&pb_pdf)?;
+    // pdftotext separates pages with a form feed: N breaks demand N+1 pages.
+    let pages: Vec<&str> = text.split('\u{0c}').collect();
+    if pages.len() <= chapters.len() {
+        return Err(SelfTestError(format!(
+            "export-p4-visual: expected more than {} page(s) for {} break(s), got {}",
+            chapters.len(),
+            chapters.len(),
+            pages.len()
+        )));
+    }
+    // Each post-break chapter starts at the top of its fresh page.
+    for (i, chapter) in chapters.iter().enumerate() {
+        let page_text = pages.get(i + 1).ok_or_else(|| {
+            SelfTestError(format!(
+                "export-p4-visual: no page {} in the pagebreak PDF",
+                i + 1
+            ))
+        })?;
+        if !page_text.trim_start().starts_with(chapter.as_str()) {
+            return Err(SelfTestError(format!(
+                "export-p4-visual: chapter {chapter:?} does not start page {}:\n{page_text}",
+                i + 1
+            )));
+        }
+    }
+    // Control: the same document without the blocks uses strictly fewer pages
+    // (the break, not the content, creates the extra pages).
+    let no_break = pb_text.replace(PAGE_BREAK_MARKER, "");
+    let ctrl_path = dir.join("no-break.md");
+    std::fs::write(&ctrl_path, no_break.as_bytes())
+        .map_err(|e| SelfTestError(format!("write: {e}")))?;
+    let ctrl_pdf = dir.join("no-break.pdf");
+    convert::export_pdf(&ctrl_path, &ctrl_pdf)
+        .map_err(|e| SelfTestError(format!("export_pdf(control): {e:?}")))?;
+    let ctrl_text = pdftotext_text(&ctrl_pdf)?;
+    let ctrl_pages = ctrl_text.matches('\u{0c}').count() + 1;
+    if ctrl_pages >= pages.len() {
+        return Err(SelfTestError(format!(
+            "export-p4-visual: no-break control did not use fewer pages (control: {ctrl_pages}, broken: {})",
+            pages.len()
+        )));
+    }
+    if std::fs::read(pb_src).map_err(|e| SelfTestError(format!("re-read: {e}")))? != pb_bytes {
+        return Err(SelfTestError(
+            "export-p4-visual: pagebreak source document was rewritten".into(),
+        ));
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}
+
 /// Baseline for the file_stat command (plan 01 task 1.5, issue #26): stat a
 /// real temp file and assert the reported size matches the written payload
 /// and the OS exposes a modified time.

@@ -32,12 +32,20 @@ fn main() {
             Some("file-stat") => run_self_test(quillmd_lib::file_stat_baseline()),
             Some("export-asset") => run_self_test(quillmd_lib::export_asset_baseline()),
             Some("export-toc") => run_self_test(quillmd_lib::export_toc_baseline()),
+            Some("export-p4-visual") => {
+                let toc = std::env::args().nth(3).map(PathBuf::from);
+                let pagebreak = std::env::args().nth(4).map(PathBuf::from);
+                run_self_test(quillmd_lib::export_p4_visual_baseline(
+                    toc.as_deref(),
+                    pagebreak.as_deref(),
+                ))
+            }
             Some(other) => {
                 eprintln!("unknown self-test: {other}");
                 std::process::exit(2);
             }
             None => {
-                eprintln!("usage: quillmd --self-test <undo-bytes|line-endings|bom|crash-hook|file-watch|front-matter|stress|large-file|templates|file-stat|export-asset|export-toc>");
+                eprintln!("usage: quillmd --self-test <undo-bytes|line-endings|bom|crash-hook|file-watch|front-matter|stress|large-file|templates|file-stat|export-asset|export-toc|export-p4-visual>");
                 std::process::exit(2);
             }
         },
