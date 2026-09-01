@@ -27,6 +27,7 @@ import { openLinkUrl, removeLink } from "../lib/links";
 import {
   applyEditorFont,
   applyViewSettings,
+  inTable,
   publishBlockStyle,
   registerEditorCommandListener,
   requestImageEditDialog,
@@ -50,7 +51,10 @@ import type { ThemeId } from "../lib/theme";
 import ContextMenu from "./ContextMenu";
 import { buildTextMenu, linkHrefAtCaret, toContextEntries } from "../lib/textMenu";
 import type { TextMenuItem, TextMenuEntry } from "../lib/textMenu";
+import { buildTableMenu, toTableContextEntries } from "../lib/tableMenu";
+import type { TableMenuItem, TableMenuEntry } from "../lib/tableMenu";
 import { readClipboardText } from "../lib/clipboard";
+import { confirmMessage } from "../lib/dialogs";
 
 // Strikethrough is bound to Ctrl+Shift+X per spec §2.6 (the default Mod-Shift-s
 // collides with Save As).
@@ -759,15 +763,17 @@ export default function Editor({
     left: number;
   } | null>(null);
 
-  // The open text context menu (plan 03 task 3.2, issue #40): the cursor
-  // position in viewport coordinates (the contextmenu event's
+  // The open editor context menu (plan 03 tasks 3.2-3.3, issues #40/#41):
+  // the cursor position in viewport coordinates (the contextmenu event's
   // clientX/clientY) plus the item set built for the selection that was
-  // current when the menu opened.
-  const [textMenu, setTextMenu] = useState<{
-    x: number;
-    y: number;
-    items: readonly TextMenuEntry[];
-  } | null>(null);
+  // current when the menu opened — the table menu (row/column insert &
+  // delete, alignment, header row, delete table) when the selection is
+  // inside a table, the text menu otherwise.
+  const [textMenu, setTextMenu] = useState<
+    | { x: number; y: number; kind: "text"; items: readonly TextMenuEntry[] }
+    | { x: number; y: number; kind: "table"; items: readonly TableMenuEntry[] }
+    | null
+  >(null);
 
   const editor = useEditor({
     extensions: [
@@ -839,20 +845,33 @@ export default function Editor({
       // (download/save-as for file://, nothing useful for http/https).
       handleDOMEvents: {
         auxclick: (view, event) => handleEditorMiddleClick(view, event as MouseEvent),
-        // Right-click (plan 03 task 3.2, issue #40): the editor text context
-        // menu. buildTextMenu resolves the selection (empty / range / node)
-        // into the item set, the shared ContextMenu renders at the cursor,
-        // and picks dispatch through the registry (plan 03 AC1, 1:1 mapping).
-        // Returning true suppresses the browser's own context menu.
+        // Right-click (plan 03 tasks 3.2-3.3, issues #40/#41): the editor
+        // context menu. The builder is picked from the selection: inside a
+        // table the table menu (buildTableMenu) replaces the text menu
+        // (buildTextMenu), which resolves the selection (empty / range /
+        // node) into its item set. The shared ContextMenu renders at the
+        // cursor, and picks dispatch through the registry (plan 03 AC1,
+        // 1:1 mapping). Returning true suppresses the browser's own context
+        // menu.
         contextmenu: (_view, event) => {
           const active = editorRef.current;
           if (!active || !active.isEditable) return false;
           const mouseEvent = event as MouseEvent;
-          setTextMenu({
-            x: mouseEvent.clientX,
-            y: mouseEvent.clientY,
-            items: buildTextMenu(active),
-          });
+          if (inTable(active)) {
+            setTextMenu({
+              x: mouseEvent.clientX,
+              y: mouseEvent.clientY,
+              kind: "table",
+              items: buildTableMenu(active),
+            });
+          } else {
+            setTextMenu({
+              x: mouseEvent.clientX,
+              y: mouseEvent.clientY,
+              kind: "text",
+              items: buildTextMenu(active),
+            });
+          }
           return true;
         },
       },
@@ -1041,6 +1060,29 @@ export default function Editor({
     }
   };
 
+  // The table context menu's pick handler (plan 03 task 3.3, issue #41):
+  // every item dispatches its registry command through the shared registry —
+  // the same ids the floating table toolbar and the native menu dispatch
+  // (plan 03 AC1, 1:1 mapping). "Delete table" is the destructive item: the
+  // plan (03 §3) gates it on the native confirm dialog before the command
+  // runs, so a declined confirm leaves the document untouched.
+  const dispatchTableMenu = (item: TableMenuItem): void => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    if (item.command === "tableDelete") {
+      void confirmMessage({
+        title: "QuillMD",
+        message: "Delete this table?",
+        kind: "warning",
+        buttons: "yesNo",
+      }).then((result) => {
+        if (result === "yes") runEditorCommand(ed, "tableDelete");
+      });
+      return;
+    }
+    runEditorCommand(ed, item.command);
+  };
+
   const filtered = slash
     ? SLASH_ACTIONS.filter((a) => a.key.startsWith(slash.query))
     : [];
@@ -1084,9 +1126,13 @@ export default function Editor({
         <ContextMenu
           x={textMenu.x}
           y={textMenu.y}
-          items={toContextEntries(textMenu.items, dispatchTextMenu)}
+          items={
+            textMenu.kind === "table"
+              ? toTableContextEntries(textMenu.items, dispatchTableMenu)
+              : toContextEntries(textMenu.items, dispatchTextMenu)
+          }
           onClose={() => setTextMenu(null)}
-          label="Text menu"
+          label={textMenu.kind === "table" ? "Table menu" : "Text menu"}
         />
       )}
     </div>
