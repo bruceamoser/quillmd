@@ -8,3 +8,5 @@ src-tauri/target/
 scripts/.fp-runs/*.log
 scripts/.fp-pipeline.log
 scripts/.fp-runs/*
+scripts/.fp-pipeline-state.json
+scripts/.fp-pipeline.log
