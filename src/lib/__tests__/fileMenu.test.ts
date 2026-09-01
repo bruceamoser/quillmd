@@ -439,3 +439,36 @@ describe("prompt() paths deleted from the File menu wiring (#23)", () => {
     expect(fileMenu).toContain("pickSavePath(");
   });
 });
+
+describe("File > Print (PDF)… alias (plan 10 §2.4, task 10.6, issue #98)", () => {
+  // The alias must dispatch the PDF export with its save dialog (AC5): the
+  // native menu item, the App.tsx routing to doExport("pdf"), the Ctrl+P
+  // accelerator (native + browser dev), and the shortcuts table row.
+  const repoFile = (rel: string): string => {
+    const url = new URL(rel, import.meta.url);
+    return readFileSync(fileURLToPath(url), "utf8");
+  };
+
+  it("menu.rs adds File > Print (PDF)… with the Ctrl+P accelerator", () => {
+    const menu = repoFile("../../../src-tauri/src/menu.rs");
+    expect(menu).toContain(
+      'MenuItem::with_id(app, "file-print", "Print (PDF)…", true, Some("Ctrl+P"))'
+    );
+    expect(menu).toContain(".items(&[&save, &save_as, &print, &close, &close_all, &info])");
+  });
+
+  it("App.tsx routes file-print to the pdf export (save dialog + pipeline)", () => {
+    const app = repoFile("../../App.tsx");
+    expect(app).toContain('"file-print": "pdf"');
+    // The generic export dispatch covers the alias: any EXPORT_FORMATS id
+    // (including file-print) runs doExport with the mapped format.
+    expect(app).toContain("void doExport(EXPORT_FORMATS[id]);");
+    // Browser dev keydown mirrors the native Ctrl+P accelerator.
+    expect(app).toContain('void doExport("pdf");');
+  });
+
+  it("the shortcuts table carries the Ctrl+P / Print (PDF)… row", () => {
+    const shortcuts = repoFile("../shortcuts.ts");
+    expect(shortcuts).toContain('{ group: "File", keys: "Ctrl+P", label: "Print (PDF)…" }');
+  });
+});

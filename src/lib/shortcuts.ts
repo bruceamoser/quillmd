@@ -57,6 +57,9 @@ const APP_SHORTCUTS: ShortcutEntry[] = [
   { group: "File", keys: "Ctrl+Shift+O", label: "Open folder" },
   { group: "File", keys: "Ctrl+S", label: "Save" },
   { group: "File", keys: "Ctrl+Shift+S", label: "Save As" },
+  // Print (PDF)… (plan 10 §2.4, task 10.6, issue #98): the Word
+  // muscle-memory alias that dispatches the PDF export with its save dialog.
+  { group: "File", keys: "Ctrl+P", label: "Print (PDF)…" },
   { group: "File", keys: "Ctrl+W", label: "Close tab" },
   { group: "File", keys: "Ctrl+Q", label: "Exit" },
   { group: "Edit", keys: "Ctrl+X", label: "Cut" },

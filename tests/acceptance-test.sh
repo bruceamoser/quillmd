@@ -308,6 +308,28 @@
         #                          and inspected with pdftotext for the real
         #                          outline (AC1) and the physical page breaks
         #                          (AC6)
+        #           p4-view-settings -> plan 10 full acceptance gate
+        #                          (issues #93-#98): the task 10.2 settings
+        #                          dialog (tabbed dialog over the unified
+        #                          settings.json, live-apply + persist +
+        #                          reset), task 10.3 full screen (F11
+        #                          enter/exit + Esc, chrome-hide CSS +
+        #                          API-fullscreen fallback), task 10.4 tools
+        #                          menu + Help > About (sidecar versions,
+        #                          --self-test about), task 10.5 shortcuts
+        #                          table + dialog (single-source table, no
+        #                          registry drift), and task 10.6 (issue
+        #                          #98): the plan 10 §4 acceptance criteria
+        #                          AC1-AC8 gates (View menu + F11, settings
+        #                          live/persist/reset, settings.json
+        #                          forward-compat, Tools dispatch, the new
+        #                          File > Print (PDF)… alias dispatching the
+        #                          PDF export, About versions, shortcuts
+        #                          >=25 no-drift, the full M1-M6 + P0-P3
+        #                          regression) + the Windows manual pass
+        #                          wiring (CRLF save pipeline + default-EOL
+        #                          setting, reserved-name refusal,
+        #                          app-config-dir settings, PDF export)
         #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -587,7 +609,7 @@ test_shell_info_stat_selftest() {
 test_shell_info_menu_wiring() {
     note "shell.info File > Info menu item present"
     if grep -q 'MenuItem::with_id(app, "file-info", "Info"' "$ROOT/src-tauri/src/menu.rs" \
-        && grep -q '\.items(&\[&save, &save_as, &close, &close_all, &info\])' "$ROOT/src-tauri/src/menu.rs"; then
+        && grep -q '\.items(&\[&save, &save_as, &print, &close, &close_all, &info\])' "$ROOT/src-tauri/src/menu.rs"; then
         pass "shell.info File > Info menu item present"
     else
         fail "shell.info File > Info menu item present"
@@ -5089,6 +5111,228 @@ test_shortcuts_suites_green() {
     fi
 }
 
+# --- p4-view-settings: plan 10 §4 acceptance criteria (task 10.6, issue #98) ----
+# Task 10.6 (issue #98) closes out plan 10: it pins each plan 10 §4 acceptance
+# criterion to the wiring + vitest suite that covers it, and runs the full
+# regression (AC8: M1-M6 + P0-P3 suites green). The per-task sections above
+# (10.2-10.5) already run each task's suites; this section adds the AC-level
+# gates, the Windows manual pass, and the plan §2.4 **Print (PDF)… alias** —
+# File > Print (PDF)… dispatches the PDF export with its save dialog (Word
+# muscle memory), new wiring in this task (menu.rs file-print, App.tsx
+# EXPORT_FORMATS + browser-dev Ctrl+P, shortcuts.ts row).
+
+test_viewsettings_ac1_view_fullscreen() {
+    note "viewsettings.AC1 View menu complete; F11 enters/exits full screen, Esc exits"
+    if grep -q 'MenuItem::with_id(app, "view-wysiwyg", "WYSIWYG"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "view-source", "Source"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "view-split", "Split"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "view-preview", "Preview"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"view-toggle"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'Some("Ctrl+/")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'view-spacing-single' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "view-zoom-in", "Zoom In", true, Some("Ctrl+="))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "view-show-marks"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "view-word-wrap"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'view-editor-font-' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'view-theme-default-' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "view-explorer"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "view-navigation"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "view-statusbar"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "view-fullscreen", "Full Screen", true, Some("F11"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'e.key === "F11"' "$ROOT/src/App.tsx" \
+        && grep -q '"quillmd-app quillmd-fullscreen"' "$ROOT/src/App.tsx" \
+        && grep -q 'F11 enters, Esc exits, F11 toggles back; Esc never enters; bytes untouched' "$ROOT/src/lib/__tests__/fullscreen.test.tsx"; then
+        pass "viewsettings.AC1 View menu complete; F11 enters/exits full screen, Esc exits"
+    else
+        fail "viewsettings.AC1 View menu complete; F11 enters/exits full screen, Esc exits"
+    fi
+}
+
+test_viewsettings_ac2_settings_live_persist_reset() {
+    note "viewsettings.AC2 settings: theme + editor font live-apply, persist, reset-to-defaults"
+    if grep -q 'a theme pick live-applies data-theme and syncs settings.json (AC2)' "$ROOT/src/lib/__tests__/settingsDialog.test.tsx" \
+        && grep -q 'an editor-font pick patches the whole editorFont object' "$ROOT/src/lib/__tests__/settingsDialog.test.tsx" \
+        && grep -q 'persists to settings.json and live-applies the root font size' "$ROOT/src/lib/__tests__/settingsDialog.test.tsx" \
+        && grep -q 'Reset to defaults restores the defaults in settings.json and live state (AC2)' "$ROOT/src/lib/__tests__/settingsDialog.test.tsx" \
+        && grep -q 'handleSettingsChange' "$ROOT/src/App.tsx" \
+        && grep -q 'handleSettingsReset' "$ROOT/src/App.tsx" \
+        && grep -q 'useSettings' "$ROOT/src/App.tsx" \
+        && grep -q 'buildSettingsPayload' "$ROOT/src/lib/settings.ts"; then
+        pass "viewsettings.AC2 settings: theme + editor font live-apply, persist, reset-to-defaults"
+    else
+        fail "viewsettings.AC2 settings: theme + editor font live-apply, persist, reset-to-defaults"
+    fi
+}
+
+test_viewsettings_ac3_settings_file_forward_compat() {
+    note "viewsettings.AC3 settings.json in the app config dir; valid JSON; unknown keys preserved"
+    if grep -q 'app_config_dir()' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'join("settings.json")' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'value.is_object()' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'write_file_atomic' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'preserves unknown top-level keys verbatim (forward-compat)' "$ROOT/src/lib/__tests__/settings.test.tsx" \
+        && grep -q 'Unknown keys must survive the write (forward-compat, plan 10 AC3)' "$ROOT/src/lib/__tests__/settings.test.tsx" \
+        && grep -q 'buildSettingsPayload' "$ROOT/src/lib/settings.ts"; then
+        pass "viewsettings.AC3 settings.json in the app config dir; valid JSON; unknown keys preserved"
+    else
+        fail "viewsettings.AC3 settings.json in the app config dir; valid JSON; unknown keys preserved"
+    fi
+}
+
+test_viewsettings_ac4_tools_dispatch() {
+    note "viewsettings.AC4 Tools items dispatch: Word Count / Spelling / Clear Formatting / Clear Document / Settings"
+    if grep -q 'MenuItem::with_id(app, "tools-word-count", "Word Count", true, Some("Ctrl+Shift+F5"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "tools-spelling", "Spelling…", true, Some("Ctrl+Shift+F7"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "tools-clear-formatting", "Clear Formatting"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "tools-clear-document", "Clear Document"' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "tools-settings", "Settings…", true, Some("Ctrl+,"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'id === "tools-word-count"' "$ROOT/src/App.tsx" \
+        && grep -q 'openWordCountDialog()' "$ROOT/src/App.tsx" \
+        && grep -q 'id === "tools-spelling"' "$ROOT/src/App.tsx" \
+        && grep -q 'openSpellCheckDialog()' "$ROOT/src/App.tsx" \
+        && grep -q '"tools-clear-formatting": "clearFormatting"' "$ROOT/src/App.tsx" \
+        && grep -q 'id === "tools-clear-document"' "$ROOT/src/App.tsx" \
+        && grep -q 'void clearDocument()' "$ROOT/src/App.tsx" \
+        && grep -q 'id === "tools-settings"' "$ROOT/src/App.tsx" \
+        && grep -q 'setSettingsDialogOpen(true)' "$ROOT/src/App.tsx"; then
+        pass "viewsettings.AC4 Tools items dispatch: Word Count / Spelling / Clear Formatting / Clear Document / Settings"
+    else
+        fail "viewsettings.AC4 Tools items dispatch: Word Count / Spelling / Clear Formatting / Clear Document / Settings"
+    fi
+}
+
+test_viewsettings_ac5_print_pdf_alias() {
+    note "viewsettings.AC5 File > Print (PDF)… dispatches the PDF export save dialog (plan §2.4)"
+    if grep -q 'MenuItem::with_id(app, "file-print", "Print (PDF)…", true, Some("Ctrl+P"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"file-print": "pdf"' "$ROOT/src/App.tsx" \
+        && grep -q 'void doExport(EXPORT_FORMATS\[id\]);' "$ROOT/src/App.tsx" \
+        && grep -q '{ group: "File", keys: "Ctrl+P", label: "Print (PDF)…" }' "$ROOT/src/lib/shortcuts.ts" \
+        && grep -q 'File > Print (PDF)… alias (plan 10 §2.4, task 10.6, issue #98)' "$ROOT/src/lib/__tests__/fileMenu.test.ts"; then
+        pass "viewsettings.AC5 File > Print (PDF)… wiring present (menu + routing + shortcuts row)"
+    else
+        fail "viewsettings.AC5 File > Print (PDF)… wiring missing (plan 10 §2.4)"
+        return
+    fi
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (node / node_modules not available)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/fileMenu.test.ts) 2>&1 ); then
+        pass "viewsettings.AC5 fileMenu vitest suite green (Print (PDF)… alias -> pdf export)"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "viewsettings.AC5 fileMenu vitest suite failed (plan 10 task 10.6)"
+    fi
+}
+
+test_viewsettings_ac6_about_versions() {
+    note "viewsettings.AC6 About: real version + non-empty pandoc/typst versions"
+    if [ ! -x "$APP_BIN" ]; then
+        echo "SKIP (binary not built)"
+        return
+    fi
+    local out version pandoc_line typst_line
+    if ! out=$("$APP_BIN" --self-test about 2>&1); then
+        printf '%s\n' "$out" | tail -25
+        fail "viewsettings.AC6 --self-test about failed (plan 10 §4 AC6)"
+        return
+    fi
+    version=$(printf '%s\n' "$out" | sed -n 's/^version=//p')
+    pandoc_line=$(printf '%s\n' "$out" | sed -n 's/^pandoc=//p')
+    typst_line=$(printf '%s\n' "$out" | sed -n 's/^typst=//p')
+    if [ -z "$version" ]; then
+        fail "viewsettings.AC6 About version is empty (plan 10 §4 AC6)"
+        return
+    fi
+    # A tool that IS installed must report a non-empty version line; a
+    # missing tool reports "not found" and is fine (same contract as
+    # test_about_selftest in the task 10.4 section above).
+    if command -v pandoc >/dev/null 2>&1; then
+        case "$pandoc_line" in
+            ""|not\ found) fail "viewsettings.AC6 pandoc installed but version line empty (plan 10 §4 AC6)"; return ;;
+        esac
+    fi
+    if command -v typst >/dev/null 2>&1; then
+        case "$typst_line" in
+            ""|not\ found) fail "viewsettings.AC6 typst installed but version line empty (plan 10 §4 AC6)"; return ;;
+        esac
+    fi
+    pass "viewsettings.AC6 About: real version + non-empty pandoc/typst versions"
+}
+
+test_viewsettings_ac7_shortcuts_table() {
+    note "viewsettings.AC7 shortcuts dialog lists ≥25 shortcuts, all in the table (no drift)"
+    if grep -q 'lists ≥25 shortcuts (AC7)' "$ROOT/src/lib/__tests__/shortcuts.test.ts" \
+        && grep -q 'no drift, AC7' "$ROOT/src/lib/__tests__/shortcuts.test.ts" \
+        && grep -q 'lists no shortcut twice' "$ROOT/src/lib/__tests__/shortcuts.test.ts" \
+        && grep -q 'EDITOR_COMMANDS' "$ROOT/src/lib/shortcuts.ts" \
+        && grep -q 'export const SHORTCUTS' "$ROOT/src/lib/shortcuts.ts"; then
+        pass "viewsettings.AC7 shortcuts dialog lists ≥25 shortcuts, all in the table (no drift)"
+    else
+        fail "viewsettings.AC7 shortcuts dialog lists ≥25 shortcuts, all in the table (no drift)"
+    fi
+}
+
+test_viewsettings_ac8_full_regression() {
+    # Plan 10 §4 AC8: M1-M6 + P0-P3 suites green. The TS gate (round-trip /
+    # pipeline / file-ops + every plan 01-09 suite) runs the full vitest
+    # suite; the Rust gate covers the M1 fs safety core + the Tauri commands.
+    # The spec §5.1-5.12 headless binary self-tests run under the core /
+    # export / all subsets of this same runner.
+    note "viewsettings.AC8 full regression: M1-M6 + P0-P3 suites green"
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (full vitest gate needs node + node_modules)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run) 2>&1 ); then
+        pass "viewsettings.AC8 full vitest gate green (npm test: M2-M3 TS + P0-P3 suites)"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "viewsettings.AC8 full vitest gate failed (plan 10 §4 AC8)"
+        return
+    fi
+    if ! command -v cargo >/dev/null 2>&1; then
+        echo "SKIP (full cargo gate needs cargo)"
+        return
+    fi
+    if out=$( (cd "$ROOT/src-tauri" && cargo test) 2>&1 ); then
+        pass "viewsettings.AC8 full cargo test green (M1 fs safety core + Rust commands)"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "viewsettings.AC8 full cargo test failed (plan 10 §4 AC8)"
+    fi
+}
+
+test_viewsettings_windows_manual() {
+    note "viewsettings.windows Windows manual pass wiring (CRLF, reserved names, config dir, PDF)"
+    # The manual matrix itself (plan doc §6) runs on a real desktop after
+    # `npm run tauri build`; these gate the platform behavior it exercises,
+    # on both platforms (the Windows runner gets them under Git Bash):
+    #  - CRLF: the save pipeline restores the document's CRLF ending, and
+    #    new documents honor the default-EOL setting (plan 10: "auto"
+    #    resolves to CRLF on Windows) — the settings dialog exposes it.
+    #  - Reserved names: the fs core refuses Windows reserved names on
+    #    every platform (golden rule 4).
+    #  - Settings file: Tauri's app config dir (%APPDATA% on Windows) via
+    #    commands.rs settings_file — the forward-compat JSON lives there.
+    #  - Print (PDF)…: the alias produces a PDF through the same Rust
+    #    export path as File > Export > PDF.
+    if grep -q 'if (opts.eol === "crlf")' "$ROOT/src/lib/pipeline.ts" \
+        && grep -q 'source.includes("\\r\\n") ? "crlf" : "lf"' "$ROOT/src/lib/fileIo.ts" \
+        && grep -q 'export function resolveDefaultEol' "$ROOT/src/lib/newDoc.ts" \
+        && grep -q 'resolveDefaultEol(appSettings.defaultEol)' "$ROOT/src/App.tsx" \
+        && grep -q 'Default line endings' "$ROOT/src/components/SettingsDialog.tsx" \
+        && grep -q 'pub fn is_windows_reserved' "$ROOT/src-tauri/src/fs/paths.rs" \
+        && grep -q 'app_config_dir()' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'pub fn export_pdf' "$ROOT/src-tauri/src/convert.rs"; then
+        pass "windows: CRLF save pipeline + default-EOL setting + reserved-name refusal + app-config-dir settings + PDF export"
+    else
+        fail "windows manual pass wiring missing (CRLF, reserved names, config dir, PDF)"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -5558,6 +5802,16 @@ case "$SUBSET" in
         test_shortcuts_app_wiring
         test_shortcuts_css
         test_shortcuts_suites_green
+        # Task 10.6 (issue #98): plan 10 §4 acceptance criteria
+        test_viewsettings_ac1_view_fullscreen
+        test_viewsettings_ac2_settings_live_persist_reset
+        test_viewsettings_ac3_settings_file_forward_compat
+        test_viewsettings_ac4_tools_dispatch
+        test_viewsettings_ac5_print_pdf_alias
+        test_viewsettings_ac6_about_versions
+        test_viewsettings_ac7_shortcuts_table
+        test_viewsettings_ac8_full_regression
+        test_viewsettings_windows_manual
         ;;
     shell)
         test_shell_new_bundled
@@ -5829,6 +6083,38 @@ case "$SUBSET" in
         test_doctools_ac6_page_break
         test_doctools_ac7_clear
         test_doctools_pdf_visual
+        # Plan 10 (tasks 10.2-10.6, issues #94-#98): view + settings
+        test_settings_menu_wiring
+        test_settings_rust_commands
+        test_settings_dialog_component
+        test_settings_app_wiring
+        test_settings_suites_green
+        test_fullscreen_menu_wiring
+        test_fullscreen_app_wiring
+        test_fullscreen_css
+        test_fullscreen_suites_green
+        test_tools_menu_wiring
+        test_tools_dispatch_wiring
+        test_about_rust_commands
+        test_about_dialog_component
+        test_about_app_wiring
+        test_about_selftest
+        test_about_suites_green
+        test_shortcuts_table
+        test_shortcuts_dialog_component
+        test_shortcuts_app_wiring
+        test_shortcuts_css
+        test_shortcuts_suites_green
+        # Task 10.6 (issue #98): plan 10 §4 acceptance criteria
+        test_viewsettings_ac1_view_fullscreen
+        test_viewsettings_ac2_settings_live_persist_reset
+        test_viewsettings_ac3_settings_file_forward_compat
+        test_viewsettings_ac4_tools_dispatch
+        test_viewsettings_ac5_print_pdf_alias
+        test_viewsettings_ac6_about_versions
+        test_viewsettings_ac7_shortcuts_table
+        test_viewsettings_ac8_full_regression
+        test_viewsettings_windows_manual
         ;;
     *)
         echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|p2-style-inspector|p2-tables|p2-mermaid-export|p2-mermaid|p3-context|p4-doc-tools|p4-view-settings|shell|copyclose|info|dragdrop|all)" >&2

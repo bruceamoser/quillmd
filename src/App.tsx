@@ -290,6 +290,9 @@ const EXPORT_FORMATS: Record<string, ExportFormat> = {
   "export-docx": "docx",
   "export-epub": "epub",
   "export-txt": "txt",
+  // Print (PDF)… (plan 10 §2.4, task 10.6, issue #98): Word muscle-memory
+  // alias — dispatches the same PDF export (save dialog + pipeline).
+  "file-print": "pdf",
 };
 
 export default function App() {
@@ -2707,6 +2710,11 @@ export default function App() {
         // Settings (plan 10 task 10.2, issue #94): Tools > Settings… (Ctrl+,).
         e.preventDefault();
         setSettingsDialogOpen(true);
+      } else if (key === "p" && !e.shiftKey) {
+        // Print (PDF)… (plan 10 §2.4, task 10.6, issue #98): the native menu
+        // accelerator owns Ctrl+P under Tauri; this covers browser dev.
+        e.preventDefault();
+        void doExport("pdf");
       }
     };
     window.addEventListener("keydown", onKeyDown);

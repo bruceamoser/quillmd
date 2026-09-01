@@ -254,7 +254,9 @@ describe("App.tsx / menu.rs wiring (#26)", () => {
   it("the native File menu offers Info (no shortcut, between Close All and Export)", () => {
     const menu = repoFile("../../../src-tauri/src/menu.rs");
     expect(menu).toContain('MenuItem::with_id(app, "file-info", "Info", true, None::<&str>)');
-    expect(menu).toContain(".items(&[&save, &save_as, &close, &close_all, &info])");
+    // Print (PDF)… (plan 10 §2.4, task 10.6, issue #98) slots in after
+    // Save As; Info keeps its position between Close All and Export.
+    expect(menu).toContain(".items(&[&save, &save_as, &print, &close, &close_all, &info])");
   });
 
   it("fileIo.ts bridges the file_stat command", () => {
