@@ -314,7 +314,11 @@ pub fn run() {
             commands::get_recent_files,
             commands::set_recent_files,
             commands::read_style_overrides,
-            commands::write_style_overrides
+            commands::write_style_overrides,
+            commands::fs_new_file,
+            commands::fs_new_dir,
+            commands::fs_rename,
+            commands::fs_trash
         ])
         .setup(|app| {
             let recent = menu::load_recent(app.handle());

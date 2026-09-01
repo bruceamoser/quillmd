@@ -3,8 +3,10 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { createDocument, encodeDocument, saveDocument } from "./lib/pipeline";
 import {
+  baseName,
   checkExternal,
   downloadBytes,
+  fsRename,
   getRecentFiles,
   isAbsolutePath,
   openFromFile,
@@ -911,6 +913,68 @@ export default function App() {
     setActivePath(null);
     setStatus("Closed all documents");
   }, [docs]);
+
+  // Tab context menu > Close Others (plan 03 task 3.6, issue #44): closes
+  // every tab except the right-clicked one. The dirty check runs as one batch
+  // over the "others" (the same confirmCloseAll the File menu uses); on a
+  // yes, the right-clicked tab becomes the active one.
+  const closeOthers = useCallback(
+    async (keepPath: string) => {
+      const others = Object.entries(docs).filter(([path]) => path !== keepPath);
+      if (others.length === 0) return;
+      const ok = await confirmCloseAll(
+        others.map(([path, d]) => ({
+          path,
+          displayName: docDisplayName(path),
+          dirty: d.currentText !== d.open.source,
+        })),
+      );
+      if (!ok) return;
+      const next = { ...docs };
+      for (const [path] of others) delete next[path];
+      setDocs(next);
+      setActivePath(keepPath);
+      setStatus("Closed other documents");
+    },
+    [docs],
+  );
+
+  // --- explorer trash Undo (plan 03 task 3.6, issue #44) -------------------
+  //
+  // The explorer's Delete moves the entry to the app-local trash (the Rust
+  // fs_trash command never unlinks). The trash path is kept here for ~30s so
+  // the status-bar Undo can restore the entry — an fs_rename from the trash
+  // path back to its original location. A failed restore (the original spot
+  // is gone) keeps the Undo offered; the entry stays in the trash.
+
+  const [trashUndo, setTrashUndo] = useState<{ path: string; trashPath: string } | null>(null);
+  const trashUndoTimer = useRef<number | null>(null);
+
+  const offerTrashUndo = useCallback((entry: { path: string; name: string; isDir: boolean }, trashPath: string) => {
+    setTrashUndo({ path: entry.path, trashPath });
+    if (trashUndoTimer.current !== null) window.clearTimeout(trashUndoTimer.current);
+    trashUndoTimer.current = window.setTimeout(() => {
+      trashUndoTimer.current = null;
+      setTrashUndo(null);
+    }, 30000);
+  }, []);
+
+  const undoTrashDelete = useCallback(async () => {
+    const undo = trashUndo;
+    if (!undo) return;
+    try {
+      await fsRename(undo.trashPath, undo.path);
+      setTrashUndo(null);
+      if (trashUndoTimer.current !== null) {
+        window.clearTimeout(trashUndoTimer.current);
+        trashUndoTimer.current = null;
+      }
+      setStatus(`Restored ${baseName(undo.path)}`);
+    } catch (err) {
+      // Keep the Undo offered: the entry is still safely in the trash.
+      setStatus(`Restore failed: ${String(err)}`);
+    }
+  }, [trashUndo]);
 
   // File > Make a copy: serializes the current text through the clean-path
   // pipeline (verbatim bytes when untouched), picks a new .md destination,
@@ -2175,6 +2239,7 @@ export default function App() {
           activePath={activePath}
           recentFiles={recentFiles}
           onOpenPath={(path) => void openByPath(path)}
+          onDeleted={offerTrashUndo}
         />
         <div className="quillmd-editor-area">
           <TabBar
@@ -2182,6 +2247,8 @@ export default function App() {
             activePath={activePath ?? ""}
             onSelect={setActivePath}
             onClose={(path) => void closeDoc(path)}
+            onCloseOthers={(keep) => void closeOthers(keep)}
+            onCloseAll={() => void closeAll()}
             onNewTab={doOpen}
           />
           <div className="quillmd-body">
@@ -2285,6 +2352,8 @@ export default function App() {
               }
               blockStyleLabel={blockStyleLabel}
               onJumpToStyle={jumpToStyle}
+              trashUndo={trashUndo ? baseName(trashUndo.path) : null}
+              onUndoTrash={() => void undoTrashDelete()}
               onModeChange={setMode}
               onZoomReset={() => changeZoom(ZOOM_DEFAULT)}
             />

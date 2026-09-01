@@ -127,3 +127,61 @@ describe("statusBar spellcheck indicator (plan 02 §2.8, issue #36)", () => {
     expect(toggles).toBe(1);
   });
 });
+
+describe("statusBar trash Undo (plan 03 task 3.6, issue #44)", () => {
+  let roots: Root[] = [];
+  let container: HTMLDivElement;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    for (const root of roots) root.unmount();
+    roots = [];
+    container.remove();
+  });
+
+  const render = (props: Parameters<typeof StatusBar>[0]) => {
+    const root = createRoot(container);
+    roots.push(root);
+    act(() => {
+      root.render(<StatusBar {...props} />);
+    });
+    return container;
+  };
+
+  const baseProps = {
+    mode: "wysiwyg" as const,
+    wordCount: 3,
+    charCount: 12,
+    eol: "lf" as const,
+    dirty: false,
+    fileName: "a.md",
+    zoom: 100,
+  };
+
+  it("hides the readout while no entry is in the trash-undo window", () => {
+    render({ ...baseProps });
+    expect(container.querySelector(".quillmd-status-trash")).toBeNull();
+  });
+
+  it("shows the deleted entry's name as a plain label without a restore handler", () => {
+    render({ ...baseProps, trashUndo: "note.md" });
+    const readout = container.querySelector(".quillmd-status-trash");
+    expect(readout?.textContent).toBe("Deleted note.md");
+    expect(readout?.tagName).not.toBe("BUTTON");
+  });
+
+  it("renders an Undo button that invokes onUndoTrash", () => {
+    let undos = 0;
+    render({ ...baseProps, trashUndo: "chapters", onUndoTrash: () => { undos += 1; } });
+    const button = container.querySelector<HTMLButtonElement>("button.quillmd-status-trash");
+    expect(button?.textContent).toBe("Deleted chapters — Undo");
+    act(() => {
+      button?.click();
+    });
+    expect(undos).toBe(1);
+  });
+});

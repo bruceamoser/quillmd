@@ -202,6 +202,28 @@ export async function exportRemoveAsset(paths: string[]): Promise<string[]> {
   return invoke<string[]>("export_remove_asset", { paths });
 }
 
+// --- Explorer file operations (plan 03 task 3.6, issue #44) ---------------
+// The explorer context menu's New file / New folder / Rename / Delete run on
+// the four fs_* Rust commands. Delete moves the entry to the app-local trash
+// (never an unlink) and returns the trash path; the status-bar Undo restores
+// it with fsRename back to the original location.
+
+export async function fsNewFile(parent: string, name: string): Promise<string> {
+  return invoke<string>("fs_new_file", { parent, name });
+}
+
+export async function fsNewDir(parent: string, name: string): Promise<string> {
+  return invoke<string>("fs_new_dir", { parent, name });
+}
+
+export async function fsRename(from: string, to: string): Promise<string> {
+  return invoke<string>("fs_rename", { from, to });
+}
+
+export async function fsTrash(path: string): Promise<string> {
+  return invoke<string>("fs_trash", { path });
+}
+
 // Triggers a browser download of the given bytes (dev-only save fallback).
 export function downloadBytes(fileName: string, bytes: Uint8Array, mime = "text/markdown"): void {
   const blob = new Blob([bytes], { type: mime });

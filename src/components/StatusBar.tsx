@@ -32,6 +32,12 @@ interface StatusBarProps {
   // routes it to the toolbar's style gallery). Absent (tests, embedded) the
   // indicator renders as a plain label.
   onJumpToStyle?: () => void;
+  // Trash Undo (plan 03 task 3.6, issue #44): the base name of an entry the
+  // explorer just moved to the trash (null when none, or once the ~30s
+  // window has passed). With onUndoTrash the "Deleted <name>" readout is a
+  // button that restores the entry; absent it renders as a plain label.
+  trashUndo?: string | null;
+  onUndoTrash?: () => void;
 }
 
 export default function StatusBar({
@@ -48,6 +54,8 @@ export default function StatusBar({
   onSpellcheckToggle,
   blockStyleLabel = null,
   onJumpToStyle,
+  trashUndo = null,
+  onUndoTrash,
 }: StatusBarProps) {
   // The inspector popover's open state (toggled by the block-style button).
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -126,6 +134,23 @@ export default function StatusBar({
               </span>
             )}
           </span>
+        </>
+      )}
+      {trashUndo !== null && (
+        <>
+          <span className="quillmd-status-sep">|</span>
+          {onUndoTrash ? (
+            <button
+              type="button"
+              className="quillmd-status-trash"
+              title="Restore the deleted entry"
+              onClick={onUndoTrash}
+            >
+              Deleted {trashUndo} — Undo
+            </button>
+          ) : (
+            <span className="quillmd-status-trash">Deleted {trashUndo}</span>
+          )}
         </>
       )}
       <span className="quillmd-status-spacer" />

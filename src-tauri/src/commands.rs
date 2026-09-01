@@ -291,6 +291,182 @@ pub fn write_style_overrides(app: tauri::AppHandle, json: String) -> Result<(), 
     write_overrides_file(&path, &json)
 }
 
+// --- explorer file operations (plan 03 task 3.6, issue #44) ----------------
+//
+// The Explorer context menu (New file / New folder / Rename / Delete) runs on
+// these four commands. Every name is validated through the safety module's
+// Windows reserved-name check, nothing is ever overwritten silently, and
+// Delete moves to the app-local trash (never a direct unlink) so the
+// status-bar Undo can restore the entry through fs_rename.
+
+/// Validates an explorer entry name: a single non-empty path segment that is
+/// not "." / ".." and not a Windows reserved name (the safety check also
+/// rejects trailing dots and spaces).
+fn validate_entry_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err(err("bad_name", "name must not be empty"));
+    }
+    if name == "." || name == ".." || name.contains('/') || name.contains('\\') {
+        return Err(err("bad_name", "name must be a single path segment"));
+    }
+    if crate::fs::paths::is_windows_reserved(name) {
+        return Err(err("bad_name", format!("\"{name}\" is not an allowed file name")));
+    }
+    Ok(())
+}
+
+/// Creates an empty file at `parent/name` (the explorer's "New file"). The
+/// parent must be an existing directory and the name a validated segment
+/// that does not exist yet (no overwrite). Returns the created file's path.
+#[tauri::command]
+pub fn fs_new_file(parent: String, name: String) -> Result<String, String> {
+    let parent_p = PathBuf::from(&parent);
+    validate_entry_name(&name)?;
+    if !parent_p.is_dir() {
+        return Err(err("io", format!("not a directory: {}", parent_p.display())));
+    }
+    let path = parent_p.join(&name);
+    if path.exists() {
+        return Err(err("exists", format!("{} already exists", path.display())));
+    }
+    fs::File::create(&path)
+        .map_err(|e| err("io", format!("create {}: {e}", path.display())))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Creates a directory at `parent/name` (the explorer's "New folder"). Same
+/// rules as fs_new_file. Returns the created directory's path.
+#[tauri::command]
+pub fn fs_new_dir(parent: String, name: String) -> Result<String, String> {
+    let parent_p = PathBuf::from(&parent);
+    validate_entry_name(&name)?;
+    if !parent_p.is_dir() {
+        return Err(err("io", format!("not a directory: {}", parent_p.display())));
+    }
+    let path = parent_p.join(&name);
+    if path.exists() {
+        return Err(err("exists", format!("{} already exists", path.display())));
+    }
+    fs::create_dir(&path)
+        .map_err(|e| err("io", format!("create {}: {e}", path.display())))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Moves (renames) an entry from `from` to `to` (the explorer's Rename and
+/// the trash Undo's restore). `to` is a full path: its parent must exist, it
+/// must not exist yet (no silent overwrite), and its file name must be a
+/// validated segment. A cross-device move falls back to copy + remove.
+#[tauri::command]
+pub fn fs_rename(from: String, to: String) -> Result<String, String> {
+    let from_p = PathBuf::from(&from);
+    let to_p = PathBuf::from(&to);
+    let to_name = to_p
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| err("bad_name", "target has no file name"))?;
+    validate_entry_name(to_name)?;
+    if !from_p.exists() {
+        return Err(err("io", format!("source not found: {}", from_p.display())));
+    }
+    if to_p.exists() {
+        return Err(err("exists", format!("{} already exists", to_p.display())));
+    }
+    let to_parent = to_p
+        .parent()
+        .ok_or_else(|| err("bad_name", "target has no parent"))?;
+    if !to_parent.is_dir() {
+        return Err(err("io", format!("not a directory: {}", to_parent.display())));
+    }
+    if let Err(e) = fs::rename(&from_p, &to_p) {
+        if e.kind() != std::io::ErrorKind::CrossesDevices {
+            return Err(err("io", format!("rename: {e}")));
+        }
+        move_recursive(&from_p, &to_p)
+            .map_err(|e| err("io", format!("move {}: {e}", from_p.display())))?;
+    }
+    Ok(to_p.to_string_lossy().into_owned())
+}
+
+/// Recursive copy + remove: the cross-device fallback for fs_rename and
+/// fs_trash when a plain rename cannot cross the device boundary.
+fn move_recursive(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    if fs::metadata(from)?.is_dir() {
+        fs::create_dir(to)?;
+        for entry in fs::read_dir(from)? {
+            let entry = entry?;
+            move_recursive(&entry.path(), &to.join(entry.file_name()))?;
+        }
+        fs::remove_dir(from)?;
+    } else {
+        fs::copy(from, to)?;
+        fs::remove_file(from)?;
+    }
+    Ok(())
+}
+
+/// The app-local trash root: `app_config_dir()/trash` (plan 03 §3: the
+/// explorer's Delete moves here instead of unlinking, so a status-bar Undo
+/// can restore the entry).
+pub fn trash_dir_for<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("trash"))
+}
+
+/// Collision-safe trash target: `name` when free, otherwise `name-1`,
+/// `name-2`, ... (the counter goes before the extension, the asset-copy
+/// convention: `photo.png` → `photo-1.png`; extension-less names get a
+/// plain `name-1`).
+pub fn unique_trash_path(trash_dir: &std::path::Path, name: &str) -> PathBuf {
+    if !trash_dir.join(name).exists() {
+        return trash_dir.join(name);
+    }
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((s, e)) if !s.is_empty() => (s.to_string(), format!(".{e}")),
+        _ => (name.to_string(), String::new()),
+    };
+    for i in 1u32.. {
+        let candidate = format!("{stem}-{i}{ext}");
+        if !trash_dir.join(&candidate).exists() {
+            return trash_dir.join(candidate);
+        }
+    }
+    unreachable!("a collision-free trash name must exist")
+}
+
+/// Moves `path` into `trash_dir` under a collision-safe name, creating the
+/// trash dir if needed. Never unlinks: the entry is moved, and the returned
+/// trash path is the Undo restore's source (a fs_rename back to the
+/// original location).
+pub fn move_to_trash(trash_dir: &std::path::Path, path: &std::path::Path) -> Result<PathBuf, String> {
+    if !path.exists() {
+        return Err(err("io", format!("not found: {}", path.display())));
+    }
+    let base = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| err("bad_name", "entry has no file name"))?;
+    fs::create_dir_all(trash_dir)
+        .map_err(|e| err("io", format!("create {}: {e}", trash_dir.display())))?;
+    let target = unique_trash_path(trash_dir, base);
+    fs::rename(path, &target).or_else(|e| {
+        if e.kind() == std::io::ErrorKind::CrossesDevices {
+            move_recursive(path, &target)
+        } else {
+            Err(e)
+        }
+    })
+    .map_err(|e| err("io", format!("trash {}: {e}", path.display())))?;
+    Ok(target)
+}
+
+/// Moves an explorer entry into the app-local trash (the explorer menu's
+/// "Delete", plan 03 task 3.6, issue #44). Returns the trash path; the
+/// frontend's Undo restores from it through fs_rename.
+#[tauri::command]
+pub fn fs_trash(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    let trash_dir = trash_dir_for(&app).ok_or_else(|| err("config_dir", "app config dir unavailable"))?;
+    move_to_trash(&trash_dir, &PathBuf::from(&path)).map(|p| p.to_string_lossy().into_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -596,5 +772,177 @@ mod tests {
         }
         // Nothing was written.
         assert!(!path.exists());
+    }
+
+    // --- explorer file operations (plan 03 task 3.6, issue #44) -------------
+
+    #[test]
+    fn fs_new_file_creates_empty_file() {
+        let dir = tempdir().unwrap();
+        let path = fs_new_file(dir.path().display().to_string(), "note.md".to_string()).unwrap();
+        assert_eq!(path, dir.path().join("note.md").display().to_string());
+        assert_eq!(fs::read(dir.path().join("note.md")).unwrap(), b"");
+    }
+
+    #[test]
+    fn fs_new_file_refuses_existing_and_bad_names() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("a.md"), b"x").unwrap();
+
+        let exists = fs_new_file(dir.path().display().to_string(), "a.md".to_string()).unwrap_err();
+        assert!(exists.starts_with("exists:"), "got {exists}");
+        assert_eq!(fs::read(dir.path().join("a.md")).unwrap(), b"x");
+
+        for name in ["", ".", "..", "a/b", "a\\b", "CON", "NUL.md", "trailing.", "space "] {
+            let res = fs_new_file(dir.path().display().to_string(), name.to_string());
+            assert!(res.is_err(), "{name:?} must be rejected");
+        }
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn fs_new_file_requires_existing_parent() {
+        let res = fs_new_file("/nonexistent/quillmd/fs-new".to_string(), "a.md".to_string());
+        let msg = res.unwrap_err();
+        assert!(msg.starts_with("io:"), "got {msg}");
+    }
+
+    #[test]
+    fn fs_new_dir_creates_directory() {
+        let dir = tempdir().unwrap();
+        let path = fs_new_dir(dir.path().display().to_string(), "chapters".to_string()).unwrap();
+        assert_eq!(path, dir.path().join("chapters").display().to_string());
+        assert!(dir.path().join("chapters").is_dir());
+    }
+
+    #[test]
+    fn fs_new_dir_refuses_existing_and_bad_names() {
+        let dir = tempdir().unwrap();
+        fs::create_dir(dir.path().join("sub")).unwrap();
+
+        let exists = fs_new_dir(dir.path().display().to_string(), "sub".to_string()).unwrap_err();
+        assert!(exists.starts_with("exists:"), "got {exists}");
+
+        let reserved = fs_new_dir(dir.path().display().to_string(), "COM1".to_string());
+        assert!(reserved.is_err());
+    }
+
+    #[test]
+    fn fs_rename_moves_within_parent() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("old.md"), b"keep").unwrap();
+
+        let to = dir.path().join("new.md").display().to_string();
+        let out = fs_rename(dir.path().join("old.md").display().to_string(), to.clone()).unwrap();
+        assert_eq!(out, to);
+        assert!(!dir.path().join("old.md").exists());
+        assert_eq!(fs::read(dir.path().join("new.md")).unwrap(), b"keep");
+    }
+
+    #[test]
+    fn fs_rename_moves_across_directories() {
+        let dir = tempdir().unwrap();
+        let other = dir.path().join("other");
+        fs::create_dir(&other).unwrap();
+        fs::write(dir.path().join("doc.md"), b"move me").unwrap();
+
+        let to = other.join("doc.md").display().to_string();
+        fs_rename(dir.path().join("doc.md").display().to_string(), to.clone()).unwrap();
+        assert_eq!(fs::read(other.join("doc.md")).unwrap(), b"move me");
+    }
+
+    #[test]
+    fn fs_rename_refuses_existing_target_and_bad_names() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("a.md"), b"a").unwrap();
+        fs::write(dir.path().join("b.md"), b"b").unwrap();
+
+        let exists =
+            fs_rename(dir.path().join("a.md").display().to_string(), dir.path().join("b.md").display().to_string());
+        let msg = exists.unwrap_err();
+        assert!(msg.starts_with("exists:"), "got {msg}");
+        assert_eq!(fs::read(dir.path().join("a.md")).unwrap(), b"a");
+        assert_eq!(fs::read(dir.path().join("b.md")).unwrap(), b"b");
+
+        let missing = fs_rename(dir.path().join("nope.md").display().to_string(), dir.path().join("c.md").display().to_string());
+        assert!(missing.unwrap_err().starts_with("io:"));
+
+        let reserved =
+            fs_rename(dir.path().join("a.md").display().to_string(), dir.path().join("CON.md").display().to_string());
+        assert!(reserved.unwrap_err().starts_with("bad_name:"));
+    }
+
+    #[test]
+    fn unique_trash_path_appends_counters_before_extension() {
+        let dir = tempdir().unwrap();
+        let trash = dir.path().join("trash");
+        fs::create_dir(&trash).unwrap();
+
+        assert_eq!(unique_trash_path(&trash, "note.md"), trash.join("note.md"));
+        fs::write(trash.join("note.md"), b"x").unwrap();
+        assert_eq!(unique_trash_path(&trash, "note.md"), trash.join("note-1.md"));
+        fs::write(trash.join("note-1.md"), b"x").unwrap();
+        assert_eq!(unique_trash_path(&trash, "note.md"), trash.join("note-2.md"));
+
+        // Extension-less names get a plain counter.
+        assert_eq!(unique_trash_path(&trash, "notes"), trash.join("notes"));
+        fs::write(trash.join("notes"), b"x").unwrap();
+        assert_eq!(unique_trash_path(&trash, "notes"), trash.join("notes-1"));
+    }
+
+    #[test]
+    fn move_to_trash_moves_file_and_never_unlinks() {
+        let dir = tempdir().unwrap();
+        let trash = dir.path().join("trash");
+        let file = dir.path().join("doomed.md");
+        fs::write(&file, b"salvage me").unwrap();
+
+        let target = move_to_trash(&trash, &file).unwrap();
+        assert!(!file.exists());
+        assert_eq!(fs::read(&target).unwrap(), b"salvage me");
+        assert!(target.starts_with(&trash));
+    }
+
+    #[test]
+    fn move_to_trash_moves_directories_and_dedupes_names() {
+        let dir = tempdir().unwrap();
+        let trash = dir.path().join("trash");
+        let folder = dir.path().join("chapter");
+        fs::create_dir(&folder).unwrap();
+        fs::write(folder.join("one.md"), b"1").unwrap();
+
+        let first = move_to_trash(&trash, &folder).unwrap();
+        assert!(first.is_dir());
+        assert_eq!(fs::read(first.join("one.md")).unwrap(), b"1");
+
+        // A second entry with the same name gets the -1 suffix.
+        fs::create_dir(&folder).unwrap();
+        let second = move_to_trash(&trash, &folder).unwrap();
+        assert_ne!(first, second);
+        assert!(second.ends_with("chapter-1"));
+    }
+
+    #[test]
+    fn move_to_trash_restorable_via_fs_rename() {
+        let dir = tempdir().unwrap();
+        let trash = dir.path().join("trash");
+        let file = dir.path().join("undo-me.md");
+        fs::write(&file, b"round trip").unwrap();
+
+        let target = move_to_trash(&trash, &file).unwrap();
+        let restored = fs_rename(target.display().to_string(), file.display().to_string()).unwrap();
+        assert_eq!(restored, file.display().to_string());
+        assert_eq!(fs::read(&file).unwrap(), b"round trip");
+        assert!(!target.exists());
+    }
+
+    #[test]
+    fn move_to_trash_errors_on_missing_entry() {
+        let dir = tempdir().unwrap();
+        let trash = dir.path().join("trash");
+        let res = move_to_trash(&trash, &dir.path().join("ghost.md"));
+        let msg = res.unwrap_err();
+        assert!(msg.starts_with("io:"), "got {msg}");
+        assert!(!trash.exists());
     }
 }
