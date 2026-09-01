@@ -2732,6 +2732,117 @@ button.quillmd-status-trash:hover {
   border-color: var(--accent-hover);
 }
 
+/* --- About dialog (plan 10 task 10.4, issue #96) --------------------------- */
+
+.quillmd-about-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quillmd-about-dialog {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  padding: 14px 16px 12px;
+}
+
+.quillmd-about-title {
+  color: var(--text-bright);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+/* The tagline under the title. */
+.quillmd-about-scope {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.quillmd-about-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+
+.quillmd-about-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.quillmd-about-label {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.quillmd-about-value {
+  margin: 0;
+  color: var(--text-bright);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+/* The GitHub / Docs destinations open in the system browser. */
+.quillmd-about-value a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.quillmd-about-value a:hover {
+  text-decoration: underline;
+}
+
+.quillmd-about-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.quillmd-about-button {
+  background: var(--bg-active);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 5px 12px;
+}
+
+.quillmd-about-button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--text-faint);
+}
+
+/* "Check for updates" is intentionally disabled (manual releases). */
+.quillmd-about-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.quillmd-about-button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+
+.quillmd-about-button.primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
 /* --- Spell check dialog (plan 09 task 9.5, issue #88) ---------------------- */
 
 .quillmd-spellcheck-overlay {

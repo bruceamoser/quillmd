@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
@@ -121,6 +122,70 @@ fn tool_available(tool: &str) -> bool {
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
+}
+
+/// How long a `--version` probe may run before we give up on the tool. The
+/// flag should return instantly; anything slower is a wedged sidecar, not a
+/// slow machine — the About dialog must not hang (plan 10 design note).
+const SIDECAR_VERSION_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// The first line of each bundled tool's `--version` output (e.g.
+/// `pandoc 3.6.4`, `typst 0.13.0`), or `None` when the tool is not installed
+/// or does not respond within [`SIDECAR_VERSION_TIMEOUT`]. Shown by the About
+/// dialog (plan 10 §2.5).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct SidecarVersions {
+    pub pandoc: Option<String>,
+    pub typst: Option<String>,
+}
+
+/// The first non-empty line of `<tool> --version` (or `None` when the tool is
+/// missing or wedged). The stdout reader runs on a side thread so the
+/// deadline can fire even when the tool never exits.
+fn tool_version_line(name: &str) -> Option<String> {
+    let mut child = tool_command(name)
+        .arg("--version")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let mut stdout = child.stdout.take()?;
+    let (tx, rx) = std::sync::mpsc::channel::<Option<String>>();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if std::io::Read::read_to_end(&mut stdout, &mut buf).is_err() {
+            let _ = tx.send(None);
+            return;
+        }
+        let _ = tx.send(Some(String::from_utf8_lossy(&buf).into_owned()));
+    });
+    let deadline = Instant::now() + SIDECAR_VERSION_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(_) => return None,
+        }
+    }
+    let stdout_text = rx.recv().ok()??;
+    stdout_text
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .map(str::to_string)
+}
+
+/// The sidecar versions for the About dialog (plan 10 §2.5): the first line
+/// of each tool's `--version` output, `None` for a missing tool.
+pub fn sidecar_versions() -> SidecarVersions {
+    SidecarVersions {
+        pandoc: tool_version_line("pandoc"),
+        typst: tool_version_line("typst"),
+    }
 }
 
 fn require_pandoc() -> Result<(), ConvertError> {
@@ -1175,5 +1240,36 @@ mod tests {
         import_docx(&docx, &out).unwrap();
         let text = fs::read_to_string(&out).unwrap();
         assert!(text.contains("Hello"));
+    }
+
+    // Plan 10 task 10.4 (issue #96): the About dialog reads the sidecar
+    // versions through sidecar_versions. A tool that IS installed must yield
+    // its first `--version` line (non-empty); a missing tool yields None.
+    #[test]
+    fn sidecar_versions_reports_first_version_line_when_installed() {
+        let versions = sidecar_versions();
+        if pandoc_available() {
+            let line = versions.pandoc.as_deref().expect("pandoc version line");
+            assert!(!line.trim().is_empty(), "empty pandoc version line");
+            assert!(
+                line.contains("pandoc"),
+                "pandoc first line should name the tool: {line}"
+            );
+        }
+        if typst_available() {
+            let line = versions.typst.as_deref().expect("typst version line");
+            assert!(!line.trim().is_empty(), "empty typst version line");
+            assert!(
+                line.contains("typst"),
+                "typst first line should name the tool: {line}"
+            );
+        }
+    }
+
+    // A tool that is not installed must report None (never an empty line or a
+    // panic), so the About dialog can show "not found".
+    #[test]
+    fn tool_version_line_missing_tool_is_none() {
+        assert_eq!(tool_version_line("quillmd-definitely-not-a-tool"), None);
     }
 }

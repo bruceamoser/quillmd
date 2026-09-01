@@ -574,6 +574,41 @@ pub fn file_stat_baseline() -> Result<(), SelfTestError> {
     Ok(())
 }
 
+/// Plan 10 task 10.4 (issue #96) / AC6: the About dialog reports the real app
+/// version, the build hash, and the bundled pandoc/typst versions. The version
+/// and build hash are always non-empty; a tool that IS installed must report a
+/// non-empty first `--version` line (a missing tool is fine — the dialog shows
+/// "not found").
+pub fn about_baseline() -> Result<(), SelfTestError> {
+    let version = env!("CARGO_PKG_VERSION");
+    if version.trim().is_empty() {
+        return Err(SelfTestError("about: app version is empty".into()));
+    }
+    println!("version={version}");
+    println!("build={}", commands::build_hash());
+
+    let versions = convert::sidecar_versions();
+    if convert::pandoc_available() {
+        let line = versions.pandoc.as_deref().unwrap_or("");
+        if line.trim().is_empty() {
+            return Err(SelfTestError(
+                "about: pandoc is installed but its version line is empty".into(),
+            ));
+        }
+    }
+    if convert::typst_available() {
+        let line = versions.typst.as_deref().unwrap_or("");
+        if line.trim().is_empty() {
+            return Err(SelfTestError(
+                "about: typst is installed but its version line is empty".into(),
+            ));
+        }
+    }
+    println!("pandoc={}", versions.pandoc.as_deref().unwrap_or("not found"));
+    println!("typst={}", versions.typst.as_deref().unwrap_or("not found"));
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -600,6 +635,7 @@ pub fn run() {
             commands::read_settings,
             commands::write_settings,
             commands::get_app_info,
+            commands::get_sidecar_versions,
             commands::load_wordlist,
             commands::get_wordlist_settings,
             commands::set_wordlist_settings,

@@ -170,6 +170,8 @@ import DateTimeDialog from "./components/DateTimeDialog";
 import SymbolDialog from "./components/SymbolDialog";
 import SettingsDialog from "./components/SettingsDialog";
 import type { AppInfo } from "./components/SettingsDialog";
+import AboutDialog from "./components/AboutDialog";
+import type { SidecarVersions } from "./components/AboutDialog";
 import {
   buildKnownSet,
   ignoreWordForSession,
@@ -276,6 +278,10 @@ const MENU_TO_COMMAND: Record<string, EditorCommandId> = {
   "format-indent": "indent",
   "format-outdent": "outdent",
   "format-clear": "clearFormatting",
+  // Plan 10 task 10.4 (issue #96): Tools > Clear Formatting dispatches the
+  // same registry command as Format > Clear Formatting (plan §2.3: moved to
+  // Tools, kept in Format).
+  "tools-clear-formatting": "clearFormatting",
 };
 
 const EXPORT_FORMATS: Record<string, ExportFormat> = {
@@ -426,6 +432,12 @@ export default function App() {
   // Advanced tab shows (version + config dir, read from Rust once on mount).
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+  // About QuillMD dialog (plan 10 task 10.4, issue #96): Help > About QuillMD
+  // shows the version + build hash (appInfo), the bundled pandoc/typst
+  // sidecar versions, and the GitHub/docs links. App-level info, read once
+  // on mount — null in browser dev (no Tauri) drives the "…" placeholders.
+  const [aboutDialogOpen, setAboutDialogOpen] = useState(false);
+  const [sidecarVersions, setSidecarVersions] = useState<SidecarVersions | null>(null);
   // Full screen (plan 10 task 10.3, issue #95): app-level session state — the
   // quillmd-fullscreen class on the app root hides the chrome (header, tab
   // bar, status bar, side rails, editor toolbar), leaving the editor only.
@@ -2386,7 +2398,10 @@ export default function App() {
       } else if (MENU_TO_COMMAND[id]) {
         dispatchEditorCommand(MENU_TO_COMMAND[id]);
       } else if (id === "help-about") {
-        window.alert("QuillMD - a WYSIWYG Markdown editor that persists natively in markdown.");
+        // Plan 10 task 10.4 (issue #96): Help > About QuillMD — the in-app
+        // dialog with the real version, build hash, and the bundled
+        // pandoc/typst versions (replaces the old one-line alert).
+        setAboutDialogOpen(true);
       } else if (id === "help-shortcuts") {
         window.alert(SHORTCUTS_TEXT);
       }
@@ -2463,18 +2478,36 @@ export default function App() {
   }, []);
 
   // App info for the Settings dialog's Advanced tab (plan 10 task 10.2,
-  // issue #94): the version (CARGO_PKG_VERSION) and the app config dir, read
-  // once from Rust on mount. Null in browser dev (no Tauri) — the dialog then
-  // shows placeholders and disables the open-config-dir button.
+  // issue #94) and the About dialog (plan 10 task 10.4, issue #96): the
+  // version (CARGO_PKG_VERSION), the build hash, and the app config dir,
+  // read once from Rust on mount. Null in browser dev (no Tauri) — the
+  // dialogs then show placeholders and disable the open-config-dir button.
+  // The About dialog's pandoc/typst version lines come from the same
+  // one-shot read (get_sidecar_versions; null = not installed).
   useEffect(() => {
     if (!runningInTauri()) return;
     let disposed = false;
     void (async () => {
       try {
-        const info = await invoke<{ version: string; config_dir: string }>("get_app_info");
-        if (!disposed) setAppInfo({ version: info.version, configDir: info.config_dir });
+        const info = await invoke<{
+          version: string;
+          build_hash: string;
+          config_dir: string;
+        }>("get_app_info");
+        if (!disposed)
+          setAppInfo({
+            version: info.version,
+            buildHash: info.build_hash,
+            configDir: info.config_dir,
+          });
       } catch {
         // best-effort; the dialog falls back to placeholders
+      }
+      try {
+        const sidecars = await invoke<SidecarVersions>("get_sidecar_versions");
+        if (!disposed) setSidecarVersions(sidecars);
+      } catch {
+        // best-effort; the About dialog falls back to "…"
       }
     })();
     return () => {
@@ -3027,6 +3060,15 @@ export default function App() {
           onClose={() => setSettingsDialogOpen(false)}
           appInfo={appInfo}
           onOpenConfigDir={() => void openConfigDir()}
+        />
+      )}
+
+      {aboutDialogOpen && (
+        <AboutDialog
+          version={appInfo?.version ?? null}
+          buildHash={appInfo?.buildHash ?? null}
+          sidecars={sidecarVersions}
+          onClose={() => setAboutDialogOpen(false)}
         />
       )}
 

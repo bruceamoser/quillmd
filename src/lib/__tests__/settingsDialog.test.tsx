@@ -51,7 +51,11 @@ describe("App.tsx Tools > Settings routing (issue #94)", () => {
 
 // --- SettingsDialog component ------------------------------------------------------
 
-const APP_INFO: AppInfo = { version: "0.10.2", configDir: "/home/user/.config/quillmd" };
+const APP_INFO: AppInfo = {
+  version: "0.10.2",
+  buildHash: "444b672",
+  configDir: "/home/user/.config/quillmd",
+};
 
 describe("SettingsDialog component (issue #94)", () => {
   interface Harness {
