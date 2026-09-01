@@ -75,6 +75,7 @@ export type EditorCommandId =
   | "diagramCopyCode"
   | "diagramDelete"
   | "hr"
+  | "pageBreak"
   | "footnote"
   | "frontmatter"
   | "emoji"
@@ -102,7 +103,8 @@ export type EditorCommandId =
   | "clearFormatting"
   | "editorFont"
   | "dateTime"
-  | "symbol";
+  | "symbol"
+  | "clearDocument";
 
 // Parameters for the view-level commands that take one. `lineSpacing` takes a
 // spacing preset, `zoom` takes a step (or an explicit percent), `pasteAsText`
@@ -1410,6 +1412,16 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
     run: (editor) => editor.chain().focus().setHorizontalRule().run(),
   },
   {
+    // Plan 09 task 9.7 (issue #90): Insert > Page Break. Inserts the read-only
+    // pageBreak atom at the caret; pm.ts maps it to/from the fixed
+    // `<div class="quillmd-page-break"></div>` block (byte-stable) and
+    // convert.rs maps the block to Typst #pagebreak() for PDF export.
+    id: "pageBreak",
+    label: "Page break",
+    run: (editor) =>
+      editor.chain().focus().insertContent({ type: "pageBreak" }).run(),
+  },
+  {
     id: "footnote",
     label: "Footnote",
     run: (editor) => {
@@ -1683,6 +1695,24 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
         }
       }
       return chain.run();
+    },
+  },
+  {
+    // Plan 09 task 9.7 (issue #90): Tools > Clear Document. Replaces the whole
+    // document with a single empty paragraph in one transaction, so a single
+    // Ctrl+Z restores the full prior text exactly (plan 09 AC7, hash compare).
+    // The destructive native confirm is the app shell's job (App.tsx gates the
+    // menu event before dispatching) — the same shape as imageDelete /
+    // tableDelete, which the context menu also gates on a confirm.
+    id: "clearDocument",
+    label: "Clear document",
+    run: (editor) => {
+      const { state } = editor;
+      const empty = state.schema.nodes.paragraph.create();
+      const tr = state.tr.replaceWith(0, state.doc.content.size, empty);
+      tr.setSelection(TextSelection.near(tr.doc.resolve(0)));
+      editor.view.dispatch(tr);
+      return true;
     },
   },
 ];

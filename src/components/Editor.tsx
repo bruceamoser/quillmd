@@ -49,6 +49,7 @@ import Toolbar from "./Toolbar";
 import TableToolbar from "./TableToolbar";
 import MermaidCard, { setMermaidCardTheme } from "./MermaidCard";
 import TocCard from "./TocCard";
+import PageBreakCard from "./PageBreakCard";
 import type { ThemeId } from "../lib/theme";
 import ContextMenu from "./ContextMenu";
 import { buildTextMenu, linkHrefAtCaret, toContextEntries } from "../lib/textMenu";
@@ -412,6 +413,28 @@ export const TocBlock = Node.create({
   },
   renderHTML() {
     return ["div", { "data-quillmd-toc": "", class: "quillmd-toc" }];
+  },
+});
+
+// Page break (plan 09 task 9.7, issue #90): the document stores a physical
+// page break as the fixed HTML block `<div class="quillmd-page-break"></div>`
+// (the source of truth). The converter (pm.ts) maps that block to this node;
+// the node is a read-only atom — ProseMirror never places the caret inside it
+// — and its NodeView (PageBreakCard) renders it as a visible break line. The
+// Typst/PDF export maps the block to #pagebreak() (convert.rs); serialization
+// back to markdown is the fixed div (pm.ts).
+export const PageBreak = Node.create({
+  name: "pageBreak",
+  group: "block",
+  atom: true,
+  addNodeView() {
+    return ReactNodeViewRenderer(PageBreakCard);
+  },
+  parseHTML() {
+    return [{ tag: "div[data-quillmd-page-break]" }];
+  },
+  renderHTML() {
+    return ["div", { "data-quillmd-page-break": "", class: "quillmd-page-break" }];
   },
 });
 
@@ -852,6 +875,10 @@ export default function Editor({
       // TOC block (plan 09 task 9.1, issue #84): the `<!-- quillmd:toc -->`
       // token parses to this read-only atom, rendered as a live heading list.
       TocBlock,
+      // Page break (plan 09 task 9.7, issue #90): the fixed
+      // `<div class="quillmd-page-break"></div>` block parses to this read-only
+      // atom, rendered as a visible break line.
+      PageBreak,
       FootnoteRef,
       FootnoteDef,
       FindDecorations,

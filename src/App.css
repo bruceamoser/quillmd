@@ -1747,6 +1747,36 @@ button.quillmd-status-trash:hover {
   font-style: italic;
 }
 
+/* Page break (plan 09 task 9.7, issue #90): the pageBreak node renders as a
+   visible break line (a labeled dashed rule) in both WYSIWYG and preview —
+   the same class serves both surfaces, so the selectors are
+   context-independent. The document bytes stay the fixed
+   <div class="quillmd-page-break"></div> block; this is a view artifact. The
+   Typst/PDF export maps the block to #pagebreak() (convert.rs). */
+.quillmd-page-break {
+  margin: 0.8em 0;
+}
+
+.quillmd-page-break-line {
+  position: relative;
+  border-top: 2px dashed var(--border);
+}
+
+.quillmd-page-break-label {
+  position: absolute;
+  top: -0.55em;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg);
+  padding: 0 8px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
 /* Broken-image placeholder (plan 08 task 8.5, issue #80): an inline image
    whose local file is gone renders as a named chip with the re-link button.
    View-only — the markdown keeps the original src until the user re-links. */
