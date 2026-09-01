@@ -270,6 +270,24 @@
         #                       (every menu x every surface: CRLF save
         #                       pipeline, reserved-name refusal,
         #                       plugin-opener reveal, native confirms)
+        #           p4-doc-tools -> plan 09 task 9.2 acceptance gate (issue
+        #                          #85): export-time TOC generation. The
+        #                          `<!-- quillmd:toc -->` token (tocBlock,
+        #                          issue #84) expands in a throwaway copy of
+        #                          the markdown at conversion time — a raw
+        #                          typst #outline() block for PDF, a Word TOC
+        #                          field for DOCX — the source file is never
+        #                          rewritten (golden rule 1). Checks: the
+        #                          cross-language token contract (convert.rs
+        #                          vs pm.ts), the fixtures/clean/toc.md
+        #                          corpus entry (token + H1-H4 + one H5),
+        #                          the convert.rs wiring, the cargo convert
+        #                          suite actually run here (expansion
+        #                          contract, temp-copy + cleanup, real
+        #                          PDF/DOCX export incl. the pdftotext
+        #                          outline check and the DOCX zip field
+        #                          check), and the in-binary
+        #                          --self-test export-toc
         #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -3988,6 +4006,86 @@ test_context_manual_matrix() {
     fi
 }
 
+# --- p4-doc-tools: export-time TOC generation (task 9.2, issue #85) -------------
+# The tocBlock node stores the TOC as the fixed comment token
+# `<!-- quillmd:toc -->` (golden rule 1); the export layer expands it in a
+# throwaway copy of the markdown only — a raw typst #outline() block for PDF,
+# a Word TOC field for DOCX — and never rewrites the source file. The deep
+# behavior (expansion contract, temp-copy + cleanup, the real PDF/DOCX export
+# incl. the pdftotext outline check and the DOCX zip field check) is pinned in
+# the cargo suite under src-tauri/src/convert.rs and runs below; this section
+# also checks the cross-language token contract, the fixture, and the
+# in-binary self-test.
+
+test_toce_token_contract() {
+    note "toce.token Rust + frontend TOC_TOKEN constants are byte-identical"
+    local rust_tok js_tok
+    rust_tok=$(sed -n 's/^const TOC_TOKEN: &str = "\(.*\)";$/\1/p' "$ROOT/src-tauri/src/convert.rs" | head -1)
+    js_tok=$(sed -n 's/^export const TOC_TOKEN = "\(.*\)";$/\1/p' "$ROOT/src/lib/pm.ts" | head -1)
+    if [ -n "$rust_tok" ] && [ "$rust_tok" = "$js_tok" ]; then
+        pass "toce.token both token constants agree ($rust_tok)"
+    else
+        fail "toce.token token constants disagree (rust: '$rust_tok' js: '$js_tok')"
+    fi
+}
+
+test_toce_fixture() {
+    note "toce.fixture fixtures/clean/toc.md carries the token + H1-H4 (round-trip corpus)"
+    local f="$ROOT/fixtures/clean/toc.md"
+    if [ -f "$f" ] \
+        && grep -q -x -F '<!-- quillmd:toc -->' "$f" \
+        && [ "$(grep -cE '^#{1,4} ' "$f")" -ge 3 ] \
+        && grep -q '^##### Deep note' "$f"; then
+        pass "toce.fixture toc.md in the clean corpus (token + H1-H4 + one H5)"
+    else
+        fail "toce.fixture missing or malformed (fixtures/clean/toc.md)"
+    fi
+}
+
+test_toce_cargo_suite() {
+    note "toce.suite cargo convert tests (expansion + real PDF/DOCX export)"
+    if ! command -v cargo >/dev/null 2>&1; then
+        echo "SKIP (cargo not installed)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT/src-tauri" && cargo test --lib convert::) 2>&1 ); then
+        pass "toce.suite cargo convert suite green (also the cargo test DoD gate)"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "toce.suite cargo convert suite failed (plan 09 task 9.2)"
+    fi
+}
+
+test_toce_selftest() {
+    note "toce.selftest export-toc live in binary (self-test)"
+    if [ ! -x "$APP_BIN" ]; then
+        echo "SKIP (binary not built)"
+        return
+    fi
+    local out
+    out=$("$APP_BIN" --self-test export-toc 2>/dev/null || echo "MISSING")
+    if [ "$out" = "OK" ]; then
+        pass "toce.selftest export-toc live in binary (self-test)"
+    else
+        fail "toce.selftest export-toc live in binary (self-test)"
+    fi
+}
+
+test_toce_wiring() {
+    note "toce.wiring export_pdf/export_docx expand the token; others do not (convert.rs)"
+    if grep -q 'pub enum TocTarget' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q 'pub fn expand_toc_tokens' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q 'fn toc_expanded_input' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q 'Some(TocTarget::Pdf)' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q 'Some(TocTarget::Docx)' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q 'toc: Option<TocTarget>' "$ROOT/src-tauri/src/convert.rs"; then
+        pass "toce.wiring pdf/docx expand the token, epub/txt/import pass None"
+    else
+        fail "toce.wiring TOC expansion wiring missing in convert.rs"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -4380,6 +4478,14 @@ case "$SUBSET" in
         # Windows + Linux manual matrix (every menu x every surface)
         test_context_manual_matrix
         ;;
+    p4-doc-tools)
+        # Task 9.2 (issue #85): export-time TOC generation
+        test_toce_token_contract
+        test_toce_fixture
+        test_toce_wiring
+        test_toce_cargo_suite
+        test_toce_selftest
+        ;;
     shell)
         test_shell_new_bundled
         test_shell_new_menu_wiring
@@ -4636,9 +4742,14 @@ case "$SUBSET" in
         test_context_ac6_keyboard
         test_context_ac7_all_suites_green
         test_context_manual_matrix
+        test_toce_token_contract
+        test_toce_fixture
+        test_toce_wiring
+        test_toce_cargo_suite
+        test_toce_selftest
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|p2-style-inspector|p2-tables|p2-mermaid-export|p2-mermaid|p3-context|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|p2-style-inspector|p2-tables|p2-mermaid-export|p2-mermaid|p3-context|p4-doc-tools|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac
