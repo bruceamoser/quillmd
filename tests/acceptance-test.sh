@@ -297,7 +297,17 @@
         #                          the menu.rs + App.tsx wiring, the
         #                          docSettings persistence, the outline.ts
         #                          pure helpers, and the outline/pane/App
-        #                          vitest suites actually run here
+        #                          vitest suites actually run here; and task
+        #                          9.8 (issue #91): the plan 09 §4 acceptance
+        #                          criteria AC1-AC7 gates (each pinned to its
+        #                          covering vitest suite + fixture + wiring)
+        #                          + the PDF export visual check — the
+        #                          committed toc.md/pagebreak.md fixtures
+        #                          exported through the real app pipeline
+        #                          (in-binary --self-test export-p4-visual)
+        #                          and inspected with pdftotext for the real
+        #                          outline (AC1) and the physical page breaks
+        #                          (AC6)
         #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -4550,6 +4560,168 @@ test_pb_suites_green() {
     fi
 }
 
+# --- p4-doc-tools: plan 09 §4 acceptance criteria (task 9.8, issue #91) -----------
+# The plan 09 acceptance gate: every §4 criterion (AC1-AC7) pinned to its
+# covering vitest suite + fixture + wiring, plus the PDF export visual check —
+# the committed toc.md + pagebreak.md fixtures exported through the real app
+# pipeline (the in-binary export-p4-visual self-test: marker expansion in a
+# throwaway copy + pandoc/typst) and inspected with pdftotext for the real
+# outline (AC1: "exported PDF contains a real outline") and the physical page
+# breaks at each block's position (AC6: "exported PDF shows a physical page
+# break at that position"). The deep behavior already runs under the per-task
+# gates above (the vitest suites green there; the cargo convert suite, incl.
+# the PDF outline + page-split tests, via toce.suite); this section asserts
+# the AC-level coverage itself.
+
+test_doctools_ac1_toc() {
+    note "doctools.AC1 TOC: token line immutable across edits; WYSIWYG/Preview TOC updates live"
+    local t="$ROOT/src/lib/__tests__/toc.test.tsx"
+    if [ -f "$t" ] \
+        && grep -q 'adding a heading does not rewrite the token line' "$t" \
+        && grep -q "editing a heading's text leaves the token line untouched" "$t" \
+        && grep -q 'editing body text leaves the token line untouched' "$t" \
+        && grep -q 'renders the H1-H4 headings as an indented list' "$t" \
+        && grep -q 'updates live when a heading is added (document token unchanged)' "$t" \
+        && grep -q 'replaces the token with the live heading list at its position' "$t" \
+        && [ -f "$FIXTURES/clean/toc.md" ] \
+        && grep -q -x -F '<!-- quillmd:toc -->' "$FIXTURES/clean/toc.md"; then
+        pass "doctools.AC1 TOC: token line immutable across edits; WYSIWYG/Preview TOC updates live"
+    else
+        fail "doctools.AC1 TOC: token line immutable across edits; WYSIWYG/Preview TOC updates live"
+    fi
+}
+
+test_doctools_ac2_nav_pane() {
+    note "doctools.AC2 nav pane: lists H1-H4, click scrolls, active tracks scroll, toggle persists"
+    local p="$ROOT/src/lib/__tests__/outlinePane.test.tsx"
+    if [ -f "$p" ] \
+        && grep -q 'lists the H1-H4 headings (markdown-derived) and excludes deeper ones' "$p" \
+        && grep -q 'clicking an entry selects the heading without changing the bytes' "$p" \
+        && grep -q 'tracks the active entry as the scroll moves' "$p" \
+        && grep -q 'clicking an entry scrolls the preview to the matching heading' "$p" \
+        && grep -q 'navigationPane: boolean' "$ROOT/src/lib/docSettings.ts" \
+        && grep -q 'id === "view-navigation"' "$ROOT/src/App.tsx" \
+        && grep -q 'key === "8" && e.shiftKey' "$ROOT/src/App.tsx"; then
+        pass "doctools.AC2 nav pane: lists H1-H4, click scrolls, active tracks scroll, toggle persists"
+    else
+        fail "doctools.AC2 nav pane: lists H1-H4, click scrolls, active tracks scroll, toggle persists"
+    fi
+}
+
+test_doctools_ac3_word_count() {
+    note "doctools.AC3 word count: matches the status bar; selection-scoped; known-count fixtures"
+    local c="$ROOT/src/lib/__tests__/counts.test.ts"
+    local d="$ROOT/src/lib/__tests__/wordCountDialog.test.tsx"
+    if [ -f "$c" ] \
+        && grep -q 'countText on fixtures with known counts (plan 09 AC3)' "$c" \
+        && grep -q 'matches the hand-verified counts for headings.md' "$c" \
+        && grep -q 'matches the hand-verified counts for mixed-structure.md' "$c" \
+        && grep -q 'selection scoping (countSelection / paragraphsInRange)' "$c" \
+        && [ -f "$d" ] \
+        && grep -q 'the menu opens the dialog with whole-document counts matching the status bar (AC3)' "$d" \
+        && grep -q 'a WYSIWYG selection scopes the counts to the selected range' "$d" \
+        && grep -q 'countText(currentText)' "$ROOT/src/App.tsx"; then
+        pass "doctools.AC3 word count: matches the status bar; selection-scoped; known-count fixtures"
+    else
+        fail "doctools.AC3 word count: matches the status bar; selection-scoped; known-count fixtures"
+    fi
+}
+
+test_doctools_ac4_spellcheck() {
+    note "doctools.AC4 spellcheck: flags a planted misspelling; ignore = session; dictionary = restart"
+    local s="$ROOT/src/lib/__tests__/spellcheck.test.ts"
+    local d="$ROOT/src/lib/__tests__/spellCheckDialog.test.tsx"
+    if [ -f "$s" ] \
+        && grep -q 'flags unknown terms and skips known ones' "$s" \
+        && grep -q 'merges the wordlist, personal dictionary, and session ignores' "$s" \
+        && [ -f "$d" ] \
+        && grep -q "the menu opens the dialog with the doc's flagged terms in order (AC4)" "$d" \
+        && grep -q 'Ignore suppresses the term for the session only (not persisted) (AC4)' "$d" \
+        && grep -q 'Add to dictionary suppresses the term and persists it (AC4 restart)' "$d"; then
+        pass "doctools.AC4 spellcheck: flags a planted misspelling; ignore = session; dictionary = restart"
+    else
+        fail "doctools.AC4 spellcheck: flags a planted misspelling; ignore = session; dictionary = restart"
+    fi
+}
+
+test_doctools_ac5_date_symbols() {
+    note "doctools.AC5 date/time inserts the picked format for today; symbols insert © as UTF-8"
+    local d="$ROOT/src/lib/__tests__/dateTimeDialog.test.tsx"
+    local s="$ROOT/src/lib/__tests__/symbolDialog.test.tsx"
+    local t="$ROOT/src/lib/__tests__/symbols.test.ts"
+    if [ -f "$d" ] \
+        && grep -q 'the menu opens the dialog; the picked row inserts its sample and closes (AC5)' "$d" \
+        && [ -f "$s" ] \
+        && grep -q 'the menu opens the popover; the picks insert as plain UTF-8 and stay open (AC5)' "$s" \
+        && grep -q '0xc2, 0xa9' "$s" \
+        && [ -f "$t" ] \
+        && grep -q 'finds copyright by name (plan 09 §2.5: '\''copyright'\'' → ©)' "$t"; then
+        pass "doctools.AC5 date/time inserts the picked format for today; symbols insert © as UTF-8"
+    else
+        fail "doctools.AC5 date/time inserts the picked format for today; symbols insert © as UTF-8"
+    fi
+}
+
+test_doctools_ac6_page_break() {
+    note "doctools.AC6 page break: visible break line; PDF shows a physical break at the block"
+    local t="$ROOT/src/lib/__tests__/pageBreak.test.tsx"
+    if [ -f "$t" ] \
+        && grep -q "renders a visible labeled break line at the block's position" "$t" \
+        && grep -q "renders a visible break line at the block's position" "$t" \
+        && grep -q 'renders every break in a multi-break document' "$t" \
+        && grep -q 'export_pdf_page_break_splits_pdf_pages' "$ROOT/src-tauri/src/convert.rs" \
+        && [ -f "$FIXTURES/clean/pagebreak.md" ] \
+        && grep -q -x -F '<div class="quillmd-page-break"></div>' "$FIXTURES/clean/pagebreak.md"; then
+        pass "doctools.AC6 page break: visible break line; PDF shows a physical break at the block"
+    else
+        fail "doctools.AC6 page break: visible break line; PDF shows a physical break at the block"
+    fi
+}
+
+test_doctools_ac7_clear() {
+    note "doctools.AC7 clear document: native confirm; one Ctrl+Z restores the full prior text"
+    local t="$ROOT/src/lib/__tests__/clearDocument.test.tsx"
+    if [ -f "$t" ] \
+        && grep -q 'clears a full document to a single empty paragraph' "$t" \
+        && grep -q 'one undo restores the full prior text exactly (byte compare)' "$t" \
+        && grep -q 'id: "clearDocument"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'id === "tools-clear-document"' "$ROOT/src/App.tsx" \
+        && grep -q 'This removes all content. You can undo.' "$ROOT/src/App.tsx"; then
+        pass "doctools.AC7 clear document: native confirm; one Ctrl+Z restores the full prior text"
+    else
+        fail "doctools.AC7 clear document: native confirm; one Ctrl+Z restores the full prior text"
+    fi
+}
+
+test_doctools_pdf_visual() {
+    note "doctools.pdf PDF export visual check: real outline (AC1) + physical page breaks (AC6)"
+    if [ ! -x "$APP_BIN" ]; then
+        echo "SKIP (binary not built)"
+        return
+    fi
+    if ! command -v pandoc >/dev/null 2>&1 || ! command -v typst >/dev/null 2>&1 \
+        || ! command -v pdftotext >/dev/null 2>&1; then
+        echo "SKIP (needs pandoc + typst + pdftotext)"
+        return
+    fi
+    if [ ! -f "$FIXTURES/clean/toc.md" ] || [ ! -f "$FIXTURES/clean/pagebreak.md" ]; then
+        fail "doctools.pdf PDF export visual check: fixtures missing (toc.md / pagebreak.md)"
+        return
+    fi
+    local out
+    if out=$("$APP_BIN" --self-test export-p4-visual "$FIXTURES/clean/toc.md" "$FIXTURES/clean/pagebreak.md" 2>&1); then
+        if [ "$out" = "OK" ]; then
+            pass "doctools.pdf PDF export visual check: real outline (AC1) + physical page breaks (AC6)"
+        else
+            printf '%s\n' "$out" | tail -25
+            fail "doctools.pdf PDF export visual check: real outline (AC1) + physical page breaks (AC6)"
+        fi
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "doctools.pdf PDF export visual check: real outline (AC1) + physical page breaks (AC6)"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -4983,6 +5155,15 @@ case "$SUBSET" in
         test_pb_export_wiring
         test_pb_clear_wiring
         test_pb_suites_green
+        # Task 9.8 (issue #91): plan 09 §4 acceptance criteria
+        test_doctools_ac1_toc
+        test_doctools_ac2_nav_pane
+        test_doctools_ac3_word_count
+        test_doctools_ac4_spellcheck
+        test_doctools_ac5_date_symbols
+        test_doctools_ac6_page_break
+        test_doctools_ac7_clear
+        test_doctools_pdf_visual
         ;;
     shell)
         test_shell_new_bundled
@@ -5245,6 +5426,15 @@ case "$SUBSET" in
         test_toce_wiring
         test_toce_cargo_suite
         test_toce_selftest
+        # Task 9.8 (issue #91): plan 09 §4 acceptance criteria
+        test_doctools_ac1_toc
+        test_doctools_ac2_nav_pane
+        test_doctools_ac3_word_count
+        test_doctools_ac4_spellcheck
+        test_doctools_ac5_date_symbols
+        test_doctools_ac6_page_break
+        test_doctools_ac7_clear
+        test_doctools_pdf_visual
         ;;
     *)
         echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|p2-style-inspector|p2-tables|p2-mermaid-export|p2-mermaid|p3-context|p4-doc-tools|shell|copyclose|info|dragdrop|all)" >&2
