@@ -2791,6 +2791,254 @@ button.quillmd-status-trash:hover {
   justify-content: flex-end;
 }
 
+/* --- Date & Time dialog (plan 09 task 9.6, issue #89) ---------------------- */
+
+.quillmd-datetime-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quillmd-datetime-dialog {
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  padding: 14px 16px 12px;
+}
+
+.quillmd-datetime-title {
+  color: var(--text-bright);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.quillmd-datetime-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.quillmd-datetime-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+/* A format row: label + live sample. It is a button — Enter inserts the
+   focused row, the arrows walk the list. */
+.quillmd-datetime-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+}
+
+.quillmd-datetime-row:hover {
+  background: var(--bg-hover);
+}
+
+.quillmd-datetime-row:focus-visible {
+  outline: none;
+  background: var(--bg-active);
+  border-color: var(--accent);
+}
+
+.quillmd-datetime-label {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.quillmd-datetime-value {
+  color: var(--text-bright);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Special characters popover (plan 09 task 9.6, issue #89) -------------- */
+
+.quillmd-symbol-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quillmd-symbol-dialog {
+  width: 460px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  padding: 14px 16px 12px;
+}
+
+.quillmd-symbol-title {
+  color: var(--text-bright);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+/* The bundled table size, right of the title. */
+.quillmd-symbol-count {
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.quillmd-symbol-search {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background: var(--bg-input, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.quillmd-symbol-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.quillmd-symbol-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.quillmd-symbol-tab {
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.quillmd-symbol-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.quillmd-symbol-tab[aria-selected="true"] {
+  background: var(--bg-active);
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+
+/* The recents row: previously inserted characters, most recent first. */
+.quillmd-symbol-recents {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.quillmd-symbol-recent-label {
+  color: var(--text-faint);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: 4px;
+}
+
+/* The symbol grid: one cell per character. */
+.quillmd-symbol-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  gap: 2px;
+  overflow-y: auto;
+  min-height: 40px;
+}
+
+.quillmd-symbol-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.quillmd-symbol-cell:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-faint);
+}
+
+.quillmd-symbol-cell:focus-visible {
+  outline: none;
+  background: var(--bg-active);
+  border-color: var(--accent);
+}
+
+.quillmd-symbol-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 8px;
+}
+
+.quillmd-symbol-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.quillmd-symbol-button {
+  background: var(--bg-active);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 5px 12px;
+}
+
+.quillmd-symbol-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-faint);
+}
+
 /* --- Modify Style dialog (plan 05 task 5.4, issue #57) -------------------- */
 
 .quillmd-modify-overlay {

@@ -417,6 +417,13 @@ fn build_insert_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
     let tasklist = MenuItem::with_id(app, "insert-tasklist", "Task List", true, None::<&str>)?;
     let blockquote = MenuItem::with_id(app, "insert-blockquote", "Blockquote", true, None::<&str>)?;
     let emoji = MenuItem::with_id(app, "insert-emoji", "Emoji", true, None::<&str>)?;
+    // Plan 09 task 9.6 (issue #89): Insert > Date & Time opens the in-app
+    // date/time dialog (live format samples; the click inserts the picked
+    // format for the current date as plain text), and Special Characters...
+    // opens the symbol popover (name search, categories, recents). Both
+    // dispatch to the shared frontend commands (App.tsx handleMenuEvent).
+    let date_time = MenuItem::with_id(app, "insert-date-time", "Date & Time", true, None::<&str>)?;
+    let symbol = MenuItem::with_id(app, "insert-symbol", "Special Characters...", true, None::<&str>)?;
 
     let insert = SubmenuBuilder::new(app, "Insert")
         .item(&heading)
@@ -424,7 +431,10 @@ fn build_insert_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
         .items(&[&bold, &italic, &strike, &code, &link])
         .item(&image)
         .separator()
-        .items(&[&table, &codeblock, &diagram, &hr, &footnote, &tasklist, &blockquote, &emoji])
+        .items(&[
+            &table, &codeblock, &diagram, &hr, &footnote, &tasklist, &blockquote, &emoji,
+            &date_time, &symbol,
+        ])
         .build()?;
     Ok(insert)
 }

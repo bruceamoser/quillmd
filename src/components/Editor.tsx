@@ -577,6 +577,8 @@ const SLASH_ACTIONS: SlashAction[] = [
   commandAction("superscript", "superscript", "Superscript", "E=mc^2^"),
   commandAction("highlight", "highlight", "Highlight", "==Marked text=="),
   commandAction("emoji", "emoji", "Emoji", "Shortcode insert"),
+  commandAction("date", "dateTime", "Date & Time", "Insert a formatted date/time"),
+  commandAction("symbol", "symbol", "Special characters", "Insert a special character"),
   commandAction("definition-list", "definitionList", "Definition list", "Read-only term list"),
 ];
 

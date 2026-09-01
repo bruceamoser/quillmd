@@ -100,7 +100,9 @@ export type EditorCommandId =
   | "undo"
   | "redo"
   | "clearFormatting"
-  | "editorFont";
+  | "editorFont"
+  | "dateTime"
+  | "symbol";
 
 // Parameters for the view-level commands that take one. `lineSpacing` takes a
 // spacing preset, `zoom` takes a step (or an explicit percent), `pasteAsText`
@@ -1453,6 +1455,22 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
     },
   },
   {
+    // Plan 09 task 9.6 (issue #89): Insert > Date & Time. The command cannot
+    // render UI itself, so it requests the dialog; the app shell (App.tsx) is
+    // the single renderer and inserts the picked format at the caret.
+    id: "dateTime",
+    label: "Date & Time",
+    run: (editor) => requestDateTimeDialog(editor),
+  },
+  {
+    // Plan 09 task 9.6 (issue #89): Insert > Special Characters. Requests the
+    // symbol popover (search + categories + recents); the app shell renders
+    // it and inserts each picked character as plain text.
+    id: "symbol",
+    label: "Special Characters…",
+    run: (editor) => requestSymbolDialog(editor),
+  },
+  {
     id: "definitionList",
     label: "Definition list",
     run: (editor) =>
@@ -1965,5 +1983,53 @@ export function registerStylesGalleryListener(fn: StylesGalleryListener): () => 
 export function requestStylesGallery(editor: CoreEditor): boolean {
   if (!stylesGalleryListener) return false;
   stylesGalleryListener(editor);
+  return true;
+}
+
+// Date & Time dialog plumbing (plan 09 task 9.6, issue #89). The registry
+// "dateTime" command (Insert > Date & Time) and the /date slash action
+// cannot render UI themselves, so they request the dialog and the app shell
+// (App.tsx) is the single renderer. The request carries the live editor so
+// the picked format is inserted at its caret. In source/preview modes there
+// is no TipTap instance; App.tsx opens the dialog directly (null editor)
+// and inserts through the CodeMirror source view instead.
+type DateTimeDialogListener = (editor: CoreEditor | null) => void;
+let dateTimeDialogListener: DateTimeDialogListener | null = null;
+
+export function registerDateTimeDialogListener(fn: DateTimeDialogListener): () => void {
+  dateTimeDialogListener = fn;
+  return () => {
+    if (dateTimeDialogListener === fn) dateTimeDialogListener = null;
+  };
+}
+
+// Requests the date & time dialog for the given editor. Returns false
+// (no-op) when no renderer is registered.
+export function requestDateTimeDialog(editor: CoreEditor): boolean {
+  if (!dateTimeDialogListener) return false;
+  dateTimeDialogListener(editor);
+  return true;
+}
+
+// Special-characters popover plumbing (plan 09 task 9.6, issue #89). The
+// registry "symbol" command (Insert > Special Characters…) and the /symbol
+// slash action request the popover; the app shell (App.tsx) renders it and
+// inserts each picked character as plain text at the caret. The popover
+// stays open across inserts (Word behavior) and records recents.
+type SymbolDialogListener = (editor: CoreEditor | null) => void;
+let symbolDialogListener: SymbolDialogListener | null = null;
+
+export function registerSymbolDialogListener(fn: SymbolDialogListener): () => void {
+  symbolDialogListener = fn;
+  return () => {
+    if (symbolDialogListener === fn) symbolDialogListener = null;
+  };
+}
+
+// Requests the special-characters popover for the given editor. Returns
+// false (no-op) when no renderer is registered.
+export function requestSymbolDialog(editor: CoreEditor): boolean {
+  if (!symbolDialogListener) return false;
+  symbolDialogListener(editor);
   return true;
 }
