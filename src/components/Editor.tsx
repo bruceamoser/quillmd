@@ -40,6 +40,7 @@ import { loadEditorFont } from "../lib/editorFont";
 import { tableEscape, tableTab } from "../lib/tableKeys";
 import { DEFAULT_DOC_SETTINGS } from "../lib/docSettings";
 import type { DocSettings } from "../lib/docSettings";
+import type { TabKeyBehavior } from "../lib/settings";
 import { matchDecorations, registerFindEditor, registerFindStateListener } from "../lib/find";
 import type { SearchState } from "../lib/find";
 import { DecorationSet } from "@tiptap/pm/view";
@@ -553,6 +554,14 @@ interface EditorProps {
   // render in their own React root, so the theme reaches them through the
   // card's module holder instead of normal prop drilling.
   theme?: ThemeId;
+  // App settings (plan 10 task 10.2, issue #94) that shape editor key
+  // behavior. These are app-wide (AppSettings), not per-doc, so they arrive
+  // through their own props. tabKey selects the Tab behavior outside
+  // tables/lists/quotes; pasteAsPlainText makes a plain Ctrl+V paste text;
+  // autoCloseMarkers toggles TipTap's markdown input rules.
+  tabKey?: TabKeyBehavior;
+  pasteAsPlainText?: boolean;
+  autoCloseMarkers?: boolean;
 }
 
 interface SlashAction {
@@ -621,8 +630,14 @@ function deleteSlashRange(editor: CoreEditor): void {
 // lists, wrap/lift for quotes) — and, inside a table, moves the selection
 // cell to cell (plan 06 task 6.5, issue #65, tableKeys.ts), where Tab in the
 // last cell appends a row and Escape exits the table. Returns true when the
-// event was consumed.
-export function handleEditorKeyDown(editor: CoreEditor, event: KeyboardEvent): boolean {
+// event was consumed. `tabKey` (plan 10 task 10.2, issue #94) selects the
+// Tab behavior outside tables/lists/quotes: "indent" (the default) leaves the
+// key to the browser (focus-out), "spaces" inserts four spaces at the caret.
+export function handleEditorKeyDown(
+  editor: CoreEditor,
+  event: KeyboardEvent,
+  tabKey: TabKeyBehavior = "indent",
+): boolean {
   const mod = event.ctrlKey || event.metaKey;
 
   if (mod && event.key.toLowerCase() === "k") {
@@ -671,6 +686,15 @@ export function handleEditorKeyDown(editor: CoreEditor, event: KeyboardEvent): b
     if (inList || inQuote) {
       event.preventDefault();
       runEditorCommand(editor, event.shiftKey ? "outdent" : "indent");
+      return true;
+    }
+    // "spaces" (the plan 10 default): Tab outside a table/list/quote inserts
+    // four spaces at the caret (a Word-like plain indent) instead of letting
+    // the browser move focus. Shift+Tab is left alone (no de-indent outside
+    // a nestable context).
+    if (tabKey === "spaces" && !event.shiftKey) {
+      event.preventDefault();
+      editor.chain().focus().insertContent("    ").run();
       return true;
     }
   }
@@ -755,13 +779,20 @@ function pasteModifierKey(event: ClipboardEvent, state: string, prop: string): b
 // Paste-as-text interception (plan 02 §2.9, issue #36). ProseMirror already
 // treats a shifted paste as plain text, but the insertion goes through the
 // registry command (pasteAsText) so the Edit menu item, the Ctrl+Shift+V
-// shortcut, and the tests all exercise identical behavior. A plain Ctrl+V
-// returns false and keeps the native rich-HTML paste (bold/italic/links/
-// headings survive into the markdown schema).
-export function handleEditorPaste(editor: CoreEditor, event: ClipboardEvent): boolean {
+// shortcut, and the tests all exercise identical behavior. Without
+// `pasteAsPlainText` a plain Ctrl+V returns false and keeps the native
+// rich-HTML paste (bold/italic/links/headings survive into the markdown
+// schema); with it (plan 10 task 10.2, issue #94) a plain Ctrl+V also pastes
+// as text.
+export function handleEditorPaste(
+  editor: CoreEditor,
+  event: ClipboardEvent,
+  pasteAsPlainText = false,
+): boolean {
   const controlOrMeta =
     pasteModifierKey(event, "Control", "ctrlKey") || pasteModifierKey(event, "Meta", "metaKey");
-  if (!controlOrMeta || !pasteModifierKey(event, "Shift", "shiftKey")) return false;
+  if (!controlOrMeta) return false;
+  if (!pasteAsPlainText && !pasteModifierKey(event, "Shift", "shiftKey")) return false;
   const text = event.clipboardData?.getData("text/plain");
   if (!text) return false;
   event.preventDefault();
@@ -801,12 +832,22 @@ export default function Editor({
   missingImages,
   onReLinkImage,
   theme = "quill",
+  tabKey = "indent",
+  pasteAsPlainText = false,
+  autoCloseMarkers = true,
 }: EditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
+  // The app key-behavior settings (plan 10 task 10.2) are read at event time
+  // through refs so the (once-created) editorProps closures always see the
+  // latest values without rebuilding the editor.
+  const tabKeyRef = useRef(tabKey);
+  tabKeyRef.current = tabKey;
+  const pasteAsPlainTextRef = useRef(pasteAsPlainText);
+  pasteAsPlainTextRef.current = pasteAsPlainText;
+
   const lastEmittedRef = useRef<string>(value);
-  const initialRef = useRef<string>(value);
   const editorRef = useRef<CoreEditor | null>(null);
 
   const [slash, setSlash] = useState<{
@@ -883,8 +924,17 @@ export default function Editor({
       FootnoteDef,
       FindDecorations,
     ],
-    content: markdownToTiptap(initialRef.current),
+    // Initialize from the latest content (lastEmittedRef), not a frozen
+    // first-mount snapshot: the editor is (re)created when autoCloseMarkers
+    // toggles (see the deps array below), and a rebuild must restore the
+    // current document, not the original one.
+    content: markdownToTiptap(lastEmittedRef.current),
     editable: !readOnly,
+    // Auto-close brackets/markers (plan 10 task 10.2, issue #94): TipTap's
+    // built-in global input-rules switch. When off, typing "- ", "* ", "# ",
+    // "**", "~~", "`" etc. no longer auto-expands into markdown formatting.
+    // Toggling it recreates the editor (deps below), which re-reads this.
+    enableInputRules: autoCloseMarkers,
     editorProps: {
       attributes: {
         class: "quillmd-prosemirror",
@@ -895,11 +945,11 @@ export default function Editor({
       },
       handleKeyDown: (_view, event) => {
         const active = editorRef.current;
-        return active ? handleEditorKeyDown(active, event) : false;
+        return active ? handleEditorKeyDown(active, event, tabKeyRef.current) : false;
       },
       handlePaste: (_view, event) => {
         const active = editorRef.current;
-        return active ? handleEditorPaste(active, event) : false;
+        return active ? handleEditorPaste(active, event, pasteAsPlainTextRef.current) : false;
       },
       // Middle-click on a link (plan 08 task 8.5, issue #80, AC7): opens the
       // link through plugin-opener instead of the webview's default
@@ -990,7 +1040,11 @@ export default function Editor({
       }
     },
     onBlur: () => setSlash(null),
-  });
+    // Recreate the editor when the input-rules toggle changes so the
+    // enableInputRules option is re-applied (the plugins are built at
+    // creation). The other options are stable across renders, so this is the
+    // only dep that should trigger a rebuild.
+  }, [autoCloseMarkers]);
 
   useEffect(() => {
     editorRef.current = editor;

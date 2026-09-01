@@ -34,6 +34,28 @@ pub fn parse_asset_folder(value: &str) -> Option<AssetFolder> {
     }
 }
 
+/// Name-collision behavior when a copied asset would reuse an existing file
+/// name (plan 10 task 10.2, issue #94): "suffix" appends `-1`/`-2`/... until
+/// the name is free (the plan 08 default), "never" keeps the picked (fixed)
+/// name and overwrites the existing file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssetCollision {
+    /// Keep the picked name; overwrite any existing file of that name.
+    Never,
+    /// Append `-1`/`-2`/... until the name is free (the default).
+    Suffix,
+}
+
+/// Parses the asset-collision setting as sent by the frontend ("never" |
+/// "suffix"); anything else is refused rather than guessed.
+pub fn parse_asset_collision(value: &str) -> Option<AssetCollision> {
+    match value {
+        "never" => Some(AssetCollision::Never),
+        "suffix" => Some(AssetCollision::Suffix),
+        _ => None,
+    }
+}
+
 #[derive(Debug)]
 pub enum AssetCopyError {
     /// `src` does not exist or has no usable file name.
@@ -113,6 +135,7 @@ pub fn copy_asset(
     src: &Path,
     doc_dir: &Path,
     folder: AssetFolder,
+    collision: AssetCollision,
 ) -> Result<String, AssetCopyError> {
     // Only the last path segment is ever used for the target, so a picked
     // path cannot smuggle separators or `..` into the document's folder.
@@ -148,7 +171,13 @@ pub fn copy_asset(
     fs::create_dir_all(&target_dir)
         .map_err(|e| AssetCopyError::Io(format!("create {}: {e}", target_dir.display())))?;
 
-    let file_name = free_name_in(&target_dir, src_name);
+    // "never" keeps the picked (fixed) name and overwrites the existing file
+    // (the atomic write below replaces it); "suffix" finds the first free
+    // name so an existing asset is never clobbered (plan 08 §2.3).
+    let file_name = match collision {
+        AssetCollision::Never => src_name.to_string(),
+        AssetCollision::Suffix => free_name_in(&target_dir, src_name),
+    };
     let target = target_dir.join(&file_name);
 
     // The atomic write publishes the temp file (in target_dir) before the
@@ -205,7 +234,7 @@ mod tests {
         let doc_dir = work.path().join("docs");
         let src = seed(work.path(), "photo.png");
 
-        let rel = copy_asset(&src, &doc_dir, AssetFolder::Assets).unwrap();
+        let rel = copy_asset(&src, &doc_dir, AssetFolder::Assets, AssetCollision::Suffix).unwrap();
         assert_eq!(rel, "assets/photo.png");
         let copied = doc_dir.join("assets").join("photo.png");
         assert!(copied.is_file());
@@ -218,7 +247,7 @@ mod tests {
         let doc_dir = work.path().join("docs");
         let src = seed(work.path(), "photo.png");
 
-        let rel = copy_asset(&src, &doc_dir, AssetFolder::Doc).unwrap();
+        let rel = copy_asset(&src, &doc_dir, AssetFolder::Doc, AssetCollision::Suffix).unwrap();
         assert_eq!(rel, "photo.png");
         let copied = doc_dir.join("photo.png");
         assert!(copied.is_file());
@@ -232,15 +261,15 @@ mod tests {
         let src = seed(work.path(), "photo.png");
 
         assert_eq!(
-            copy_asset(&src, &doc_dir, AssetFolder::Assets).unwrap(),
+            copy_asset(&src, &doc_dir, AssetFolder::Assets, AssetCollision::Suffix).unwrap(),
             "assets/photo.png"
         );
         assert_eq!(
-            copy_asset(&src, &doc_dir, AssetFolder::Assets).unwrap(),
+            copy_asset(&src, &doc_dir, AssetFolder::Assets, AssetCollision::Suffix).unwrap(),
             "assets/photo-1.png"
         );
         assert_eq!(
-            copy_asset(&src, &doc_dir, AssetFolder::Assets).unwrap(),
+            copy_asset(&src, &doc_dir, AssetFolder::Assets, AssetCollision::Suffix).unwrap(),
             "assets/photo-2.png"
         );
         for name in ["photo.png", "photo-1.png", "photo-2.png"] {
@@ -262,6 +291,38 @@ mod tests {
     }
 
     #[test]
+    fn collision_never_keeps_the_picked_name_and_overwrites() {
+        let work = tempdir().unwrap();
+        let doc_dir = work.path().join("docs");
+        let src = seed(work.path(), "photo.png");
+
+        // First copy lands on the picked name.
+        assert_eq!(
+            copy_asset(&src, &doc_dir, AssetFolder::Assets, AssetCollision::Never).unwrap(),
+            "assets/photo.png"
+        );
+        // The source bytes change; a second copy with "never" keeps the same
+        // (fixed) name and overwrites the existing file rather than suffixing.
+        fs::write(&src, b"v2").unwrap();
+        assert_eq!(
+            copy_asset(&src, &doc_dir, AssetFolder::Assets, AssetCollision::Never).unwrap(),
+            "assets/photo.png"
+        );
+        let copied = doc_dir.join("assets").join("photo.png");
+        assert_eq!(fs::read(&copied).unwrap(), b"v2");
+        // No suffixed sibling was created.
+        assert!(!doc_dir.join("assets").join("photo-1.png").exists());
+    }
+
+    #[test]
+    fn parse_asset_collision_is_strict() {
+        assert_eq!(parse_asset_collision("never"), Some(AssetCollision::Never));
+        assert_eq!(parse_asset_collision("suffix"), Some(AssetCollision::Suffix));
+        assert_eq!(parse_asset_collision("Never"), None);
+        assert_eq!(parse_asset_collision(""), None);
+    }
+
+    #[test]
     fn copy_refuses_missing_source() {
         let work = tempdir().unwrap();
         let doc_dir = work.path().join("docs");
@@ -269,6 +330,7 @@ mod tests {
             &work.path().join("nope.png"),
             &doc_dir,
             AssetFolder::Assets,
+            AssetCollision::Suffix,
         );
         assert!(matches!(res, Err(AssetCopyError::SourceNotFound(_))));
     }
@@ -279,7 +341,7 @@ mod tests {
         let doc_dir = work.path().join("docs");
         let dir = work.path().join("adir");
         fs::create_dir(&dir).unwrap();
-        let res = copy_asset(&dir, &doc_dir, AssetFolder::Assets);
+        let res = copy_asset(&dir, &doc_dir, AssetFolder::Assets, AssetCollision::Suffix);
         assert!(matches!(res, Err(AssetCopyError::SourceNotAFile(_))));
     }
 
@@ -289,7 +351,7 @@ mod tests {
         let doc_dir = work.path().join("docs");
         for name in ["CON", "con.txt", "NUL", "COM1", "LPT9"] {
             let src = seed(work.path(), name);
-            let res = copy_asset(&src, &doc_dir, AssetFolder::Assets);
+            let res = copy_asset(&src, &doc_dir, AssetFolder::Assets, AssetCollision::Suffix);
             assert!(
                 matches!(res, Err(AssetCopyError::ReservedName(_))),
                 "{name} should be refused"
@@ -303,7 +365,7 @@ mod tests {
     fn copy_refuses_a_doc_dir_with_no_name() {
         let work = tempdir().unwrap();
         let src = seed(work.path(), "photo.png");
-        let res = copy_asset(&src, Path::new(""), AssetFolder::Assets);
+        let res = copy_asset(&src, Path::new(""), AssetFolder::Assets, AssetCollision::Suffix);
         assert!(matches!(res, Err(AssetCopyError::NoDocFolder)));
     }
 
@@ -313,7 +375,7 @@ mod tests {
         let doc_dir = work.path().join("docs");
         let src = seed(work.path(), "a.png");
 
-        let rel = copy_asset(&src, &doc_dir, AssetFolder::Assets).unwrap();
+        let rel = copy_asset(&src, &doc_dir, AssetFolder::Assets, AssetCollision::Suffix).unwrap();
         assert_eq!(rel, "assets/a.png");
         assert!(doc_dir.join("assets").join("a.png").is_file());
     }
@@ -325,7 +387,7 @@ mod tests {
         let src = seed(work.path(), "photo.png");
         fs::write(&src, b"the original").unwrap();
 
-        copy_asset(&src, &doc_dir, AssetFolder::Assets).unwrap();
+        copy_asset(&src, &doc_dir, AssetFolder::Assets, AssetCollision::Suffix).unwrap();
         assert_eq!(fs::read(&src).unwrap(), b"the original");
     }
 

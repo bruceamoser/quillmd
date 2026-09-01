@@ -188,6 +188,43 @@ describe("paste as text, Ctrl+Shift+V (plan 02 task 2.9, issue #36)", () => {
   });
 });
 
+describe("paste as plain text by default (plan 10 task 10.2, issue #94)", () => {
+  it("a plain Ctrl+V pastes as text when the setting is on", () => {
+    const editor = makeEditor("Start");
+    editors.push(editor);
+    cursorAfter(editor, "Start");
+    const event = pasteEvent({ ctrl: true, text: WORD_TEXT, html: WORD_HTML });
+
+    expect(handleEditorPaste(editor, event as unknown as ClipboardEvent, true)).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    // The rich Word markup is stripped exactly like the Ctrl+Shift+V path.
+    expect(md(editor)).toBe(
+      "Start\n\nbold text and italic text end\n\nlinked text stays\n\nSection heading\n",
+    );
+  });
+
+  it("keeps intercepting Shift+V when the setting is on", () => {
+    const editor = makeEditor("Start");
+    editors.push(editor);
+    cursorAfter(editor, "Start");
+    const event = pasteEvent({ ctrl: true, shift: true, text: "plain" });
+
+    expect(handleEditorPaste(editor, event as unknown as ClipboardEvent, true)).toBe(true);
+    expect(md(editor)).toBe("Start\n\nplain\n");
+  });
+
+  it("still leaves an unmodified paste to the browser when the setting is on", () => {
+    const editor = makeEditor("Start");
+    editors.push(editor);
+    cursorAfter(editor, "Start");
+    const event = pasteEvent({ text: "x" });
+
+    expect(handleEditorPaste(editor, event as unknown as ClipboardEvent, true)).toBe(false);
+    expect(event.defaultPrevented).toBe(false);
+    expect(md(editor)).toBe("Start\n");
+  });
+});
+
 describe("rich Word paste keeps markup (acceptance #6)", () => {
   it("keeps bold/italic/links/headings from the captured clipboard payload", () => {
     // Paste into an empty doc so the Word blocks land verbatim (pasting at

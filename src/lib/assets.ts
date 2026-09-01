@@ -19,6 +19,13 @@ export type AssetFolder = "assets" | "doc";
 
 export const DEFAULT_ASSET_FOLDER: AssetFolder = "assets";
 
+// Name-collision behavior on copy (plan 10 task 10.2, issue #94): "suffix"
+// appends -1/-2/... until the name is free (the plan 08 default), "never"
+// keeps the picked (fixed) name and overwrites the existing file.
+export type AssetCollision = "never" | "suffix";
+
+export const DEFAULT_ASSET_COLLISION: AssetCollision = "suffix";
+
 const ASSET_FOLDER_KEY = "quillmd.assetFolder";
 
 export function isAssetFolder(value: unknown): value is AssetFolder {
@@ -53,8 +60,9 @@ export async function copyAsset(
   src: string,
   docDir: string,
   folder: AssetFolder = DEFAULT_ASSET_FOLDER,
+  collision: AssetCollision = DEFAULT_ASSET_COLLISION,
 ): Promise<string> {
-  return invoke<string>("copy_asset", { src, docDir, assetFolder: folder });
+  return invoke<string>("copy_asset", { src, docDir, assetFolder: folder, collision });
 }
 
 // The Rust file_exists command (plan 08 §3): batch existence check — one
@@ -82,6 +90,7 @@ export async function assetSrcForPickedFile(
   docPath: string,
   filePath: string,
   folder: AssetFolder = DEFAULT_ASSET_FOLDER,
+  collision: AssetCollision = DEFAULT_ASSET_COLLISION,
 ): Promise<string> {
   if (!isAbsolutePath(filePath)) return filePath;
   const docDir = docFolderOf(docPath);
@@ -89,5 +98,5 @@ export async function assetSrcForPickedFile(
   const relative = relativePath(docDir, filePath);
   if (!climbsOutOf(relative)) return relative;
   if (!isTauri()) return relative;
-  return copyAsset(filePath, docDir, folder);
+  return copyAsset(filePath, docDir, folder, collision);
 }

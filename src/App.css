@@ -3336,3 +3336,189 @@ button.quillmd-status-trash:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
 }
+
+/* --- Settings dialog (plan 10 task 10.2, issue #94) ------------------------ */
+/* Tabbed app-settings dialog: General / Appearance / Editor / Advanced. */
+
+.quillmd-settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quillmd-settings-dialog {
+  width: 460px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  padding: 14px 16px 12px;
+}
+
+.quillmd-settings-title {
+  color: var(--text-bright);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.quillmd-settings-tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.quillmd-settings-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 6px 10px 8px;
+}
+
+.quillmd-settings-tab:hover {
+  color: var(--text);
+}
+
+.quillmd-settings-tab-active {
+  color: var(--text-bright);
+  border-bottom-color: var(--accent);
+}
+
+.quillmd-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.quillmd-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.quillmd-settings-rowtext {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.quillmd-settings-label {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.quillmd-settings-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.quillmd-settings-control {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.quillmd-settings-select {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  max-width: 210px;
+  padding: 4px 8px;
+}
+
+.quillmd-settings-checkbox {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.quillmd-settings-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.quillmd-settings-info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.quillmd-settings-info-value {
+  color: var(--text-bright);
+  font-size: 12px;
+}
+
+.quillmd-settings-path {
+  word-break: break-all;
+  font-family: var(--font-mono);
+}
+
+.quillmd-settings-advanced-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.quillmd-settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.quillmd-settings-button {
+  background: var(--bg-active);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 5px 12px;
+}
+
+.quillmd-settings-button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--text-faint);
+}
+
+.quillmd-settings-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.quillmd-settings-button.danger {
+  color: var(--danger);
+}
+
+.quillmd-settings-button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+
+.quillmd-settings-button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
