@@ -46,7 +46,7 @@ describe("App.tsx Tools > Word Count routing (issue #87)", () => {
     expect(app).toContain('id === "tools-word-count"');
     expect(app).toContain("registerWordCountDialogListener");
     expect(app).toContain('key === "f5" && e.shiftKey');
-    expect(app).toContain("Ctrl+Shift+F5: word count (Tools > Word Count)");
+    expect(app).toContain("openWordCountDialog()");
   });
 });
 

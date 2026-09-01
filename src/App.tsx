@@ -172,6 +172,7 @@ import SettingsDialog from "./components/SettingsDialog";
 import type { AppInfo } from "./components/SettingsDialog";
 import AboutDialog from "./components/AboutDialog";
 import type { SidecarVersions } from "./components/AboutDialog";
+import ShortcutsDialog from "./components/ShortcutsDialog";
 import {
   buildKnownSet,
   ignoreWordForSession,
@@ -290,30 +291,6 @@ const EXPORT_FORMATS: Record<string, ExportFormat> = {
   "export-epub": "epub",
   "export-txt": "txt",
 };
-
-const SHORTCUTS_TEXT = [
-  "Ctrl+N: new document",
-  "Ctrl+B / Ctrl+I / Ctrl+U: bold / italic / underline",
-  "Ctrl+K: link",
-  "Ctrl+1..6: heading level 1-6 (press again to return to paragraph)",
-  "Ctrl+] / Ctrl+[: indent / outdent (list item or quote level)",
-  "Tab / Shift+Tab: nest / un-nest list item or quote",
-  "Ctrl+= / Ctrl+- / Ctrl+0: zoom in / zoom out / reset (Ctrl+wheel)",
-  "Ctrl+Shift+X: strikethrough",
-  "Ctrl+E: inline code",
-  "Ctrl+/: toggle WYSIWYG / Source",
-  "Ctrl+F / Ctrl+H: find / find and replace",
-  "F3 / Shift+F3: next / previous match (Esc closes the find panel)",
-  "Ctrl+S / Ctrl+Shift+S: save / save as",
-  "Ctrl+W: close tab",
-  "Ctrl+Z / Ctrl+Shift+Z: undo / redo",
-  "Ctrl+Shift+V: paste as plain text (Edit > Paste as Text)",
-  "Ctrl+Shift+E: toggle explorer",
-  "Ctrl+Shift+8: toggle navigation pane",
-  "Ctrl+Shift+F5: word count (Tools > Word Count)",
-  "Ctrl+Shift+F7: spelling (Tools > Spelling…)",
-  "Ctrl+,: settings (Tools > Settings…)",
-].join("\n");
 
 export default function App() {
   const [docs, setDocs] = useState<Record<string, DocState>>({});
@@ -438,6 +415,10 @@ export default function App() {
   // on mount — null in browser dev (no Tauri) drives the "…" placeholders.
   const [aboutDialogOpen, setAboutDialogOpen] = useState(false);
   const [sidecarVersions, setSidecarVersions] = useState<SidecarVersions | null>(null);
+  // Keyboard Shortcuts dialog (plan 10 task 10.5, issue #97): Help > Shortcuts
+  // renders the single-source table (src/lib/shortcuts.ts) — replaces the old
+  // window.alert() text block.
+  const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
   // Full screen (plan 10 task 10.3, issue #95): app-level session state — the
   // quillmd-fullscreen class on the app root hides the chrome (header, tab
   // bar, status bar, side rails, editor toolbar), leaving the editor only.
@@ -2403,7 +2384,10 @@ export default function App() {
         // pandoc/typst versions (replaces the old one-line alert).
         setAboutDialogOpen(true);
       } else if (id === "help-shortcuts") {
-        window.alert(SHORTCUTS_TEXT);
+        // Plan 10 task 10.5 (issue #97): Help > Shortcuts — the dialog that
+        // renders the single-source shortcut table (src/lib/shortcuts.ts),
+        // replacing the old one-line alert.
+        setShortcutsDialogOpen(true);
       }
     },
     [
@@ -3070,6 +3054,10 @@ export default function App() {
           sidecars={sidecarVersions}
           onClose={() => setAboutDialogOpen(false)}
         />
+      )}
+
+      {shortcutsDialogOpen && (
+        <ShortcutsDialog onClose={() => setShortcutsDialogOpen(false)} />
       )}
 
       <input

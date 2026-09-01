@@ -45,7 +45,7 @@ describe("App.tsx Tools > Settings routing (issue #94)", () => {
     expect(app).toContain('key === ","');
     expect(app).toContain("setSettingsDialogOpen(true)");
     expect(app).toContain("<SettingsDialog");
-    expect(app).toContain("Ctrl+,: settings (Tools > Settings…)");
+    expect(app).toContain("handleSettingsChange");
   });
 });
 
