@@ -307,6 +307,89 @@ body {
   text-transform: uppercase;
 }
 
+/* --- navigation pane (plan 09 task 9.3, issue #86) ------------------------ */
+/* The right-hand heading rail; mirrors the Explorer's chrome on the opposite
+   side (border-left instead of border-right, drag edge on its left). */
+
+.quillmd-outline {
+  background: var(--bg-elevated);
+  color: var(--text);
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  font-size: 13px;
+  border-left: 1px solid var(--border);
+}
+
+.quillmd-outline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.quillmd-outline-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 12px;
+}
+
+.quillmd-outline-empty {
+  padding: 2px 12px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.quillmd-outline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.quillmd-outline-item {
+  /* Indent by heading level: H1 flush, each deeper level indents 12px. */
+  padding-left: 12px;
+}
+.quillmd-outline-item[data-level="1"] { padding-left: 8px; }
+.quillmd-outline-item[data-level="2"] { padding-left: 20px; }
+.quillmd-outline-item[data-level="3"] { padding-left: 32px; }
+.quillmd-outline-item[data-level="4"] { padding-left: 44px; }
+
+.quillmd-outline-link {
+  display: block;
+  width: 100%;
+  padding: 3px 12px;
+  border: none;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 4px;
+}
+
+.quillmd-outline-link:hover {
+  background: var(--bg-hover);
+}
+
+/* The entry at the top of the visible area (scroll tracking). */
+.quillmd-outline-link.quillmd-outline-active {
+  background: var(--accent-soft);
+  color: var(--text-bright);
+  font-weight: 600;
+}
+
 .quillmd-splitter {
   flex: 0 0 auto;
   width: 4px;

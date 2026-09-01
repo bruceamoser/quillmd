@@ -287,7 +287,17 @@
         #                          PDF/DOCX export incl. the pdftotext
         #                          outline check and the DOCX zip field
         #                          check), and the in-binary
-        #                          --self-test export-toc
+        #                          --self-test export-toc; and task 9.3
+        #                          (issue #86): the navigation pane. A right
+        #                          rail listing the active doc's H1-H4 with
+        #                          click-to-jump + scroll tracking; the
+        #                          toggle persists per-path in DocSettings
+        #                          (navigationPane, default false), driven
+        #                          from the View menu + Ctrl+Shift+8. Checks:
+        #                          the menu.rs + App.tsx wiring, the
+        #                          docSettings persistence, the outline.ts
+        #                          pure helpers, and the outline/pane/App
+        #                          vitest suites actually run here
         #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
@@ -4086,6 +4096,96 @@ test_toce_wiring() {
     fi
 }
 
+# --- p4-doc-tools: navigation pane (task 9.3, issue #86) ------------------------
+# A right rail listing the active document's H1-H4, with click-to-jump and scroll
+# tracking (the active item follows the scroll position). The toggle persists
+# per-path in DocSettings as `navigationPane` (default false) and is driven from
+# the View menu + Ctrl+Shift+8. The pure logic (entry extraction, active-index
+# math, rAF scroll tracking) lives in outline.ts and is pinned in a vitest suite;
+# the deep behavior (WYSIWYG/preview click-to-jump, tracking, persistence) is
+# pinned in outlinePane.test.tsx + navigationPaneWiring.test.tsx, which run below.
+
+test_nav_menu_wiring() {
+    note "nav.menu View > Toggle Navigation Pane (view-navigation, Ctrl+Shift+8) present"
+    if grep -q 'MenuItem::with_id(app, "view-navigation", "Toggle Navigation Pane", true, Some("Ctrl+Shift+8"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '\.items(&\[&explorer, &navigation, &statusbar\])' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "nav.menu View > Toggle Navigation Pane (view-navigation, Ctrl+Shift+8) present"
+    else
+        fail "nav.menu View > Toggle Navigation Pane (view-navigation, Ctrl+Shift+8) present"
+    fi
+}
+
+test_nav_app_wiring() {
+    note "nav.shortcuts App.tsx routes view-navigation + Ctrl+Shift+8 and renders the pane"
+    if grep -q 'id === "view-navigation"' "$ROOT/src/App.tsx" \
+        && grep -q 'const toggleNavigationPane = useCallback' "$ROOT/src/App.tsx" \
+        && grep -q 'navigationPane: !activeDoc.settings.navigationPane' "$ROOT/src/App.tsx" \
+        && grep -q 'key === "8" && e.shiftKey' "$ROOT/src/App.tsx" \
+        && grep -q 'activeDoc.settings.navigationPane && (' "$ROOT/src/App.tsx" \
+        && grep -q '<OutlinePane' "$ROOT/src/App.tsx" \
+        && grep -q 'from "./components/OutlinePane"' "$ROOT/src/App.tsx"; then
+        pass "nav.shortcuts App.tsx routes view-navigation + Ctrl+Shift+8 and renders the pane"
+    else
+        fail "nav.shortcuts App.tsx routes view-navigation + Ctrl+Shift+8 and renders the pane"
+    fi
+}
+
+test_nav_settings() {
+    note "nav.settings docSettings.ts persists navigationPane (default false)"
+    if grep -q 'navigationPane: boolean' "$ROOT/src/lib/docSettings.ts" \
+        && grep -q 'navigationPane: false' "$ROOT/src/lib/docSettings.ts" \
+        && grep -q 'if (typeof record.navigationPane === "boolean") out.navigationPane = record.navigationPane' "$ROOT/src/lib/docSettings.ts"; then
+        pass "nav.settings docSettings.ts persists navigationPane (default false)"
+    else
+        fail "nav.settings docSettings.ts persists navigationPane (default false)"
+    fi
+}
+
+test_nav_lib() {
+    note "nav.lib outline.ts extraction + active-index + rAF scroll tracking + OutlinePane"
+    if [ -f "$ROOT/src/lib/outline.ts" ] \
+        && grep -q 'export function outlineEntriesFromDoc' "$ROOT/src/lib/outline.ts" \
+        && grep -q 'export function outlineEntriesFromMarkdown' "$ROOT/src/lib/outline.ts" \
+        && grep -q 'export function activeOutlineIndex' "$ROOT/src/lib/outline.ts" \
+        && grep -q 'export function startOutlineTracking' "$ROOT/src/lib/outline.ts" \
+        && grep -q 'requestAnimationFrame' "$ROOT/src/lib/outline.ts" \
+        && [ -f "$ROOT/src/components/OutlinePane.tsx" ] \
+        && grep -q 'export default function OutlinePane' "$ROOT/src/components/OutlinePane.tsx"; then
+        pass "nav.lib outline.ts extraction + active-index + rAF scroll tracking + OutlinePane"
+    else
+        fail "nav.lib outline.ts extraction + active-index + rAF scroll tracking + OutlinePane"
+    fi
+}
+
+test_nav_suites_present() {
+    note "nav.suites plan 09 task 9.3 vitest suites (outline, pane, App wiring) present"
+    if [ -f "$ROOT/src/lib/__tests__/outline.test.ts" ] \
+        && grep -q 'startOutlineTracking' "$ROOT/src/lib/__tests__/outline.test.ts" \
+        && [ -f "$ROOT/src/lib/__tests__/outlinePane.test.tsx" ] \
+        && grep -q 'tracks the active entry as the scroll moves' "$ROOT/src/lib/__tests__/outlinePane.test.tsx" \
+        && [ -f "$ROOT/src/lib/__tests__/navigationPaneWiring.test.tsx" ] \
+        && grep -q 'Ctrl+Shift+8 toggles the pane for the active document and persists it' "$ROOT/src/lib/__tests__/navigationPaneWiring.test.tsx"; then
+        pass "nav.suites plan 09 task 9.3 vitest suites (outline, pane, App wiring) present"
+    else
+        fail "nav.suites plan 09 task 9.3 vitest suites (outline, pane, App wiring) present"
+    fi
+}
+
+test_nav_suites_green() {
+    note "nav.green navigation-pane vitest suites pass"
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (node / node_modules not available)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/outline.test.ts src/lib/__tests__/outlinePane.test.tsx src/lib/__tests__/navigationPaneWiring.test.tsx src/lib/__tests__/docSettings.test.ts) 2>&1 ); then
+        pass "nav.green navigation-pane vitest suites pass"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "nav.green navigation-pane vitest suites failed (plan 09 task 9.3)"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -4485,6 +4585,13 @@ case "$SUBSET" in
         test_toce_wiring
         test_toce_cargo_suite
         test_toce_selftest
+        # Task 9.3 (issue #86): navigation pane
+        test_nav_menu_wiring
+        test_nav_app_wiring
+        test_nav_settings
+        test_nav_lib
+        test_nav_suites_present
+        test_nav_suites_green
         ;;
     shell)
         test_shell_new_bundled

@@ -27,6 +27,9 @@ export interface DocSettings {
   // Per-doc theme override (plan 05 task 5.3, issue #56). Null means "use the
   // app-wide default theme" (theme.ts); a value is a per-path override.
   theme: ThemeId | null;
+  // Whether the right-hand navigation pane is open (plan 09 task 9.3, issue
+  // #86). A view-only preference persisted per path, like the view mode.
+  navigationPane: boolean;
 }
 
 export const DEFAULT_DOC_SETTINGS: DocSettings = {
@@ -36,6 +39,7 @@ export const DEFAULT_DOC_SETTINGS: DocSettings = {
   zoom: ZOOM_DEFAULT,
   spellcheck: true,
   theme: null,
+  navigationPane: false,
 };
 
 const SETTINGS_KEY = "quillmd.docSettings";
@@ -52,6 +56,7 @@ function normalize(raw: unknown): DocSettings {
   if (typeof record.showMarks === "boolean") out.showMarks = record.showMarks;
   if (typeof record.spellcheck === "boolean") out.spellcheck = record.spellcheck;
   if (isThemeId(record.theme)) out.theme = record.theme;
+  if (typeof record.navigationPane === "boolean") out.navigationPane = record.navigationPane;
   if (typeof record.zoom === "number" && Number.isFinite(record.zoom)) {
     out.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(record.zoom)));
   }

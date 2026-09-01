@@ -285,6 +285,10 @@ fn build_view_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> 
         Some("Ctrl+/"),
     )?;
     let explorer = MenuItem::with_id(app, "view-explorer", "Toggle Explorer", true, Some("Ctrl+Shift+E"))?;
+    // Navigation pane (plan 09 task 9.3, issue #86): the right-hand heading
+    // rail. The accelerator is the Word parity one (Ctrl+Shift+8); the open
+    // state persists per doc on the frontend.
+    let navigation = MenuItem::with_id(app, "view-navigation", "Toggle Navigation Pane", true, Some("Ctrl+Shift+8"))?;
     let statusbar = MenuItem::with_id(app, "view-statusbar", "Toggle Status Bar", true, None::<&str>)?;
 
     // View-level document preferences (plan 02 task 2.5, issue #34): line
@@ -371,7 +375,7 @@ fn build_view_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> 
         .item(&theme)
         .item(&default_theme)
         .separator()
-        .items(&[&explorer, &statusbar])
+        .items(&[&explorer, &navigation, &statusbar])
         .build()?;
     Ok(view)
 }
