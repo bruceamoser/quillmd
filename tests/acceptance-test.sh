@@ -718,7 +718,7 @@ test_editor_underline_menu_wiring() {
 test_editor_underline_app_routing() {
     note "editor.underline App.tsx routes format-underline + documents Ctrl+U"
     if grep -q '"format-underline": "underline"' "$ROOT/src/App.tsx" \
-        && grep -q 'Ctrl+U' "$ROOT/src/App.tsx"; then
+        && grep -q 'shortcut: "Ctrl+U"' "$ROOT/src/lib/editorCommands.ts"; then
         pass "editor.underline App.tsx routes format-underline + documents Ctrl+U"
     else
         fail "editor.underline App.tsx routes format-underline + documents Ctrl+U"
@@ -809,8 +809,10 @@ test_editor_alignment_roundtrip_fixture() {
 # is covered by the vitest suite (src/lib/__tests__/indent.test.tsx); this
 # section checks the app-level wiring the GUI driver cannot reach headlessly:
 # the native Format > Paragraph menu carries Indent (Ctrl+]) / Outdent
-# (Ctrl+[), App.tsx routes their ids through the shared registry and lists
-# the shortcuts in the Help > Shortcuts text.
+# (Ctrl+[), App.tsx routes their ids through the shared registry, and the
+# shortcuts are documented in the single-source table (plan 10 task 10.5,
+# issue #97): the indent/outdent rows come from the registry, the Tab rows
+# live in shortcuts.ts.
 test_editor_indent_menu_wiring() {
     note "editor.indent Format > Paragraph Indent/Outdent + Ctrl+]/[ present"
     if grep -q 'MenuItem::with_id(app, "format-indent", "Indent", true, Some("Ctrl+BracketRight"))' "$ROOT/src-tauri/src/menu.rs" \
@@ -826,8 +828,10 @@ test_editor_indent_app_routing() {
     note "editor.indent App.tsx routes format-indent/outdent + documents shortcuts"
     if grep -q '"format-indent": "indent"' "$ROOT/src/App.tsx" \
         && grep -q '"format-outdent": "outdent"' "$ROOT/src/App.tsx" \
-        && grep -q 'Ctrl+\] / Ctrl+\[: indent / outdent' "$ROOT/src/App.tsx" \
-        && grep -q 'Tab / Shift+Tab: nest / un-nest' "$ROOT/src/App.tsx"; then
+        && grep -q 'shortcut: "Ctrl+\]"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'shortcut: "Ctrl+\["' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'keys: "Tab"' "$ROOT/src/lib/shortcuts.ts" \
+        && grep -q 'keys: "Shift+Tab"' "$ROOT/src/lib/shortcuts.ts"; then
         pass "editor.indent App.tsx routes format-indent/outdent + documents shortcuts"
     else
         fail "editor.indent App.tsx routes format-indent/outdent + documents shortcuts"
@@ -1042,7 +1046,7 @@ test_editor_pasteas_app_routing() {
         && grep -q 'from "./lib/clipboard"' "$ROOT/src/App.tsx" \
         && grep -q 'readClipboardText()' "$ROOT/src/App.tsx" \
         && grep -q 'dispatchEditorCommand("pasteAsText"' "$ROOT/src/App.tsx" \
-        && grep -q 'Ctrl+Shift+V' "$ROOT/src/App.tsx"; then
+        && grep -q 'shortcut: "Ctrl+Shift+V"' "$ROOT/src/lib/editorCommands.ts"; then
         pass "editor.pasteas App.tsx routes edit-paste-as-text + reads clipboard"
     else
         fail "editor.pasteas App.tsx routes edit-paste-as-text + reads clipboard"
@@ -1084,19 +1088,23 @@ test_editor_headings_keydown() {
     fi
 }
 test_editor_shortcuts_dialog() {
-    note "editor.shortcuts Help > Shortcuts dialog lists the editor shortcuts"
+    note "editor.shortcuts Help > Shortcuts opens the dialog (shortcuts.ts single source)"
+    # Plan 10 task 10.5 (issue #97) replaced the old window.alert(SHORTCUTS_TEXT)
+    # block with a dialog that renders the single-source table in
+    # src/lib/shortcuts.ts (registry rows generated from EDITOR_COMMANDS, so
+    # they can't drift). The table content + drift test live in the vitest
+    # suites (shortcuts.test.ts / shortcutsDialog.test.tsx, task 10.5 below).
     if grep -q 'MenuItem::with_id(app, "help-shortcuts", "Keyboard Shortcuts"' "$ROOT/src-tauri/src/menu.rs" \
         && grep -q 'id === "help-shortcuts"' "$ROOT/src/App.tsx" \
-        && grep -q 'SHORTCUTS_TEXT' "$ROOT/src/App.tsx" \
-        && grep -q 'Ctrl+1..6' "$ROOT/src/App.tsx" \
-        && grep -q 'Ctrl+U' "$ROOT/src/App.tsx" \
-        && grep -q 'Ctrl+\] / Ctrl+\[: indent / outdent' "$ROOT/src/App.tsx" \
-        && grep -q 'Tab / Shift+Tab: nest / un-nest' "$ROOT/src/App.tsx" \
-        && grep -q 'Ctrl+= / Ctrl+- / Ctrl+0' "$ROOT/src/App.tsx" \
-        && grep -q 'Ctrl+Shift+V: paste as plain text' "$ROOT/src/App.tsx"; then
-        pass "editor.shortcuts Help > Shortcuts dialog lists the editor shortcuts"
+        && grep -q 'setShortcutsDialogOpen(true)' "$ROOT/src/App.tsx" \
+        && grep -q '<ShortcutsDialog' "$ROOT/src/App.tsx" \
+        && grep -q 'from "./components/ShortcutsDialog"' "$ROOT/src/App.tsx" \
+        && [ -f "$ROOT/src/lib/shortcuts.ts" ] \
+        && grep -q 'EDITOR_COMMANDS' "$ROOT/src/lib/shortcuts.ts" \
+        && grep -q 'shortcutGroups()' "$ROOT/src/components/ShortcutsDialog.tsx"; then
+        pass "editor.shortcuts Help > Shortcuts opens the dialog (shortcuts.ts single source)"
     else
-        fail "editor.shortcuts Help > Shortcuts dialog lists the editor shortcuts"
+        fail "editor.shortcuts Help > Shortcuts opens the dialog (shortcuts.ts single source)"
     fi
 }
 
@@ -4239,7 +4247,7 @@ test_wc_app_wiring() {
     if grep -q 'id === "tools-word-count"' "$ROOT/src/App.tsx" \
         && grep -q 'registerWordCountDialogListener' "$ROOT/src/App.tsx" \
         && grep -q 'key === "f5" && e.shiftKey' "$ROOT/src/App.tsx" \
-        && grep -q 'Ctrl+Shift+F5: word count (Tools > Word Count)' "$ROOT/src/App.tsx" \
+        && grep -q 'openWordCountDialog' "$ROOT/src/App.tsx" \
         && grep -q '<WordCountDialog' "$ROOT/src/App.tsx" \
         && grep -q 'from "./components/WordCountDialog"' "$ROOT/src/App.tsx" \
         && [ -f "$ROOT/src/components/WordCountDialog.tsx" ]; then
@@ -4346,7 +4354,7 @@ test_spell_app_wiring() {
     if grep -q 'id === "tools-spelling"' "$ROOT/src/App.tsx" \
         && grep -q 'registerSpellCheckDialogListener' "$ROOT/src/App.tsx" \
         && grep -q 'key === "f7" && e.shiftKey' "$ROOT/src/App.tsx" \
-        && grep -q 'Ctrl+Shift+F7: spelling (Tools > Spelling…)' "$ROOT/src/App.tsx" \
+        && grep -q 'openSpellCheckDialog' "$ROOT/src/App.tsx" \
         && grep -q '<SpellCheckDialog' "$ROOT/src/App.tsx" \
         && grep -q 'from "./components/SpellCheckDialog"' "$ROOT/src/App.tsx" \
         && [ -f "$ROOT/src/components/SpellCheckDialog.tsx" ]; then
@@ -4789,7 +4797,7 @@ test_settings_app_wiring() {
         && grep -q 'handleSettingsReset' "$ROOT/src/App.tsx" \
         && grep -q 'get_app_info' "$ROOT/src/App.tsx" \
         && grep -q 'uiScale' "$ROOT/src/App.tsx" \
-        && grep -q 'Ctrl+,: settings (Tools > Settings…)' "$ROOT/src/App.tsx"; then
+        && grep -q 'setSettingsDialogOpen(true)' "$ROOT/src/App.tsx"; then
         pass "settings.app App.tsx routes tools-settings + Ctrl+, and renders the dialog"
     else
         fail "settings.app App.tsx routes tools-settings + Ctrl+, and renders the dialog"
@@ -5002,6 +5010,82 @@ test_about_suites_green() {
     else
         printf '%s\n' "$out" | tail -25
         fail "about.green about vitest suites failed (plan 10 task 10.4)"
+    fi
+}
+
+# --- p4-view-settings: shortcuts table + dialog (task 10.5, issue #97) -----------
+# Help > Shortcuts (plan §2.4/§3): src/lib/shortcuts.ts is the single source
+# of truth — registry rows are generated from EDITOR_COMMANDS (so a registry
+# shortcut can't drift from the dialog), app-level rows carry the menu-owned
+# accelerators. The dialog (ShortcutsDialog.tsx) renders the table; App.tsx
+# routes help-shortcuts to it (replacing the old window.alert text block).
+# AC7 (plan 10 §4): the dialog lists ≥25 shortcuts, all present in the table
+# (no drift) — asserted in the vitest suites below.
+
+test_shortcuts_table() {
+    note "shortcuts.table shortcuts.ts single source (registry-generated + app-level)"
+    if [ -f "$ROOT/src/lib/shortcuts.ts" ] \
+        && grep -q 'EDITOR_COMMANDS' "$ROOT/src/lib/shortcuts.ts" \
+        && grep -q 'export const SHORTCUTS' "$ROOT/src/lib/shortcuts.ts" \
+        && grep -q 'export function shortcutGroups' "$ROOT/src/lib/shortcuts.ts" \
+        && grep -q 'REGISTRY_COMMAND_GROUP' "$ROOT/src/lib/shortcuts.ts"; then
+        pass "shortcuts.table shortcuts.ts single source (registry-generated + app-level)"
+    else
+        fail "shortcuts.table shortcuts.ts single source (registry-generated + app-level)"
+    fi
+}
+
+test_shortcuts_dialog_component() {
+    note "shortcuts.dialog ShortcutsDialog.tsx renders the table (plan 08 §3 keyboard model)"
+    if [ -f "$ROOT/src/components/ShortcutsDialog.tsx" ] \
+        && grep -q 'quillmd-shortcuts-dialog' "$ROOT/src/components/ShortcutsDialog.tsx" \
+        && grep -q 'shortcutGroups()' "$ROOT/src/components/ShortcutsDialog.tsx" \
+        && grep -q 'aria-label="Keyboard Shortcuts"' "$ROOT/src/components/ShortcutsDialog.tsx" \
+        && grep -q 'closeRef.current?.focus()' "$ROOT/src/components/ShortcutsDialog.tsx" \
+        && grep -q 'e.key === "Escape" || e.key === "Enter"' "$ROOT/src/components/ShortcutsDialog.tsx"; then
+        pass "shortcuts.dialog ShortcutsDialog.tsx renders the table (plan 08 §3 keyboard model)"
+    else
+        fail "shortcuts.dialog ShortcutsDialog.tsx renders the table (plan 08 §3 keyboard model)"
+    fi
+}
+
+test_shortcuts_app_wiring() {
+    note "shortcuts.app App.tsx routes help-shortcuts to the dialog (alert block gone)"
+    if grep -q 'id === "help-shortcuts"' "$ROOT/src/App.tsx" \
+        && grep -q 'setShortcutsDialogOpen(true)' "$ROOT/src/App.tsx" \
+        && grep -q '<ShortcutsDialog' "$ROOT/src/App.tsx" \
+        && grep -q 'from "./components/ShortcutsDialog"' "$ROOT/src/App.tsx" \
+        && ! grep -q 'SHORTCUTS_TEXT' "$ROOT/src/App.tsx"; then
+        pass "shortcuts.app App.tsx routes help-shortcuts to the dialog (alert block gone)"
+    else
+        fail "shortcuts.app App.tsx routes help-shortcuts to the dialog (alert block gone)"
+    fi
+}
+
+test_shortcuts_css() {
+    note "shortcuts.css App.css styles the shortcuts dialog"
+    if grep -q '.quillmd-shortcuts-overlay' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-shortcuts-dialog' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-shortcuts-columns' "$ROOT/src/App.css" \
+        && grep -q '.quillmd-shortcuts-keys' "$ROOT/src/App.css"; then
+        pass "shortcuts.css App.css styles the shortcuts dialog"
+    else
+        fail "shortcuts.css App.css styles the shortcuts dialog"
+    fi
+}
+
+test_shortcuts_suites_green() {
+    note "shortcuts.green shortcuts table (AC7: ≥25, no drift) + dialog vitest suites pass"
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (node / node_modules not available)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/shortcuts.test.ts src/lib/__tests__/shortcutsDialog.test.tsx) 2>&1 ); then
+        pass "shortcuts.green shortcuts table (AC7: ≥25, no drift) + dialog vitest suites pass"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "shortcuts.green shortcuts vitest suites failed (plan 10 task 10.5)"
     fi
 }
 
@@ -5468,6 +5552,12 @@ case "$SUBSET" in
         test_about_app_wiring
         test_about_selftest
         test_about_suites_green
+        # Task 10.5 (issue #97): shortcuts table + dialog
+        test_shortcuts_table
+        test_shortcuts_dialog_component
+        test_shortcuts_app_wiring
+        test_shortcuts_css
+        test_shortcuts_suites_green
         ;;
     shell)
         test_shell_new_bundled

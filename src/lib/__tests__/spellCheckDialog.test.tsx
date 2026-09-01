@@ -50,7 +50,7 @@ describe("App.tsx Tools > Spelling… routing (issue #88)", () => {
     expect(app).toContain('id === "tools-spelling"');
     expect(app).toContain("registerSpellCheckDialogListener");
     expect(app).toContain('key === "f7" && e.shiftKey');
-    expect(app).toContain("Ctrl+Shift+F7: spelling (Tools > Spelling…)");
+    expect(app).toContain("openSpellCheckDialog()");
   });
 });
 

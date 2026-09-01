@@ -2843,6 +2843,129 @@ button.quillmd-status-trash:hover {
   border-color: var(--accent-hover);
 }
 
+/* --- Keyboard shortcuts dialog (plan 10 task 10.5, issue #97) -------------- */
+
+.quillmd-shortcuts-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quillmd-shortcuts-dialog {
+  width: 680px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  padding: 14px 16px 12px;
+}
+
+.quillmd-shortcuts-title {
+  color: var(--text-bright);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+/* The tagline under the title. */
+.quillmd-shortcuts-scope {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+/* Two columns of group sections (three on wide dialogs). */
+.quillmd-shortcuts-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin: 0 0 12px;
+}
+
+@media (min-width: 860px) {
+  .quillmd-shortcuts-columns {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.quillmd-shortcuts-group-title {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.quillmd-shortcuts-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+}
+
+.quillmd-shortcuts-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* The key combination, monospace so `Ctrl+Shift+8` lines up. */
+.quillmd-shortcuts-keys {
+  color: var(--text-bright);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.quillmd-shortcuts-label {
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.quillmd-shortcuts-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.quillmd-shortcuts-button {
+  background: var(--bg-active);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 5px 12px;
+}
+
+.quillmd-shortcuts-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-faint);
+}
+
+.quillmd-shortcuts-button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+
+.quillmd-shortcuts-button.primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
 /* --- Spell check dialog (plan 09 task 9.5, issue #88) ---------------------- */
 
 .quillmd-spellcheck-overlay {
