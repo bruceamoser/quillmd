@@ -29,10 +29,12 @@ import type {
   UiScale,
 } from "../lib/settings";
 
-// The app info the Advanced tab shows (plan 10 §2.2: version/paths). App
-// resolves it through the Rust get_app_info command (version + config dir).
+// The app info the Advanced tab shows (plan 10 §2.2: version/paths) and the
+// About dialog shows (plan 10 §2.5: version + build hash). App resolves it
+// through the Rust get_app_info command (version + build hash + config dir).
 export interface AppInfo {
   version: string;
+  buildHash: string;
   configDir: string;
 }
 

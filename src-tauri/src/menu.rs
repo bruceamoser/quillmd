@@ -571,6 +571,12 @@ fn build_tools_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>>
     // the browser-dev shortcut.
     let spelling =
         MenuItem::with_id(app, "tools-spelling", "Spelling…", true, Some("Ctrl+Shift+F7"))?;
+    // Clear formatting (plan 10 task 10.4, issue #96): the shared
+    // clearFormatting registry command (also Format > Clear Formatting,
+    // `format-clear`) — the frontend (App.tsx) dispatches the same command
+    // from both menu ids.
+    let clear_formatting =
+        MenuItem::with_id(app, "tools-clear-formatting", "Clear Formatting", true, None::<&str>)?;
     // Clear document (plan 09 task 9.7, issue #90): the frontend (App.tsx)
     // gates the destructive clear on a native confirm, then empties the active
     // doc through one undoable change on the active surface (WYSIWYG or the
@@ -584,6 +590,7 @@ fn build_tools_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>>
     let tools = SubmenuBuilder::new(app, "Tools")
         .item(&word_count)
         .item(&spelling)
+        .item(&clear_formatting)
         .item(&clear_document)
         .item(&settings)
         .build()?;

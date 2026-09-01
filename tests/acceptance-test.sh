@@ -4876,6 +4876,135 @@ test_fullscreen_suites_green() {
     fi
 }
 
+# --- p4-view-settings: tools menu + about (task 10.4, issue #96) ----------------
+# Tools menu completion (plan §2.3): Clear Formatting joins Word Count /
+# Spelling / Clear Document / Settings and dispatches the shared
+# clearFormatting registry command (the same one Format > Clear Formatting
+# uses; plan §2.3 keeps it in both menus). Help > About QuillMD (plan §2.5):
+# real version + build hash + the bundled pandoc/typst versions (Rust
+# get_app_info / get_sidecar_versions), GitHub/docs links, and a disabled
+# "Check for updates" (manual releases — no auto-update in v2). AC6: About
+# shows the real version + sidecar versions — the --self-test about hook
+# asserts the version is non-empty and, for a tool that IS installed, its
+# version line is non-empty too.
+
+test_tools_menu_wiring() {
+    note "tools.menu Tools menu complete (plan §2.3) + tools-clear-formatting present"
+    if grep -q 'MenuItem::with_id(app, "tools-clear-formatting", "Clear Formatting", true, None::<&str>)' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "tools-word-count", "Word Count", true, Some("Ctrl+Shift+F5"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "tools-spelling", "Spelling…", true, Some("Ctrl+Shift+F7"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "tools-clear-document", "Clear Document", true, None::<&str>)' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "tools-settings", "Settings…", true, Some("Ctrl+,"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '\.items(&\[&file, &edit, &view, &insert, &format, &tools, &help\])' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "format-clear", "Clear Formatting", true, None::<&str>)' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "tools.menu Tools menu complete (plan §2.3) + tools-clear-formatting present"
+    else
+        fail "tools.menu Tools menu complete (plan §2.3) + tools-clear-formatting present"
+    fi
+}
+
+test_tools_dispatch_wiring() {
+    note "tools.dispatch App.tsx routes tools-clear-formatting to clearFormatting (AC4)"
+    if grep -q '"tools-clear-formatting": "clearFormatting"' "$ROOT/src/App.tsx" \
+        && grep -q '"format-clear": "clearFormatting"' "$ROOT/src/App.tsx"; then
+        pass "tools.dispatch App.tsx routes tools-clear-formatting to clearFormatting (AC4)"
+    else
+        fail "tools.dispatch App.tsx routes tools-clear-formatting to clearFormatting (AC4)"
+    fi
+}
+
+test_about_rust_commands() {
+    note "about.rust get_app_info(build_hash) + get_sidecar_versions(500ms) present"
+    if grep -q 'pub struct SidecarVersions' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q 'pub fn sidecar_versions' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q 'SIDECAR_VERSION_TIMEOUT: Duration = Duration::from_millis(500)' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q 'pub fn build_hash' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'pub fn get_sidecar_versions' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'commands::get_sidecar_versions' "$ROOT/src-tauri/src/lib.rs" \
+        && grep -q 'QUILLMD_BUILD_HASH' "$ROOT/src-tauri/build.rs"; then
+        pass "about.rust get_app_info(build_hash) + get_sidecar_versions(500ms) present"
+    else
+        fail "about.rust get_app_info(build_hash) + get_sidecar_versions(500ms) present"
+    fi
+}
+
+test_about_dialog_component() {
+    note "about.dialog AboutDialog.tsx (version/build/sidecars/links + disabled update check)"
+    if [ -f "$ROOT/src/components/AboutDialog.tsx" ] \
+        && grep -q 'quillmd-about-dialog' "$ROOT/src/components/AboutDialog.tsx" \
+        && grep -q 'github.com/bruceamoser/quillmd' "$ROOT/src/components/AboutDialog.tsx" \
+        && grep -q 'Check for Updates' "$ROOT/src/components/AboutDialog.tsx" \
+        && grep -q 'Manual releases on GitHub' "$ROOT/src/components/AboutDialog.tsx" \
+        && grep -q 'openLinkUrl' "$ROOT/src/components/AboutDialog.tsx"; then
+        pass "about.dialog AboutDialog.tsx (version/build/sidecars/links + disabled update check)"
+    else
+        fail "about.dialog AboutDialog.tsx (version/build/sidecars/links + disabled update check)"
+    fi
+}
+
+test_about_app_wiring() {
+    note "about.app App.tsx routes help-about + renders the dialog with the Rust info"
+    if grep -q 'id === "help-about"' "$ROOT/src/App.tsx" \
+        && grep -q 'setAboutDialogOpen(true)' "$ROOT/src/App.tsx" \
+        && grep -q '<AboutDialog' "$ROOT/src/App.tsx" \
+        && grep -q 'from "./components/AboutDialog"' "$ROOT/src/App.tsx" \
+        && grep -q 'get_sidecar_versions' "$ROOT/src/App.tsx" \
+        && grep -q 'build_hash' "$ROOT/src/App.tsx"; then
+        pass "about.app App.tsx routes help-about + renders the dialog with the Rust info"
+    else
+        fail "about.app App.tsx routes help-about + renders the dialog with the Rust info"
+    fi
+}
+
+test_about_selftest() {
+    note "about.selftest --self-test about: real version + non-empty sidecar versions (AC6)"
+    if [ ! -x "$APP_BIN" ]; then
+        echo "SKIP (binary not built)"
+        return
+    fi
+    local out version pandoc_line typst_line
+    if ! out=$("$APP_BIN" --self-test about 2>&1); then
+        printf '%s\n' "$out" | tail -25
+        fail "about.selftest --self-test about: real version + non-empty sidecar versions (AC6)"
+        return
+    fi
+    version=$(printf '%s\n' "$out" | sed -n 's/^version=//p')
+    pandoc_line=$(printf '%s\n' "$out" | sed -n 's/^pandoc=//p')
+    typst_line=$(printf '%s\n' "$out" | sed -n 's/^typst=//p')
+    if [ -z "$version" ]; then
+        fail "about.selftest version is empty (AC6)"
+        return
+    fi
+    # Plan 10 AC6: a tool that IS installed must report a non-empty version
+    # line; a missing tool reports "not found" and is fine.
+    if command -v pandoc >/dev/null 2>&1; then
+        case "$pandoc_line" in
+            ""|not\ found) fail "about.selftest pandoc is installed but its version line is empty (AC6)"; return ;;
+        esac
+    fi
+    if command -v typst >/dev/null 2>&1; then
+        case "$typst_line" in
+            ""|not\ found) fail "about.selftest typst is installed but its version line is empty (AC6)"; return ;;
+        esac
+    fi
+    pass "about.selftest --self-test about: real version + non-empty sidecar versions (AC6)"
+}
+
+test_about_suites_green() {
+    note "about.green about + clear-formatting + settings vitest suites pass"
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (node / node_modules not available)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/aboutDialog.test.tsx src/lib/__tests__/clearFormatting.test.tsx src/lib/__tests__/settingsDialog.test.tsx) 2>&1 ); then
+        pass "about.green about + clear-formatting + settings vitest suites pass"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "about.green about vitest suites failed (plan 10 task 10.4)"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -5331,6 +5460,14 @@ case "$SUBSET" in
         test_fullscreen_app_wiring
         test_fullscreen_css
         test_fullscreen_suites_green
+        # Task 10.4 (issue #96): tools menu + about
+        test_tools_menu_wiring
+        test_tools_dispatch_wiring
+        test_about_rust_commands
+        test_about_dialog_component
+        test_about_app_wiring
+        test_about_selftest
+        test_about_suites_green
         ;;
     shell)
         test_shell_new_bundled

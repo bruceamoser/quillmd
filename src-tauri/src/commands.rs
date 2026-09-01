@@ -458,13 +458,23 @@ pub fn write_settings(app: tauri::AppHandle, json: String) -> Result<(), String>
 }
 
 /// App info for the Settings dialog's Advanced tab (plan 10 task 10.2,
-/// issue #94): the crate version and the app config dir where settings.json
-/// lives. The frontend shows both (the "about info") and opens the config
-/// dir through plugin-opener.
+/// issue #94) and the About dialog (plan 10 task 10.4, issue #96): the crate
+/// version, the build hash (git SHA at build time), and the app config dir
+/// where settings.json lives. The frontend shows the version + hash (About)
+/// and the config dir (Settings) and opens the config dir through
+/// plugin-opener.
 #[derive(serde::Serialize)]
 pub struct AppInfo {
     pub version: String,
+    pub build_hash: String,
     pub config_dir: String,
+}
+
+/// The build hash embedded at compile time by build.rs (`QUILLMD_BUILD_HASH`):
+/// the git HEAD SHA the binary was built from, or "unknown" when built outside
+/// a git checkout (release archives) so the About dialog always has a value.
+pub fn build_hash() -> String {
+    option_env!("QUILLMD_BUILD_HASH").map(str::to_string).unwrap_or_else(|| "unknown".into())
 }
 
 #[tauri::command]
@@ -475,8 +485,18 @@ pub fn get_app_info(app: tauri::AppHandle) -> Result<AppInfo, String> {
         .map_err(|e| err("config_dir", e))?;
     Ok(AppInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
+        build_hash: build_hash(),
         config_dir: config_dir.to_string_lossy().to_string(),
     })
+}
+
+/// Sidecar versions for the About dialog (plan 10 task 10.4, issue #96): the
+/// first line of `pandoc --version` / `typst --version`, `None` for a tool
+/// that is not installed or wedged. Runs through the convert module so the
+/// bundled-sidecar resolution matches the export path.
+#[tauri::command]
+pub fn get_sidecar_versions() -> crate::convert::SidecarVersions {
+    crate::convert::sidecar_versions()
 }
 
 // --- explorer file operations (plan 03 task 3.6, issue #44) ----------------

@@ -40,12 +40,13 @@ fn main() {
                     pagebreak.as_deref(),
                 ))
             }
+            Some("about") => run_self_test(quillmd_lib::about_baseline()),
             Some(other) => {
                 eprintln!("unknown self-test: {other}");
                 std::process::exit(2);
             }
             None => {
-                eprintln!("usage: quillmd --self-test <undo-bytes|line-endings|bom|crash-hook|file-watch|front-matter|stress|large-file|templates|file-stat|export-asset|export-toc|export-p4-visual>");
+                eprintln!("usage: quillmd --self-test <undo-bytes|line-endings|bom|crash-hook|file-watch|front-matter|stress|large-file|templates|file-stat|export-asset|export-toc|export-p4-visual|about>");
                 std::process::exit(2);
             }
         },
