@@ -45,6 +45,21 @@ function isTocToken(value: string): boolean {
   return value.trim() === TOC_TOKEN;
 }
 
+// Page break (plan 09 task 9.7, issue #90): a physical page break is stored in
+// the markdown as a fixed HTML block. Like the TOC token it is the source of
+// truth (golden rule 1) — a stable, byte-stable string the clean-path
+// serializer passes through untouched, so the line round-trips verbatim. The
+// converter maps it to the dedicated pageBreak node on load and back to the
+// exact same block on save; the Typst/PDF export maps it to #pagebreak().
+export const PAGE_BREAK_HTML = '<div class="quillmd-page-break"></div>';
+
+// The mdast html value of a pageBreak, trimmed of any surrounding whitespace so
+// a hand-touched block (extra spaces / a stray newline) still maps to the node
+// rather than degrading to opaque HTML.
+function isPageBreakHtml(value: string): boolean {
+  return value.trim() === PAGE_BREAK_HTML;
+}
+
 // Text alignment (task 2.3) is serialized as a single HTML block wrapping the
 // aligned block: <div class="quillmd-align-center|right"> ... </div>. Left
 // alignment is the default and emits no marker. The wrapper contains no blank
@@ -383,6 +398,14 @@ function flowToTiptap(node: FlowNode, source: string): JSONContent | null {
       // keeps the mapping explicit and cheap.
       if (isTocToken(node.value)) {
         return { type: "tocBlock" };
+      }
+      // The page-break block (plan 09 task 9.7, issue #90) maps to the
+      // dedicated pageBreak node: a read-only, atom block the editor renders
+      // as a visible break line and the Typst export maps to #pagebreak().
+      // Checked before the image/align shapes — the class name could not
+      // match them, but the early return keeps the mapping explicit.
+      if (isPageBreakHtml(node.value)) {
+        return { type: "pageBreak" };
       }
       const img = parseImgHtml(node.value);
       if (img) {
@@ -762,6 +785,11 @@ function tiptapToFlowPlain(node: JSONContent): FlowNode | null {
       // html values through untouched), which is what makes the line byte-
       // stable across save -> reopen -> save.
       return { type: "html", value: TOC_TOKEN };
+    case "pageBreak":
+      // The fixed HTML block (plan 09 task 9.7, issue #90): the node carries
+      // no state, so it always serializes to the exact same div — byte-stable
+      // across save -> reopen -> save, like the TOC token above.
+      return { type: "html", value: PAGE_BREAK_HTML };
     case "opaqueBlock":
       // Emit as a raw HTML block so the verbatim text is not re-escaped by the
       // serializer (which would corrupt formatted definition-list terms).

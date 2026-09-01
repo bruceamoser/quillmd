@@ -14,6 +14,12 @@ use crate::fs::atomic;
 /// with `TOC_TOKEN` in src/lib/pm.ts.
 const TOC_TOKEN: &str = "<!-- quillmd:toc -->";
 
+/// The fixed page-break block (plan 09 task 9.7, issue #90). The clean-path
+/// serializer emits exactly this string for a pageBreak node, so the export
+/// layer must recognize exactly this byte sequence — keep in sync with
+/// `PAGE_BREAK_HTML` in src/lib/pm.ts.
+const PAGE_BREAK_HTML: &str = "<div class=\"quillmd-page-break\"></div>";
+
 /// Structured conversion error, serialized as JSON across IPC so the frontend
 /// can distinguish "install pandoc" from "pick a different target" and real
 /// failures. Never panics: every path returns one of these kinds.
@@ -235,25 +241,30 @@ fn toc_replacement_block(target: TocTarget) -> &'static str {
     }
 }
 
-/// Expands every toc token in the export source to `target`'s TOC construct.
+/// The raw typst block the PDF export expands a page-break block to
+/// (plan 09 task 9.7, issue #90): `#pagebreak()` forces a physical page break
+/// at the marker's position in the typst-rendered PDF (pandoc passes raw
+/// `{=typst}` fenced blocks through verbatim, like the TOC outline).
+const PAGE_BREAK_REPLACEMENT: &str = "```{=typst}\n#pagebreak()\n```";
+
+/// Shared marker-expansion loop for the export constructs above.
 ///
 /// The replacement is a fenced raw block, which must sit on its own lines to
-/// parse: when the token already stands on its own line (the serializer's
-/// form) the surrounding bytes are kept verbatim; an inline token gets
-/// newline padding instead (LF- and CRLF-aware). Documents without the token
+/// parse: when the marker already stands on its own line (the serializer's
+/// form) the surrounding bytes are kept verbatim; an inline marker gets
+/// newline padding instead (LF- and CRLF-aware). Documents without the marker
 /// come back byte-identical.
-pub fn expand_toc_tokens(markdown: &str, target: TocTarget) -> String {
-    let block = toc_replacement_block(target);
+fn expand_marker(markdown: &str, marker: &str, block: &str) -> String {
     let mut out = String::with_capacity(markdown.len() + block.len());
     let mut rest = markdown;
-    while let Some(idx) = rest.find(TOC_TOKEN) {
+    while let Some(idx) = rest.find(marker) {
         let (before, tail) = rest.split_at(idx);
         out.push_str(before);
         if !before.is_empty() && !before.ends_with('\n') {
             out.push_str("\n\n");
         }
         out.push_str(block);
-        let after = &tail[TOC_TOKEN.len()..];
+        let after = &tail[marker.len()..];
         if !after.is_empty() && !after.starts_with(['\n', '\r']) {
             out.push_str("\n\n");
         }
@@ -263,27 +274,62 @@ pub fn expand_toc_tokens(markdown: &str, target: TocTarget) -> String {
     out
 }
 
-/// The pandoc input for a TOC-carrying export: `src` itself when it holds no
-/// toc token (no copy, no behavior change), else a temp `.md` copy in the
-/// same directory with every token expanded. The copy is what pandoc converts
-/// and the caller removes it (returned as `Some`). The `.md` extension keeps
-/// pandoc's extension-based input detection on markdown.
-fn toc_expanded_input(src: &Path, target: TocTarget) -> Result<(PathBuf, Option<PathBuf>), ConvertError> {
+/// Expands every toc token in the export source to `target`'s TOC construct.
+///
+/// The replacement is a fenced raw block, which must sit on its own lines to
+/// parse: when the token already stands on its own line (the serializer's
+/// form) the surrounding bytes are kept verbatim; an inline token gets
+/// newline padding instead (LF- and CRLF-aware). Documents without the token
+/// come back byte-identical.
+pub fn expand_toc_tokens(markdown: &str, target: TocTarget) -> String {
+    expand_marker(markdown, TOC_TOKEN, toc_replacement_block(target))
+}
+
+/// Expands every page-break block in the export source to the raw typst
+/// `#pagebreak()` block (plan 09 task 9.7, issue #90). The line-padding
+/// contract matches `expand_toc_tokens`: a block already standing on its own
+/// line keeps its surrounding bytes verbatim, an inline one gets newline
+/// padding (LF- and CRLF-aware). Documents without the block come back
+/// byte-identical.
+pub fn expand_page_breaks(markdown: &str) -> String {
+    expand_marker(markdown, PAGE_BREAK_HTML, PAGE_BREAK_REPLACEMENT)
+}
+
+/// The pandoc input for an export carrying expandable markers: `src` itself
+/// when it holds none of the markers the target expands (no copy, no behavior
+/// change), else a temp `.md` copy in the same directory with every marker
+/// expanded. The copy is what pandoc converts and the caller removes it
+/// (returned as `Some`). The `.md` extension keeps pandoc's extension-based
+/// input detection on markdown.
+///
+/// The TOC token expands for both PDF and DOCX; the page-break block (plan 09
+/// task 9.7, issue #90) expands only for the Typst-backed PDF target — the
+/// other formats drop the raw HTML block, which is the intended behavior
+/// (there is no page-break construct to emit for DOCX/EPUB/TXT).
+fn expanded_input(src: &Path, target: TocTarget) -> Result<(PathBuf, Option<PathBuf>), ConvertError> {
     let bytes = fs::read(src).map_err(|e| ConvertError::io(format!("read source: {e}")))?;
-    if !bytes_contain(&bytes, TOC_TOKEN.as_bytes()) {
+    let has_toc = bytes_contain(&bytes, TOC_TOKEN.as_bytes());
+    let has_break = target == TocTarget::Pdf
+        && bytes_contain(&bytes, PAGE_BREAK_HTML.as_bytes());
+    if !has_toc && !has_break {
         return Ok((src.to_path_buf(), None));
     }
     let text = String::from_utf8(bytes).map_err(|_| {
-        ConvertError::io("export source is not valid UTF-8; cannot expand the TOC token".to_string())
+        ConvertError::io(
+            "export source is not valid UTF-8; cannot expand the export markers".to_string(),
+        )
     })?;
-    let expanded = expand_toc_tokens(&text, target);
+    let mut expanded = expand_toc_tokens(&text, target);
+    if has_break {
+        expanded = expand_page_breaks(&expanded);
+    }
     let dir = src
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
     let n = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let tmp = dir.join(format!(".quillmd-toc-{}-{}.md", std::process::id(), n));
+    let tmp = dir.join(format!(".quillmd-expand-{}-{}.md", std::process::id(), n));
     atomic::write_file_atomic(&tmp, expanded.as_bytes())
         .map_err(|e| ConvertError::io(format!("write expanded source: {e}")))?;
     Ok((tmp.clone(), Some(tmp)))
@@ -453,11 +499,12 @@ fn temp_in_same_dir(target: &Path) -> Result<PathBuf, ConvertError> {
 
 /// Runs pandoc into a temp file next to `out`, then atomically renames the temp
 /// into place. A failed conversion leaves the target untouched. When `toc` is
-/// set and the source carries the token, pandoc converts the temp expanded
-/// copy instead of `src` itself (the copy is removed in all cases).
+/// set and the source carries a marker the target expands (the TOC token, or
+/// the page-break block for PDF), pandoc converts the temp expanded copy
+/// instead of `src` itself (the copy is removed in all cases).
 fn convert_to(src: &Path, out: &Path, extra: &[&str], toc: Option<TocTarget>) -> Result<(), ConvertError> {
     let (input, toc_tmp) = match toc {
-        Some(target) => toc_expanded_input(src, target)?,
+        Some(target) => expanded_input(src, target)?,
         None => (src.to_path_buf(), None),
     };
     let tmp = temp_in_same_dir(out)?;
@@ -791,7 +838,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let src = dir.path().join("doc.md");
         fs::write(&src, b"# A\n").unwrap();
-        let (input, tmp) = toc_expanded_input(&src, TocTarget::Pdf).unwrap();
+        let (input, tmp) = expanded_input(&src, TocTarget::Pdf).unwrap();
         assert_eq!(input, src);
         assert!(tmp.is_none());
     }
@@ -801,7 +848,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let src = dir.path().join("doc.md");
         fs::write(&src, TOC_SRC.as_bytes()).unwrap();
-        let (input, tmp) = toc_expanded_input(&src, TocTarget::Docx).unwrap();
+        let (input, tmp) = expanded_input(&src, TocTarget::Docx).unwrap();
         let tmp_path = tmp.expect("a temp copy must be created");
         assert_eq!(input, tmp_path);
         // The copy sits next to the source (relative asset refs must keep
@@ -836,7 +883,7 @@ mod tests {
             .filter(|e| {
                 e.file_name()
                     .to_string_lossy()
-                    .starts_with(".quillmd-toc-")
+                    .starts_with(".quillmd-expand-")
             })
             .collect();
         assert!(leftovers.is_empty());
@@ -929,11 +976,182 @@ mod tests {
             .filter(|e| {
                 e.file_name()
                     .to_string_lossy()
-                    .starts_with(".quillmd-toc-")
+                    .starts_with(".quillmd-expand-")
             })
             .collect();
         assert!(leftovers.is_empty());
         assert_eq!(fs::read(&src).unwrap(), TOC_SRC.as_bytes());
+    }
+
+    // --- page break export (plan 09 task 9.7, issue #90) ---------------------
+
+    const PB_SRC: &str = "# Alpha\n\nBefore the break.\n\n<div class=\"quillmd-page-break\"></div>\n\nAfter the break.\n";
+
+    #[test]
+    fn expand_page_breaks_no_block_is_identity() {
+        let src = "# Alpha\n\nNo break here.\n";
+        assert_eq!(expand_page_breaks(src), src);
+    }
+
+    #[test]
+    fn expand_page_breaks_emits_raw_typst_pagebreak() {
+        let out = expand_page_breaks(PB_SRC);
+        assert_eq!(
+            out,
+            "# Alpha\n\nBefore the break.\n\n```{=typst}\n#pagebreak()\n```\n\nAfter the break.\n"
+        );
+        assert!(!out.contains("quillmd-page-break"));
+    }
+
+    #[test]
+    fn expand_page_breaks_replaces_every_block() {
+        let src = "<div class=\"quillmd-page-break\"></div>\n\nmid\n\n<div class=\"quillmd-page-break\"></div>\n";
+        let out = expand_page_breaks(src);
+        assert_eq!(out.matches("```{=typst}").count(), 2);
+        assert!(!out.contains("quillmd-page-break"));
+    }
+
+    #[test]
+    fn expand_page_breaks_inline_block_gets_line_padding() {
+        let out = expand_page_breaks("para <div class=\"quillmd-page-break\"></div> tail");
+        assert_eq!(out, "para \n\n```{=typst}\n#pagebreak()\n```\n\n tail");
+    }
+
+    #[test]
+    fn expand_page_breaks_crlf_source_keeps_block_line_boundaries() {
+        let src = "# Alpha\r\n\r\n<div class=\"quillmd-page-break\"></div>\r\n\r\n## Beta\r\n";
+        let out = expand_page_breaks(src);
+        // No padding is added: the block already stands on its own (CRLF)
+        // line, so the surrounding bytes are verbatim.
+        assert_eq!(
+            out,
+            "# Alpha\r\n\r\n```{=typst}\n#pagebreak()\n```\r\n\r\n## Beta\r\n"
+        );
+    }
+
+    #[test]
+    fn expanded_input_page_break_only_triggers_copy_for_pdf() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("doc.md");
+        fs::write(&src, PB_SRC.as_bytes()).unwrap();
+        // PDF: the page-break block alone demands the expanded copy.
+        let (input, tmp) = expanded_input(&src, TocTarget::Pdf).unwrap();
+        let tmp_path = tmp.expect("a temp copy must be created");
+        assert_eq!(input, tmp_path);
+        assert_eq!(tmp_path.parent().unwrap(), dir.path());
+        let expanded = fs::read_to_string(&tmp_path).unwrap();
+        assert!(expanded.contains("```{=typst}\n#pagebreak()\n```"));
+        assert!(!expanded.contains("quillmd-page-break"));
+        // The source file is byte-identical (golden rule 1).
+        assert_eq!(fs::read(&src).unwrap(), PB_SRC.as_bytes());
+        let _ = fs::remove_file(&tmp_path);
+        // DOCX: no page-break construct to emit, so the raw block is left for
+        // pandoc to drop and the source is converted in place.
+        let (input, tmp) = expanded_input(&src, TocTarget::Docx).unwrap();
+        assert_eq!(input, src);
+        assert!(tmp.is_none());
+    }
+
+    #[test]
+    fn expanded_input_toc_and_page_break_expand_both() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("doc.md");
+        let body = format!(
+            "# Alpha\n\n<!-- quillmd:toc -->\n\nmid\n\n{PAGE_BREAK_HTML}\n\nend\n"
+        );
+        fs::write(&src, body.as_bytes()).unwrap();
+        let (input, tmp) = expanded_input(&src, TocTarget::Pdf).unwrap();
+        let tmp_path = tmp.expect("a temp copy must be created");
+        assert_eq!(input, tmp_path);
+        let expanded = fs::read_to_string(&tmp_path).unwrap();
+        assert!(expanded.contains("#outline(depth: 4"));
+        assert!(expanded.contains("#pagebreak()"));
+        assert!(!expanded.contains(TOC_TOKEN));
+        assert!(!expanded.contains("quillmd-page-break"));
+        let _ = fs::remove_file(&tmp_path);
+    }
+
+    #[test]
+    fn export_pdf_page_break_produces_pdf_and_cleans_up() {
+        if !pandoc_available() || !typst_available() {
+            eprintln!("SKIP: pandoc or typst not installed");
+            return;
+        }
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("pb-doc.md");
+        fs::write(&src, PB_SRC.as_bytes()).unwrap();
+        let out = dir.path().join("pb.pdf");
+        export_pdf(&src, &out).unwrap();
+        let bytes = fs::read(&out).unwrap();
+        assert_eq!(&bytes[..4], b"%PDF");
+        // The temp expanded copy is cleaned up; the source keeps its block.
+        let leftovers: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(".quillmd-expand-")
+            })
+            .collect();
+        assert!(leftovers.is_empty());
+        assert_eq!(fs::read(&src).unwrap(), PB_SRC.as_bytes());
+    }
+
+    #[test]
+    fn export_pdf_page_break_splits_pdf_pages() {
+        if !pandoc_available() || !typst_available() {
+            eprintln!("SKIP: pandoc or typst not installed");
+            return;
+        }
+        // pdftotext has no --version (it treats the flag as a filename), so
+        // probe with -v (same note as the TOC outline test above).
+        let pdftotext_ok = Command::new("pdftotext")
+            .arg("-v")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !pdftotext_ok {
+            eprintln!("SKIP: pdftotext not installed");
+            return;
+        }
+        // ~1.5 pages of filler on each side: without the break the two halves
+        // flow together (~2-3 pages); with the break each half starts on a
+        // fresh page, so the broken export has at least one more page — a
+        // physical page break at the block's position (plan 09 AC6).
+        let filler: String = (0..70).map(|i| format!("Filler line {i}.\n")).collect();
+        let with_break = format!(
+            "# Break doc\n\n{filler}<div class=\"quillmd-page-break\"></div>\n\n{filler}"
+        );
+        let without_break = format!("# Break doc\n\n{filler}{filler}");
+        let dir = tempdir().unwrap();
+        let src_a = dir.path().join("with-break.md");
+        let src_b = dir.path().join("without-break.md");
+        fs::write(&src_a, with_break.as_bytes()).unwrap();
+        fs::write(&src_b, without_break.as_bytes()).unwrap();
+        let out_a = dir.path().join("with-break.pdf");
+        let out_b = dir.path().join("without-break.pdf");
+        export_pdf(&src_a, &out_a).unwrap();
+        export_pdf(&src_b, &out_b).unwrap();
+        let pages = |path: &Path| -> u32 {
+            let output = tool_command("pdftotext")
+                .arg(path)
+                .arg("-")
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            let text = String::from_utf8_lossy(&output.stdout);
+            // pdftotext separates pages with a form feed.
+            text.matches('\u{0c}').count() as u32 + 1
+        };
+        let pages_a = pages(&out_a);
+        let pages_b = pages(&out_b);
+        assert!(
+            pages_a > pages_b,
+            "page break did not add a page (with: {pages_a}, without: {pages_b})"
+        );
     }
 
     #[test]

@@ -60,7 +60,7 @@ import {
   requestStylesGallery,
   runEditorCommand,
 } from "./lib/editorCommands";
-import { IMAGE_FILTER, pickOpenFile } from "./lib/dialogs";
+import { IMAGE_FILTER, confirmMessage, pickOpenFile } from "./lib/dialogs";
 import {
   applyImageEdit,
   imageAtCaret,
@@ -248,6 +248,10 @@ const MENU_TO_COMMAND: Record<string, EditorCommandId> = {
   // button — inserting a ```mermaid block with the starter template.
   "insert-diagram": "diagram",
   "insert-hr": "hr",
+  // Plan 09 task 9.7 (issue #90): Insert > Page Break — the shared registry
+  // command inserts the pageBreak atom at the caret (WYSIWYG only, like the
+  // other Insert block commands).
+  "insert-page-break": "pageBreak",
   "insert-footnote": "footnote",
   "insert-tasklist": "taskList",
   "insert-blockquote": "blockquote",
@@ -1677,6 +1681,41 @@ export default function App() {
     setSymbolDialog(false);
   }, []);
 
+  // --- clear document (plan 09 task 9.7, issue #90) ---------------------------
+  //
+  // Tools > Clear Document: a native confirm gates the destructive clear
+  // ("This removes all content. You can undo."), then the active doc becomes
+  // empty through ONE undoable change on the active surface — the WYSIWYG
+  // registry "clearDocument" command (a single replace transaction, so one
+  // Ctrl+Z restores the full prior text, plan 09 AC7) or the CodeMirror
+  // source view's full-delete change (its history restores it with one
+  // Ctrl+Z). Preview has no editable pane, like paste as plain text.
+  const clearDocument = useCallback(async () => {
+    const result = await confirmMessage({
+      title: "Clear Document",
+      message: "This removes all content. You can undo.",
+      kind: "warning",
+      buttons: "yesNo",
+    });
+    if (result !== "yes") return;
+    if (viewMode === "wysiwyg") {
+      if (!dispatchEditorCommand("clearDocument")) {
+        setStatus("Clear needs the WYSIWYG editor");
+      }
+      return;
+    }
+    if (viewMode === "source" || viewMode === "split") {
+      const view = currentSourceFindView();
+      if (!view) {
+        setStatus("Clear needs an editable view");
+        return;
+      }
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length } });
+      return;
+    }
+    setStatus("Clear needs an editable view");
+  }, [viewMode, setStatus]);
+
   // --- broken-image re-link (plan 08 task 8.5, issue #80, AC6) ----------------
   //
   // The placeholder's "Re-link…" button (Editor.tsx node view) calls this with
@@ -2172,6 +2211,10 @@ export default function App() {
         // Plan 09 task 9.6 (issue #89): Insert > Special Characters… — the
         // same path as /symbol (name search, categories, recents).
         openSymbolDialog();
+      } else if (id === "tools-clear-document") {
+        // Plan 09 task 9.7 (issue #90): Tools > Clear Document — native
+        // confirm, then a single undoable clear on the active surface.
+        void clearDocument();
       } else if (MENU_TO_COMMAND[id]) {
         dispatchEditorCommand(MENU_TO_COMMAND[id]);
       } else if (id === "help-about") {
@@ -2211,6 +2254,7 @@ export default function App() {
       openSpellCheckDialog,
       openDateTimeDialog,
       openSymbolDialog,
+      clearDocument,
       recentFiles,
       activePath,
       openByPath,

@@ -4086,7 +4086,7 @@ test_toce_wiring() {
     note "toce.wiring export_pdf/export_docx expand the token; others do not (convert.rs)"
     if grep -q 'pub enum TocTarget' "$ROOT/src-tauri/src/convert.rs" \
         && grep -q 'pub fn expand_toc_tokens' "$ROOT/src-tauri/src/convert.rs" \
-        && grep -q 'fn toc_expanded_input' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q 'fn expanded_input' "$ROOT/src-tauri/src/convert.rs" \
         && grep -q 'Some(TocTarget::Pdf)' "$ROOT/src-tauri/src/convert.rs" \
         && grep -q 'Some(TocTarget::Docx)' "$ROOT/src-tauri/src/convert.rs" \
         && grep -q 'toc: Option<TocTarget>' "$ROOT/src-tauri/src/convert.rs"; then
@@ -4452,6 +4452,101 @@ test_dt_suites_green() {
     else
         printf '%s\n' "$out" | tail -25
         fail "dt.green date/time + symbols vitest suites failed (plan 09 task 9.6)"
+    fi
+}
+
+# --- p4-doc-tools: page break + clear document (task 9.7, issue #90) -------------
+# Insert > Page Break: inserts the stable HTML block
+# `<div class="quillmd-page-break"></div>` (golden rule 1 — markdown stays the
+# source of truth; pm.ts round-trips it byte-identically as a pageBreak atom)
+# and renders it as a visible labeled break line in WYSIWYG (PageBreakCard) +
+# Preview. The Typst/PDF export expands the block to a raw
+# ```{=typst} #pagebreak() fence (convert.rs expand_page_breaks; DOCX/EPUB/TXT
+# drop the raw HTML, which is intended — those formats have no page-break
+# construct). Tools > Clear Document: a native confirm ("This removes all
+# content. Can be undone.") gates the clear; the clear is ONE replace
+# transaction (WYSIWYG) / ONE CodeMirror change (source/split), so a single
+# Ctrl+Z restores the full prior text exactly (plan 09 AC7, byte compare).
+# The node/serializer/preview contract and the single-undo behavior are pinned
+# in the vitest suites below; the PDF page split is pinned by the cargo
+# convert suite (export_pdf_page_break_splits_pdf_pages).
+
+test_pb_menu_wiring() {
+    note "pb.menu Insert > Page Break + Tools > Clear Document (menu.rs)"
+    if grep -q 'MenuItem::with_id(app, "insert-page-break", "Page Break", true, None::<&str>)' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "tools-clear-document", "Clear Document", true, None::<&str>)' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "pb.menu Insert > Page Break + Tools > Clear Document (menu.rs)"
+    else
+        fail "pb.menu Insert > Page Break + Tools > Clear Document (menu.rs)"
+    fi
+}
+
+test_pb_token_contract() {
+    note "pb.token Rust + frontend PAGE_BREAK_HTML constants are byte-identical"
+    local rust_html js_html
+    rust_html=$(sed -n 's/^const PAGE_BREAK_HTML: &str = "\(.*\)";$/\1/p' "$ROOT/src-tauri/src/convert.rs" | head -1)
+    # The Rust source escapes the double quotes inside the string literal.
+    rust_html=$(printf '%s' "$rust_html" | sed 's/\\"/"/g')
+    # The JS side is single-quoted (the block itself carries double quotes).
+    js_html=$(sed -n "s/^export const PAGE_BREAK_HTML = '\(.*\)';\$/\1/p" "$ROOT/src/lib/pm.ts" | head -1)
+    if [ -n "$rust_html" ] && [ "$rust_html" = "$js_html" ]; then
+        pass "pb.token both page-break constants agree ($js_html)"
+    else
+        fail "pb.token page-break constants disagree (rust: '$rust_html' js: '$js_html')"
+    fi
+}
+
+test_pb_editor_wiring() {
+    note "pb.editor pageBreak atom (Editor.tsx) + card + preview block"
+    if [ -f "$ROOT/src/components/PageBreakCard.tsx" ] \
+        && grep -q 'name: "pageBreak"' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'div\[data-quillmd-page-break\]' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'export const PAGE_BREAK_HTML' "$ROOT/src/lib/pm.ts" \
+        && grep -q 'isPageBreakHtml(node.value)' "$ROOT/src/lib/pm.ts" \
+        && grep -q 'buildPageBreakBlock' "$ROOT/src/components/PreviewView.tsx" \
+        && grep -q 'quillmd-page-break' "$ROOT/src/App.css"; then
+        pass "pb.editor pageBreak atom + card + preview block wired"
+    else
+        fail "pb.editor pageBreak wiring missing"
+    fi
+}
+
+test_pb_export_wiring() {
+    note "pb.export PDF expands the block to #pagebreak() (convert.rs)"
+    if grep -q 'pub fn expand_page_breaks' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q 'PAGE_BREAK_REPLACEMENT' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q '#pagebreak()' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q 'fn expanded_input' "$ROOT/src-tauri/src/convert.rs"; then
+        pass "pb.export PDF expands the block to #pagebreak() (convert.rs)"
+    else
+        fail "pb.export page-break expansion wiring missing in convert.rs"
+    fi
+}
+
+test_pb_clear_wiring() {
+    note "pb.clear clearDocument command + native confirm (editorCommands.ts, App.tsx)"
+    if grep -q 'id: "clearDocument"' "$ROOT/src/lib/editorCommands.ts" \
+        && grep -q 'id === "tools-clear-document"' "$ROOT/src/App.tsx" \
+        && grep -q 'confirmMessage' "$ROOT/src/App.tsx" \
+        && grep -q 'dispatchEditorCommand("clearDocument")' "$ROOT/src/App.tsx"; then
+        pass "pb.clear clearDocument command + native confirm wired"
+    else
+        fail "pb.clear clear-document wiring missing"
+    fi
+}
+
+test_pb_suites_green() {
+    note "pb.green page-break + clear-document vitest suites pass"
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (node / node_modules not available)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/pageBreak.test.tsx src/lib/__tests__/clearDocument.test.tsx) 2>&1 ); then
+        pass "pb.green page-break + clear-document vitest suites pass"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "pb.green page-break + clear-document vitest suites failed (plan 09 task 9.7)"
     fi
 }
 
@@ -4881,6 +4976,13 @@ case "$SUBSET" in
         test_dt_app_wiring
         test_dt_slash_actions
         test_dt_suites_green
+        # Task 9.7 (issue #90): page break + clear document
+        test_pb_menu_wiring
+        test_pb_token_contract
+        test_pb_editor_wiring
+        test_pb_export_wiring
+        test_pb_clear_wiring
+        test_pb_suites_green
         ;;
     shell)
         test_shell_new_bundled

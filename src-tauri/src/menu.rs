@@ -413,6 +413,12 @@ fn build_insert_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
     // /diagram and the toolbar button.
     let diagram = MenuItem::with_id(app, "insert-diagram", "Diagram (Mermaid)", true, None::<&str>)?;
     let hr = MenuItem::with_id(app, "insert-hr", "Horizontal Rule", true, None::<&str>)?;
+    // Plan 09 task 9.7 (issue #90): Insert > Page Break inserts the pageBreak
+    // atom at the caret through the shared frontend "pageBreak" command
+    // (App.tsx MENU_TO_COMMAND); the node serializes to the fixed
+    // <div class="quillmd-page-break"></div> block, which the Typst/PDF export
+    // maps to #pagebreak().
+    let page_break = MenuItem::with_id(app, "insert-page-break", "Page Break", true, None::<&str>)?;
     let footnote = MenuItem::with_id(app, "insert-footnote", "Footnote", true, None::<&str>)?;
     let tasklist = MenuItem::with_id(app, "insert-tasklist", "Task List", true, None::<&str>)?;
     let blockquote = MenuItem::with_id(app, "insert-blockquote", "Blockquote", true, None::<&str>)?;
@@ -432,8 +438,8 @@ fn build_insert_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>
         .item(&image)
         .separator()
         .items(&[
-            &table, &codeblock, &diagram, &hr, &footnote, &tasklist, &blockquote, &emoji,
-            &date_time, &symbol,
+            &table, &codeblock, &diagram, &hr, &page_break, &footnote, &tasklist, &blockquote,
+            &emoji, &date_time, &symbol,
         ])
         .build()?;
     Ok(insert)
@@ -559,9 +565,16 @@ fn build_tools_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>>
     // the browser-dev shortcut.
     let spelling =
         MenuItem::with_id(app, "tools-spelling", "Spelling…", true, Some("Ctrl+Shift+F7"))?;
+    // Clear document (plan 09 task 9.7, issue #90): the frontend (App.tsx)
+    // gates the destructive clear on a native confirm, then empties the active
+    // doc through one undoable change on the active surface (WYSIWYG or the
+    // CodeMirror source view), so a single Ctrl+Z restores the full prior text.
+    let clear_document =
+        MenuItem::with_id(app, "tools-clear-document", "Clear Document", true, None::<&str>)?;
     let tools = SubmenuBuilder::new(app, "Tools")
         .item(&word_count)
         .item(&spelling)
+        .item(&clear_document)
         .build()?;
     Ok(tools)
 }

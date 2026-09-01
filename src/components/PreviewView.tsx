@@ -6,7 +6,7 @@ import remarkRehype from "remark-rehype";
 import rehypeStringify from "rehype-stringify";
 import { middleClickLinkHref, openLinkUrl } from "../lib/links";
 import { renderMermaid } from "../lib/mermaidRender";
-import { TOC_TOKEN } from "../lib/pm";
+import { PAGE_BREAK_HTML, TOC_TOKEN } from "../lib/pm";
 import type { ThemeId } from "../lib/theme";
 import ContextMenu from "./ContextMenu";
 import { buildPreviewMenu, toContextEntries } from "../lib/textMenu";
@@ -19,14 +19,22 @@ import type { TextMenuItem, TextMenuEntry } from "../lib/textMenu";
 // block position (like the mermaid fences), and a post-render DOM pass swaps
 // it for the generated TOC list. The document bytes are never touched: this is
 // preview-only; the on-disk token stays the comment.
+//
+// The page break (plan 09 task 9.7, issue #90) is a raw HTML block, which
+// remark/rehype drop the same way: it is swapped for an empty
+// `quillmd-page-break` fence before parsing and drawn as the visible break
+// line by the post-render pass below.
 function markdownToHtml(markdown: string): string {
   const withTocFence = markdown.split(TOC_TOKEN).join("```quillmd-toc\n```");
+  const withPageBreakFence = withTocFence
+    .split(PAGE_BREAK_HTML)
+    .join("```quillmd-page-break\n```");
   const file = unified()
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkRehype)
     .use(rehypeStringify)
-    .processSync(withTocFence);
+    .processSync(withPageBreakFence);
   return String(file);
 }
 
@@ -69,6 +77,23 @@ function buildTocBlock(article: HTMLElement): HTMLDivElement {
     list.appendChild(item);
   }
   block.appendChild(list);
+  return block;
+}
+
+// Builds the preview's page break block (plan 09 task 9.7, issue #90): the
+// same visible break line the WYSIWYG NodeView (PageBreakCard) draws, so both
+// surfaces show an identical artifact.
+function buildPageBreakBlock(): HTMLDivElement {
+  const block = document.createElement("div");
+  block.className = "quillmd-page-break";
+  block.setAttribute("data-quillmd-page-break", "");
+  const line = document.createElement("div");
+  line.className = "quillmd-page-break-line";
+  const label = document.createElement("span");
+  label.className = "quillmd-page-break-label";
+  label.textContent = "Page break";
+  line.appendChild(label);
+  block.appendChild(line);
   return block;
 }
 
@@ -243,6 +268,25 @@ export default function PreviewView({
       const pre = code.parentElement;
       if (pre?.tagName !== "PRE" || !article.contains(pre)) continue;
       pre.replaceWith(buildTocBlock(article));
+    }
+  }, [html]);
+
+  // Page breaks (plan 09 task 9.7, issue #90): the fixed
+  // `<div class="quillmd-page-break"></div>` block is preprocessed into an
+  // empty `quillmd-page-break` code fence (markdownToHtml); once the HTML is
+  // in the DOM, each fence is swapped in place for the visible break line.
+  // The swap is synchronous and re-runs on every value change.
+  useEffect(() => {
+    const article = articleRef.current;
+    if (!article) return;
+    for (const code of Array.from(
+      article.querySelectorAll<HTMLElement>(
+        "pre > code.language-quillmd-page-break",
+      ),
+    )) {
+      const pre = code.parentElement;
+      if (pre?.tagName !== "PRE" || !article.contains(pre)) continue;
+      pre.replaceWith(buildPageBreakBlock());
     }
   }, [html]);
 
