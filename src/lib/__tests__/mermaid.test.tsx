@@ -17,6 +17,7 @@ import StarterKit from "@tiptap/starter-kit";
 import App from "../../App";
 import { MermaidBlock } from "../../components/Editor";
 import { currentFindEditor } from "../find";
+import { createDocument, encodeDocument, saveDocument } from "../pipeline";
 import { markdownToTiptap, tiptapToMarkdown } from "../pm";
 import {
   EDITOR_COMMANDS,
@@ -231,5 +232,23 @@ describe("App menu-event e2e: Insert > Diagram (issue #100)", () => {
     expect(out).toContain("Hello world");
     // The saved shape is a converter fixed point.
     expect(tiptapToMarkdown(markdownToTiptap(out))).toBe(out);
+  });
+});
+
+// --- save pipeline: Windows CRLF (plan 11 task 11.7, issue #106) -------------
+// Golden rule 4: the CRLF round-trip must hold for a document with diagrams
+// (the insert -> edit leg of the Windows manual pass). The editor
+// re-serializes to LF; encodeDocument restores the document's CRLF endings,
+// so an untouched diagram doc saves byte-identically on Windows.
+describe("save pipeline CRLF (Windows manual pass, issue #106)", () => {
+  it("round-trips the mermaid fixture byte-identically on CRLF (save pipeline)", () => {
+    const lf = repoFile("../../../fixtures/clean/mermaid.md");
+    const crlf = lf.replace(/\n/g, "\r\n");
+    const model = createDocument(crlf);
+    // Simulate the WYSIWYG editor's output for an untouched doc (LF).
+    const editorText = tiptapToMarkdown(markdownToTiptap(crlf));
+    const result = saveDocument(model, editorText);
+    const bytes = encodeDocument(result.text, { eol: "crlf", bom: false });
+    expect(bytes).toEqual(new TextEncoder().encode(crlf));
   });
 });
