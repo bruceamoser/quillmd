@@ -48,6 +48,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import Toolbar from "./Toolbar";
 import TableToolbar from "./TableToolbar";
 import MermaidCard, { setMermaidCardTheme } from "./MermaidCard";
+import TocCard from "./TocCard";
 import type { ThemeId } from "../lib/theme";
 import ContextMenu from "./ContextMenu";
 import { buildTextMenu, linkHrefAtCaret, toContextEntries } from "../lib/textMenu";
@@ -388,6 +389,29 @@ const OpaqueBlock = Node.create({
       },
       String(node.attrs.raw ?? ""),
     ];
+  },
+});
+
+// Table of contents (plan 09 task 9.1, issue #84): the document stores the TOC
+// as the fixed comment token `<!-- quillmd:toc -->` (the source of truth). The
+// converter (pm.ts) maps that token to this node; the node is a read-only atom
+// — ProseMirror never places the caret inside it — and its NodeView (TocCard)
+// renders the document's current H1-H4 headings as a live, clickable list.
+// renderHTML emits the div form the parse rule matches, so a TOC pasted as
+// HTML lands as a tocBlock too; serialization back to markdown is the fixed
+// token (pm.ts), never the div.
+export const TocBlock = Node.create({
+  name: "tocBlock",
+  group: "block",
+  atom: true,
+  addNodeView() {
+    return ReactNodeViewRenderer(TocCard);
+  },
+  parseHTML() {
+    return [{ tag: "div[data-quillmd-toc]" }];
+  },
+  renderHTML() {
+    return ["div", { "data-quillmd-toc": "", class: "quillmd-toc" }];
   },
 });
 
@@ -823,6 +847,9 @@ export default function Editor({
       TableCell,
       TableHeader,
       OpaqueBlock,
+      // TOC block (plan 09 task 9.1, issue #84): the `<!-- quillmd:toc -->`
+      // token parses to this read-only atom, rendered as a live heading list.
+      TocBlock,
       FootnoteRef,
       FootnoteDef,
       FindDecorations,

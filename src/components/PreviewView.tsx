@@ -6,19 +6,70 @@ import remarkRehype from "remark-rehype";
 import rehypeStringify from "rehype-stringify";
 import { middleClickLinkHref, openLinkUrl } from "../lib/links";
 import { renderMermaid } from "../lib/mermaidRender";
+import { TOC_TOKEN } from "../lib/pm";
 import type { ThemeId } from "../lib/theme";
 import ContextMenu from "./ContextMenu";
 import { buildPreviewMenu, toContextEntries } from "../lib/textMenu";
 import type { TextMenuItem, TextMenuEntry } from "../lib/textMenu";
 
+// The TOC token (plan 09 task 9.1, issue #84) is an HTML comment, which
+// remark/rehype drop from the output. To render the live TOC in the preview at
+// the token's position, the comment is swapped for an empty code fence tagged
+// `quillmd-toc` before parsing — the fence survives the pipeline at the same
+// block position (like the mermaid fences), and a post-render DOM pass swaps
+// it for the generated TOC list. The document bytes are never touched: this is
+// preview-only; the on-disk token stays the comment.
 function markdownToHtml(markdown: string): string {
+  const withTocFence = markdown.split(TOC_TOKEN).join("```quillmd-toc\n```");
   const file = unified()
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkRehype)
     .use(rehypeStringify)
-    .processSync(markdown);
+    .processSync(withTocFence);
   return String(file);
+}
+
+// Builds the preview's TOC block (a read-only, clickable list) from the
+// article's rendered H1-H4 headings. Clicking an entry scrolls the preview to
+// that heading. Returns null when the article has no headings.
+function buildTocBlock(article: HTMLElement): HTMLDivElement {
+  const headings = Array.from(article.querySelectorAll("h1, h2, h3, h4"));
+  const block = document.createElement("div");
+  block.className = "quillmd-toc";
+  block.setAttribute("data-quillmd-toc", "");
+
+  const title = document.createElement("div");
+  title.className = "quillmd-toc-title";
+  title.textContent = "Contents";
+  block.appendChild(title);
+
+  if (headings.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "quillmd-toc-empty";
+    empty.textContent = "No headings";
+    block.appendChild(empty);
+    return block;
+  }
+
+  const list = document.createElement("ol");
+  list.className = "quillmd-toc-list";
+  for (const heading of headings) {
+    const item = document.createElement("li");
+    item.className = "quillmd-toc-item";
+    item.setAttribute("data-level", heading.tagName.charAt(1));
+    const link = document.createElement("button");
+    link.type = "button";
+    link.className = "quillmd-toc-link";
+    link.textContent = heading.textContent || "(untitled)";
+    link.addEventListener("click", () =>
+      heading.scrollIntoView({ block: "center" }),
+    );
+    item.appendChild(link);
+    list.appendChild(item);
+  }
+  block.appendChild(list);
+  return block;
 }
 
 interface PreviewViewProps {
@@ -175,6 +226,25 @@ export default function PreviewView({
       });
     }
   }, [html, theme]);
+
+  // TOC blocks (plan 09 task 9.1, issue #84): the `<!-- quillmd:toc -->` token
+  // is preprocessed into an empty `quillmd-toc` code fence (markdownToHtml);
+  // once the HTML is in the DOM, each fence is swapped in place for a live,
+  // clickable list of the document's H1-H4 headings (built from the rendered
+  // headings, so the list always matches what is shown). The swap is
+  // synchronous and re-runs on every value change, so adding/removing headings
+  // updates the preview TOC live without touching the document bytes.
+  useEffect(() => {
+    const article = articleRef.current;
+    if (!article) return;
+    for (const code of Array.from(
+      article.querySelectorAll<HTMLElement>("pre > code.language-quillmd-toc"),
+    )) {
+      const pre = code.parentElement;
+      if (pre?.tagName !== "PRE" || !article.contains(pre)) continue;
+      pre.replaceWith(buildTocBlock(article));
+    }
+  }, [html]);
 
   return (
     <div className="quillmd-preview">

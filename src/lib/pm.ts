@@ -29,6 +29,22 @@ import { parseFrontMatter, parseToAst, serializeAst } from "./markdown";
 // emit the raw YAML verbatim instead of a ``` fence.
 export const FRONTMATTER_LANG = "frontmatter";
 
+// Table of contents (plan 09 task 9.1, issue #84): a live TOC block is stored
+// in the markdown as a fixed HTML-comment token. The token is the source of
+// truth (golden rule 1) — it is a stable, byte-stable string that the
+// clean-path serializer treats as an immutable block: adding/removing
+// headings elsewhere never rewrites the line (the rendered TOC view updates
+// live, the file does not). The converter maps the token to the dedicated
+// tocBlock node on load and back to the exact same token on save.
+export const TOC_TOKEN = "<!-- quillmd:toc -->";
+
+// The mdast html value of a tocBlock, trimmed of any surrounding whitespace so
+// a hand-touched token (extra spaces / a stray newline) still maps to the node
+// rather than degrading to opaque HTML.
+function isTocToken(value: string): boolean {
+  return value.trim() === TOC_TOKEN;
+}
+
 // Text alignment (task 2.3) is serialized as a single HTML block wrapping the
 // aligned block: <div class="quillmd-align-center|right"> ... </div>. Left
 // alignment is the default and emits no marker. The wrapper contains no blank
@@ -360,6 +376,14 @@ function flowToTiptap(node: FlowNode, source: string): JSONContent | null {
     case "table":
       return tableToTiptap(node);
     case "html": {
+      // The TOC token (plan 09 task 9.1, issue #84) maps to the dedicated
+      // tocBlock node: a read-only, atom block the editor renders as a live
+      // table of contents. It is checked first — the token is a comment and
+      // could not match any of the HTML shapes below, but the early return
+      // keeps the mapping explicit and cheap.
+      if (isTocToken(node.value)) {
+        return { type: "tocBlock" };
+      }
       const img = parseImgHtml(node.value);
       if (img) {
         // A standalone <img> line is phrasing content, so it lives in a
@@ -731,6 +755,13 @@ function tiptapToFlowPlain(node: JSONContent): FlowNode | null {
         label: String(node.attrs?.label ?? ""),
         children: tiptapBlockChildren(node),
       };
+    case "tocBlock":
+      // The fixed token (plan 09 task 9.1, issue #84): the node carries no
+      // state, so it always serializes to the exact same comment. Emitting it
+      // as an mdast html node keeps the bytes verbatim (the serializer writes
+      // html values through untouched), which is what makes the line byte-
+      // stable across save -> reopen -> save.
+      return { type: "html", value: TOC_TOKEN };
     case "opaqueBlock":
       // Emit as a raw HTML block so the verbatim text is not re-escaped by the
       // serializer (which would corrupt formatted definition-list terms).
