@@ -1,12 +1,17 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { html } from "@codemirror/lang-html";
 import { javascript } from "@codemirror/lang-javascript";
 import { css } from "@codemirror/lang-css";
 import { LanguageDescription } from "@codemirror/language";
+import { EditorSelection } from "@codemirror/state";
 import { registerSourceFindView, sourceFindExtensions } from "../lib/sourceFind";
 import { mermaidCodeLanguage } from "../lib/mermaidHighlight";
+import ContextMenu from "./ContextMenu";
+import { buildSourceMenu, toContextEntries } from "../lib/textMenu";
+import type { TextMenuItem, TextMenuEntry } from "../lib/textMenu";
+import { readClipboardText } from "../lib/clipboard";
 
 const codeLanguages: LanguageDescription[] = [
   LanguageDescription.of({ name: "html", support: html(), load: async () => html() }),
@@ -24,6 +29,9 @@ interface SourceViewProps {
   // Word wrap (plan 02 task 2.5): on by default (lineWrapping extension); off
   // keeps CodeMirror's default horizontal scroll for long lines.
   wrap?: boolean;
+  // The source context menu's "Open in WYSIWYG" item (plan 03 task 3.2,
+  // issue #40): switches the view mode back to the WYSIWYG editor.
+  onOpenInWysiwyg?: () => void;
 }
 
 export default function SourceView({
@@ -31,6 +39,7 @@ export default function SourceView({
   onChange,
   readOnly = false,
   wrap = true,
+  onOpenInWysiwyg,
 }: SourceViewProps) {
   // CodeMirror 6 does not wrap lines by default (long lines scroll
   // horizontally). Word wrap on adds the lineWrapping extension; off keeps the
@@ -63,8 +72,63 @@ export default function SourceView({
     return registerSourceFindView(() => viewRef.current);
   }, []);
 
+  // The open source context menu (plan 03 task 3.2, issue #40): the cursor
+  // position in viewport coordinates plus the item set. The source menu's
+  // item set is fixed (buildSourceMenu), so it is built once per open.
+  const [textMenu, setTextMenu] = useState<{
+    x: number;
+    y: number;
+    items: readonly TextMenuEntry[];
+  } | null>(null);
+
+  // The source menu's pick handler (plan 03 §3): the clipboard items act on
+  // CodeMirror's selection — the menu holds DOM focus while open (its roving
+  // focus), so the clipboard actions re-focus the view first (view.focus()
+  // keeps the CodeMirror selection). Paste as text inserts the clipboard as
+  // plain text over the selection; Open in Wysiwyg is the mode switch.
+  const dispatchTextMenu = (item: TextMenuItem): void => {
+    const view = viewRef.current;
+    if (item.action === "open-in-wysiwyg") {
+      onOpenInWysiwyg?.();
+      return;
+    }
+    if (!view) return;
+    switch (item.action) {
+      case "copy":
+        view.focus();
+        document.execCommand("copy");
+        break;
+      case "paste":
+        view.focus();
+        document.execCommand("paste");
+        break;
+      case "paste-as-text":
+        void readClipboardText().then((text) => {
+          if (text === null) return;
+          // CodeMirror's selection is multi-range; the main range is the one
+          // the caret (or the user's primary selection) sits in.
+          const { from, to } = view.state.selection.main;
+          view.dispatch({ changes: { from, to, insert: text } });
+        });
+        break;
+      case "select-all":
+        view.focus();
+        view.dispatch({ selection: EditorSelection.range(0, view.state.doc.length) });
+        break;
+    }
+  };
+
   return (
-    <div className="quillmd-source">
+    <div
+      className="quillmd-source"
+      onContextMenu={(event) => {
+        // Right-click (plan 03 task 3.2, issue #40): the source context
+        // menu. Suppress the browser's own menu and open the shared
+        // ContextMenu at the cursor.
+        event.preventDefault();
+        setTextMenu({ x: event.clientX, y: event.clientY, items: buildSourceMenu() });
+      }}
+    >
       <CodeMirror
         value={value}
         onChange={onChange}
@@ -77,6 +141,15 @@ export default function SourceView({
         }}
         extensions={extensions}
       />
+      {textMenu && (
+        <ContextMenu
+          x={textMenu.x}
+          y={textMenu.y}
+          items={toContextEntries(textMenu.items, dispatchTextMenu)}
+          onClose={() => setTextMenu(null)}
+          label="Source menu"
+        />
+      )}
     </div>
   );
 }

@@ -1934,6 +1934,7 @@ export default function App() {
             value={currentText}
             onChange={setActiveText}
             wrap={activeDoc.settings.wordWrap}
+            onOpenInWysiwyg={() => setMode("wysiwyg")}
           />
         );
         break;
@@ -1944,6 +1945,7 @@ export default function App() {
             onChange={setActiveText}
             settings={activeDoc.settings}
             theme={activeTheme}
+            onOpenInWysiwyg={() => setMode("wysiwyg")}
           />
         );
         break;
@@ -1951,7 +1953,13 @@ export default function App() {
         // The theme drives the mermaid SVGs (plan 11 task 11.4, issue #103):
         // preview fences render through the shared render service with the
         // mapped light/dark theme, like the WYSIWYG cards.
-        editorView = <PreviewView value={currentText} theme={activeTheme} />;
+        editorView = (
+          <PreviewView
+            value={currentText}
+            theme={activeTheme}
+            onOpenInWysiwyg={() => setMode("wysiwyg")}
+          />
+        );
         break;
       default:
         editorView = (

@@ -23,7 +23,7 @@ import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import { markdownToTiptap, tiptapToMarkdown } from "../lib/pm";
 import { baseName } from "../lib/fileIo";
-import { openLinkUrl } from "../lib/links";
+import { openLinkUrl, removeLink } from "../lib/links";
 import {
   applyEditorFont,
   applyViewSettings,
@@ -47,6 +47,10 @@ import Toolbar from "./Toolbar";
 import TableToolbar from "./TableToolbar";
 import MermaidCard, { setMermaidCardTheme } from "./MermaidCard";
 import type { ThemeId } from "../lib/theme";
+import ContextMenu from "./ContextMenu";
+import { buildTextMenu, linkHrefAtCaret, toContextEntries } from "../lib/textMenu";
+import type { TextMenuItem, TextMenuEntry } from "../lib/textMenu";
+import { readClipboardText } from "../lib/clipboard";
 
 // Strikethrough is bound to Ctrl+Shift+X per spec §2.6 (the default Mod-Shift-s
 // collides with Save As).
@@ -755,6 +759,16 @@ export default function Editor({
     left: number;
   } | null>(null);
 
+  // The open text context menu (plan 03 task 3.2, issue #40): the cursor
+  // position in viewport coordinates (the contextmenu event's
+  // clientX/clientY) plus the item set built for the selection that was
+  // current when the menu opened.
+  const [textMenu, setTextMenu] = useState<{
+    x: number;
+    y: number;
+    items: readonly TextMenuEntry[];
+  } | null>(null);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -825,6 +839,22 @@ export default function Editor({
       // (download/save-as for file://, nothing useful for http/https).
       handleDOMEvents: {
         auxclick: (view, event) => handleEditorMiddleClick(view, event as MouseEvent),
+        // Right-click (plan 03 task 3.2, issue #40): the editor text context
+        // menu. buildTextMenu resolves the selection (empty / range / node)
+        // into the item set, the shared ContextMenu renders at the cursor,
+        // and picks dispatch through the registry (plan 03 AC1, 1:1 mapping).
+        // Returning true suppresses the browser's own context menu.
+        contextmenu: (_view, event) => {
+          const active = editorRef.current;
+          if (!active || !active.isEditable) return false;
+          const mouseEvent = event as MouseEvent;
+          setTextMenu({
+            x: mouseEvent.clientX,
+            y: mouseEvent.clientY,
+            items: buildTextMenu(active),
+          });
+          return true;
+        },
       },
       handleClickOn: (_view, _pos, node, nodePos, _event, direct) => {
         const active = editorRef.current;
@@ -964,6 +994,53 @@ export default function Editor({
     setSlash(null);
   };
 
+  // The text context menu's pick handler (plan 03 task 3.2, issue #40):
+  // registry items run through the shared command registry — the same id the
+  // toolbar, native menu, and keys dispatch (plan 03 AC1, 1:1 mapping); the
+  // clipboard and link items are surface actions with no registry command.
+  // The menu holds DOM focus while open (its roving focus), so the clipboard
+  // actions re-focus the editor first — view.focus() keeps the ProseMirror
+  // selection intact, which execCommand then acts on.
+  const dispatchTextMenu = (item: TextMenuItem): void => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    if (item.command) {
+      runEditorCommand(ed, item.command, item.param);
+      return;
+    }
+    switch (item.action) {
+      case "cut":
+        ed.view.focus();
+        document.execCommand("cut");
+        break;
+      case "copy":
+        ed.view.focus();
+        document.execCommand("copy");
+        break;
+      case "paste":
+        ed.view.focus();
+        document.execCommand("paste");
+        break;
+      case "paste-as-text":
+        void readClipboardText().then((text) => {
+          if (text !== null) runEditorCommand(ed, "pasteAsText", text);
+        });
+        break;
+      case "select-all":
+        ed.view.focus();
+        ed.commands.selectAll();
+        break;
+      case "open-link": {
+        const href = linkHrefAtCaret(ed);
+        if (href) void openLinkUrl(href);
+        break;
+      }
+      case "remove-link":
+        removeLink(ed);
+        break;
+    }
+  };
+
   const filtered = slash
     ? SLASH_ACTIONS.filter((a) => a.key.startsWith(slash.query))
     : [];
@@ -1002,6 +1079,15 @@ export default function Editor({
             </button>
           ))}
         </div>
+      )}
+      {textMenu && (
+        <ContextMenu
+          x={textMenu.x}
+          y={textMenu.y}
+          items={toContextEntries(textMenu.items, dispatchTextMenu)}
+          onClose={() => setTextMenu(null)}
+          label="Text menu"
+        />
       )}
     </div>
   );

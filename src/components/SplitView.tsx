@@ -14,6 +14,11 @@ interface SplitViewProps {
   // The active document theme (plan 11 task 11.3, issue #102): forwarded to
   // the WYSIWYG editor so its mermaid cards render with the mapped theme.
   theme?: ThemeId;
+  // The source pane's context menu "Open in WYSIWYG" item (plan 03 task
+  // 3.2, issue #40): switches the view mode to the full WYSIWYG editor.
+  // (The WYSIWYG pane's own text menu needs no switch — it is already the
+  // WYSIWYG surface.)
+  onOpenInWysiwyg?: () => void;
 }
 
 export default function SplitView({
@@ -22,6 +27,7 @@ export default function SplitView({
   readOnly = false,
   settings,
   theme,
+  onOpenInWysiwyg,
 }: SplitViewProps) {
   return (
     <div className="quillmd-split">
@@ -40,6 +46,7 @@ export default function SplitView({
           onChange={onChange}
           readOnly={readOnly}
           wrap={settings?.wordWrap ?? true}
+          onOpenInWysiwyg={onOpenInWysiwyg}
         />
       </div>
     </div>
