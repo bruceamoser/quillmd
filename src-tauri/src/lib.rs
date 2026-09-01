@@ -597,6 +597,8 @@ pub fn run() {
             commands::set_recent_files,
             commands::read_style_overrides,
             commands::write_style_overrides,
+            commands::read_settings,
+            commands::write_settings,
             commands::load_wordlist,
             commands::get_wordlist_settings,
             commands::set_wordlist_settings,
