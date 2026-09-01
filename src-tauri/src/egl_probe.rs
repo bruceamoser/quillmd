@@ -38,10 +38,16 @@ pub fn prepare_webview() {
 #[cfg(target_os = "linux")]
 fn apply_fallback() {
     // EGL is missing or broken: force WebKit's non-accelerated path so
-    // rendering works via software. Both variables are set because either
-    // one alone can be insufficient depending on the WebKitGTK version.
+    // rendering works via software. Three variables are set because the
+    // failure modes differ:
+    //   - WEBKIT_DISABLE_COMPOSITING_MODE / _DMABUF_RENDERER: tell WebKit
+    //     not to use the accelerated compositing paths at all.
+    //   - LIBGL_ALWAYS_SOFTWARE: when EGL *exists* but is broken
+    //     (EGL_BAD_PARAMETER, bad driver, VM without 3D accel), force Mesa
+    //     to hand out a working software EGL (llvmpipe) instead.
     std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
     std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
 }
 
 // Mirrors WebKit's own "default EGL display" creation: dlopen libEGL,
@@ -90,6 +96,7 @@ mod tests {
     fn clear() {
         std::env::remove_var("WEBKIT_DISABLE_COMPOSITING_MODE");
         std::env::remove_var("WEBKIT_DISABLE_DMABUF_RENDERER");
+        std::env::remove_var("LIBGL_ALWAYS_SOFTWARE");
     }
 
     // Process env vars are process-global, so all three scenarios run in a
@@ -98,7 +105,8 @@ mod tests {
     fn fallback_wiring_contract() {
         clear();
 
-        // 1. apply_fallback sets both WebKit software-rendering vars.
+        // 1. apply_fallback sets the WebKit software-rendering vars plus
+        //    the Mesa software-EGL fallback.
         apply_fallback();
         assert_eq!(
             std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").as_deref(),
@@ -106,6 +114,10 @@ mod tests {
         );
         assert_eq!(
             std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").as_deref(),
+            Some(OsStr::new("1"))
+        );
+        assert_eq!(
+            std::env::var_os("LIBGL_ALWAYS_SOFTWARE").as_deref(),
             Some(OsStr::new("1"))
         );
         clear();
