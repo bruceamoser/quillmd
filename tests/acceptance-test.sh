@@ -4361,6 +4361,100 @@ test_spell_suites_green() {
     fi
 }
 
+# --- p4-doc-tools: date/time + special characters (task 9.6, issue #89) -----------
+# Insert > Date & Time: a picker listing the app's ten date/time formats
+# (dateformats.ts — pure Intl; the ordering/clock formats pin explicit locales
+# so they mean the same thing on every platform), each row a live sample for
+# the current date; the click inserts the sample at the caret as plain text
+# (no markup, golden rule 1) and closes. Insert > Special Characters…: a
+# popover with a name search ("copyright" → ©), the six categories (currency,
+# math, arrows, bullets, typography, symbols), and a localStorage-backed
+# recents row; the click inserts a single UTF-8 code point (code-page safe,
+# plan 09 AC5) and the popover stays open (multi-insert). The pure rules are
+# pinned in dateformats.test.ts + symbols.test.ts; the deep behavior (menu
+# wiring, WYSIWYG + source-mode caret insertion, recents persistence) is
+# pinned in dateTimeDialog.test.tsx + symbolDialog.test.tsx, which run below.
+
+test_dt_menu_wiring() {
+    note "dt.menu Insert > Date & Time + Special Characters… (menu.rs)"
+    if grep -q 'MenuItem::with_id(app, "insert-date-time", "Date & Time", true, None::<&str>)' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'MenuItem::with_id(app, "insert-symbol", "Special Characters...", true, None::<&str>)' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '&date_time, &symbol' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "dt.menu Insert > Date & Time + Special Characters… (menu.rs)"
+    else
+        fail "dt.menu Insert > Date & Time + Special Characters… (menu.rs)"
+    fi
+}
+
+test_dt_formats_lib() {
+    note "dt.lib dateformats.ts Intl format list + formatter"
+    if [ -f "$ROOT/src/lib/dateformats.ts" ] \
+        && grep -q 'export const DATE_TIME_FORMATS' "$ROOT/src/lib/dateformats.ts" \
+        && grep -q 'export function formatDateTime' "$ROOT/src/lib/dateformats.ts" \
+        && grep -q 'id: "datetime24"' "$ROOT/src/lib/dateformats.ts" \
+        && grep -q 'parts: \["iso", "time24"\]' "$ROOT/src/lib/dateformats.ts"; then
+        pass "dt.lib dateformats.ts Intl format list + formatter"
+    else
+        fail "dt.lib dateformats.ts Intl format list + formatter"
+    fi
+}
+
+test_dt_symbols_lib() {
+    note "dt.symbols symbols.ts bundled table + search + recents"
+    if [ -f "$ROOT/src/lib/symbols.ts" ] \
+        && grep -q 'export const SYMBOLS' "$ROOT/src/lib/symbols.ts" \
+        && grep -q 'export const SYMBOL_CATEGORIES' "$ROOT/src/lib/symbols.ts" \
+        && grep -q 'export function searchSymbols' "$ROOT/src/lib/symbols.ts" \
+        && grep -q 'export function getRecentSymbols' "$ROOT/src/lib/symbols.ts" \
+        && grep -q 'export function recordSymbolInsert' "$ROOT/src/lib/symbols.ts"; then
+        pass "dt.symbols symbols.ts bundled table + search + recents"
+    else
+        fail "dt.symbols symbols.ts bundled table + search + recents"
+    fi
+}
+
+test_dt_app_wiring() {
+    note "dt.app App.tsx routes insert-date-time / insert-symbol and renders the dialogs"
+    if grep -q 'id === "insert-date-time"' "$ROOT/src/App.tsx" \
+        && grep -q 'id === "insert-symbol"' "$ROOT/src/App.tsx" \
+        && grep -q 'registerDateTimeDialogListener' "$ROOT/src/App.tsx" \
+        && grep -q 'registerSymbolDialogListener' "$ROOT/src/App.tsx" \
+        && grep -q '<DateTimeDialog' "$ROOT/src/App.tsx" \
+        && grep -q '<SymbolDialog' "$ROOT/src/App.tsx" \
+        && grep -q 'insertPlainTextAtCaret' "$ROOT/src/App.tsx" \
+        && [ -f "$ROOT/src/components/DateTimeDialog.tsx" ] \
+        && [ -f "$ROOT/src/components/SymbolDialog.tsx" ]; then
+        pass "dt.app App.tsx routes insert-date-time / insert-symbol and renders the dialogs"
+    else
+        fail "dt.app App.tsx routes insert-date-time / insert-symbol and renders the dialogs"
+    fi
+}
+
+test_dt_slash_actions() {
+    note "dt.slash Editor.tsx /date + /symbol slash actions"
+    if grep -q 'commandAction("date", "dateTime"' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'commandAction("symbol", "symbol"' "$ROOT/src/components/Editor.tsx"; then
+        pass "dt.slash Editor.tsx /date + /symbol slash actions"
+    else
+        fail "dt.slash Editor.tsx /date + /symbol slash actions"
+    fi
+}
+
+test_dt_suites_green() {
+    note "dt.green date/time + symbols vitest suites pass"
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (node / node_modules not available)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/dateformats.test.ts src/lib/__tests__/symbols.test.ts src/lib/__tests__/dateTimeDialog.test.tsx src/lib/__tests__/symbolDialog.test.tsx) 2>&1 ); then
+        pass "dt.green date/time + symbols vitest suites pass"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "dt.green date/time + symbols vitest suites failed (plan 09 task 9.6)"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -4780,6 +4874,13 @@ case "$SUBSET" in
         test_spell_lib
         test_spell_app_wiring
         test_spell_suites_green
+        # Task 9.6 (issue #89): date/time + special characters
+        test_dt_menu_wiring
+        test_dt_formats_lib
+        test_dt_symbols_lib
+        test_dt_app_wiring
+        test_dt_slash_actions
+        test_dt_suites_green
         ;;
     shell)
         test_shell_new_bundled

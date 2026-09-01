@@ -47,12 +47,14 @@ import {
   fontMenuCommand,
   isLineSpacingValue,
   registerBlockStyleListener,
+  registerDateTimeDialogListener,
   registerImageAltDialogListener,
   registerImageEditDialogListener,
   registerImageInsertListener,
   registerImageReplaceListener,
   registerLinkDialogListener,
   registerSpellCheckDialogListener,
+  registerSymbolDialogListener,
   registerTableDialogListener,
   registerWordCountDialogListener,
   requestStylesGallery,
@@ -160,6 +162,8 @@ import ImageEditDialog from "./components/ImageEditDialog";
 import InsertTableDialog from "./components/InsertTableDialog";
 import WordCountDialog from "./components/WordCountDialog";
 import SpellCheckDialog from "./components/SpellCheckDialog";
+import DateTimeDialog from "./components/DateTimeDialog";
+import SymbolDialog from "./components/SymbolDialog";
 import {
   buildKnownSet,
   ignoreWordForSession,
@@ -1476,6 +1480,8 @@ export default function App() {
   useEffect(() => {
     setWordCountDialog(null);
     setSpellCheckDialog(null);
+    setDateTimeDialog(false);
+    setSymbolDialog(false);
   }, [activePath, viewMode]);
 
   const closeWordCountDialog = useCallback(() => {
@@ -1591,6 +1597,85 @@ export default function App() {
     }
     if (!dispatchEditorCommand("spelling")) void openSpellCheck(editor);
   }, [openSpellCheck]);
+
+  // --- date & time + special characters (plan 09 task 9.6, issue #89) --------
+  //
+  // The registry "dateTime" / "symbol" commands (Insert > Date & Time,
+  // Insert > Special Characters…) request the dialogs; the listeners below
+  // are the single renderers. Both insert plain text at the caret of the
+  // active editable pane (no markup, plan 09 §3): the live WYSIWYG editor in
+  // wysiwyg mode, the CodeMirror source view in source/split modes — the
+  // same pane split the find engine uses. The date & time dialog closes on
+  // insert; the symbol popover stays open (multi-insert, Word behavior).
+
+  const [dateTimeDialog, setDateTimeDialog] = useState(false);
+  const [symbolDialog, setSymbolDialog] = useState(false);
+
+  // Inserts plain text at the caret of the active editable pane. Returns
+  // false in preview (no editable pane) with a status note, like find &
+  // replace.
+  const insertPlainTextAtCaret = useCallback(
+    (text: string): boolean => {
+      if (viewMode === "wysiwyg") {
+        const editor = currentFindEditor();
+        if (editor) return editor.chain().focus().insertContent(text).run();
+      } else if (viewMode === "source" || viewMode === "split") {
+        const view = currentSourceFindView();
+        if (view) {
+          const { from, to } = view.state.selection.main;
+          view.dispatch({ changes: { from, to, insert: text } });
+          return true;
+        }
+      }
+      setStatus("Insert needs an editable view");
+      return false;
+    },
+    [viewMode, setStatus],
+  );
+
+  // Date & time entry point for the Insert menu and /date: with a mounted
+  // WYSIWYG editor the registry command is dispatched (its request carries
+  // the live editor); in source/preview modes there is no TipTap instance,
+  // so the dialog opens directly (the insert goes through the source view).
+  const openDateTimeDialog = useCallback(() => {
+    const editor = currentFindEditor();
+    if (!editor) {
+      setDateTimeDialog(true);
+      return;
+    }
+    if (!dispatchEditorCommand("dateTime")) setDateTimeDialog(true);
+  }, []);
+
+  useEffect(() => {
+    return registerDateTimeDialogListener(() => {
+      setDateTimeDialog(true);
+    });
+  }, []);
+
+  const closeDateTimeDialog = useCallback(() => {
+    setDateTimeDialog(false);
+  }, []);
+
+  // Special-characters entry point for the Insert menu and /symbol: same
+  // dispatch-or-open shape as the date & time dialog above.
+  const openSymbolDialog = useCallback(() => {
+    const editor = currentFindEditor();
+    if (!editor) {
+      setSymbolDialog(true);
+      return;
+    }
+    if (!dispatchEditorCommand("symbol")) setSymbolDialog(true);
+  }, []);
+
+  useEffect(() => {
+    return registerSymbolDialogListener(() => {
+      setSymbolDialog(true);
+    });
+  }, []);
+
+  const closeSymbolDialog = useCallback(() => {
+    setSymbolDialog(false);
+  }, []);
 
   // --- broken-image re-link (plan 08 task 8.5, issue #80, AC6) ----------------
   //
@@ -2078,6 +2163,15 @@ export default function App() {
         // the Ctrl+Shift+F7 shortcut (scans the live doc in WYSIWYG and
         // selects the first misspelling, whole document otherwise).
         openSpellCheckDialog();
+      } else if (id === "insert-date-time") {
+        // Plan 09 task 9.6 (issue #89): Insert > Date & Time — the same path
+        // as /date (live format samples; the click inserts the picked format
+        // for the current date).
+        openDateTimeDialog();
+      } else if (id === "insert-symbol") {
+        // Plan 09 task 9.6 (issue #89): Insert > Special Characters… — the
+        // same path as /symbol (name search, categories, recents).
+        openSymbolDialog();
       } else if (MENU_TO_COMMAND[id]) {
         dispatchEditorCommand(MENU_TO_COMMAND[id]);
       } else if (id === "help-about") {
@@ -2115,6 +2209,8 @@ export default function App() {
       openModifyStyle,
       openWordCountDialog,
       openSpellCheckDialog,
+      openDateTimeDialog,
+      openSymbolDialog,
       recentFiles,
       activePath,
       openByPath,
@@ -2566,6 +2662,24 @@ export default function App() {
                   onIgnore={handleSpellIgnore}
                   onAddToDictionary={handleSpellAddToDictionary}
                   onClose={closeSpellCheckDialog}
+                />
+              )}
+              {dateTimeDialog && (
+                <DateTimeDialog
+                  onInsert={(text) => {
+                    // The picked row's sample is inserted as plain text at
+                    // the caret; the dialog closes on a successful insert.
+                    if (insertPlainTextAtCaret(text)) closeDateTimeDialog();
+                  }}
+                  onClose={closeDateTimeDialog}
+                />
+              )}
+              {symbolDialog && (
+                <SymbolDialog
+                  // Multi-insert: each pick lands at the caret and the
+                  // popover stays open (recents update in place).
+                  onInsert={(char) => insertPlainTextAtCaret(char)}
+                  onClose={closeSymbolDialog}
                 />
               )}
               {modifyStyleKey !== null && (
