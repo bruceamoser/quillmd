@@ -2593,6 +2593,99 @@ button.quillmd-status-trash:hover {
   cursor: pointer;
 }
 
+/* --- word count dialog (plan 09 task 9.4, issue #87) ---------------------- */
+
+.quillmd-wordcount-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quillmd-wordcount-dialog {
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  padding: 14px 16px 12px;
+}
+
+.quillmd-wordcount-title {
+  color: var(--text-bright);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+/* The counted scope: the whole document, or the selected text range. */
+.quillmd-wordcount-scope {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.quillmd-wordcount-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+
+.quillmd-wordcount-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.quillmd-wordcount-label {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.quillmd-wordcount-value {
+  margin: 0;
+  color: var(--text-bright);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.quillmd-wordcount-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.quillmd-wordcount-button {
+  background: var(--bg-active);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 5px 12px;
+}
+
+.quillmd-wordcount-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-faint);
+}
+
+.quillmd-wordcount-button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+
+.quillmd-wordcount-button.primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
 /* --- Modify Style dialog (plan 05 task 5.4, issue #57) -------------------- */
 
 .quillmd-modify-overlay {

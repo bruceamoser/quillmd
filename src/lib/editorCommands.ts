@@ -90,6 +90,7 @@ export type EditorCommandId =
   | "wordWrap"
   | "zoom"
   | "spellcheck"
+  | "wordCount"
   | "pasteAsText"
   | "fontFamily"
   | "fontSize"
@@ -1569,6 +1570,18 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
     active: (editor) => spellcheckOf(editor),
   },
   {
+    id: "wordCount",
+    label: "Word Count",
+    shortcut: "Ctrl+Shift+F5",
+    // Plan 09 task 9.4 (issue #87): the command cannot render UI itself, so it
+    // requests the word-count dialog and the app shell (App.tsx) renders it,
+    // the same shape as the link and table dialog commands. The request
+    // carries the live editor so the dialog can scope to its selection when
+    // text is selected; without a mounted editor the app falls back to the
+    // whole-document counts (source/preview modes).
+    run: (editor) => requestWordCountDialog(editor),
+  },
+  {
     id: "editorFont",
     label: "Editor font",
     run: (editor, param) => {
@@ -1845,6 +1858,30 @@ export function registerTableDialogListener(fn: TableDialogListener): () => void
 export function requestTableDialog(editor: CoreEditor): boolean {
   if (!tableDialogListener) return false;
   tableDialogListener(editor);
+  return true;
+}
+
+// Word-count dialog plumbing (plan 09 task 9.4, issue #87). The wordCount
+// command cannot render UI itself, so it requests the dialog and the app
+// shell (App.tsx) renders it: the request carries the live editor so the
+// dialog can scope to its selection when text is selected, the same
+// shape as the link and table dialog commands.
+type WordCountDialogListener = (editor: CoreEditor) => void;
+let wordCountDialogListener: WordCountDialogListener | null = null;
+
+export function registerWordCountDialogListener(fn: WordCountDialogListener): () => void {
+  wordCountDialogListener = fn;
+  return () => {
+    if (wordCountDialogListener === fn) wordCountDialogListener = null;
+  };
+}
+
+// Requests the word-count dialog for the given editor. Returns false (no-op)
+// when no renderer is registered — e.g. outside WYSIWYG where there is no
+// TipTap instance to edit.
+export function requestWordCountDialog(editor: CoreEditor): boolean {
+  if (!wordCountDialogListener) return false;
+  wordCountDialogListener(editor);
   return true;
 }
 

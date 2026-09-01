@@ -4186,6 +4186,85 @@ test_nav_suites_green() {
     fi
 }
 
+# --- p4-doc-tools: word count dialog (task 9.4, issue #87) -----------------------
+# Tools > Word Count (Ctrl+Shift+F5): a read-only dialog with words, characters
+# (with and without spaces), sentences, paragraphs, and reading time (200 wpm);
+# a WYSIWYG selection scopes the counts to the selected range. The counts are
+# computed in counts.ts, shared with the status bar, so the two always agree
+# (plan 09 AC3). The pure rules are pinned in counts.test.ts (including the
+# known-count fixtures); the deep behavior (menu/shortcut wiring, selection
+# scoping, status-bar parity) is pinned in wordCountDialog.test.tsx, which
+# runs below.
+
+test_wc_menu_wiring() {
+    note "wc.menu Tools > Word Count (tools-word-count, Ctrl+Shift+F5) present"
+    if grep -q 'MenuItem::with_id(app, "tools-word-count", "Word Count", true, Some("Ctrl+Shift+F5"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'SubmenuBuilder::new(app, "Tools")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '\.items(&\[&file, &edit, &view, &insert, &format, &tools, &help\])' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "wc.menu Tools > Word Count (tools-word-count, Ctrl+Shift+F5) present"
+    else
+        fail "wc.menu Tools > Word Count (tools-word-count, Ctrl+Shift+F5) present"
+    fi
+}
+
+test_wc_counts_lib() {
+    note "wc.lib counts.ts shared counting rules (status bar + dialog)"
+    if [ -f "$ROOT/src/lib/counts.ts" ] \
+        && grep -q 'export function countWords' "$ROOT/src/lib/counts.ts" \
+        && grep -q 'export function countCharsNoSpaces' "$ROOT/src/lib/counts.ts" \
+        && grep -q 'export function countSentences' "$ROOT/src/lib/counts.ts" \
+        && grep -q 'export function countParagraphs' "$ROOT/src/lib/counts.ts" \
+        && grep -q 'export const READING_WPM = 200' "$ROOT/src/lib/counts.ts" \
+        && grep -q 'export function countText' "$ROOT/src/lib/counts.ts" \
+        && grep -q 'export function countSelection' "$ROOT/src/lib/counts.ts" \
+        && grep -q 'export function paragraphsInRange' "$ROOT/src/lib/counts.ts"; then
+        pass "wc.lib counts.ts shared counting rules (status bar + dialog)"
+    else
+        fail "wc.lib counts.ts shared counting rules (status bar + dialog)"
+    fi
+}
+
+test_wc_app_wiring() {
+    note "wc.app App.tsx routes tools-word-count + Ctrl+Shift+F5 and renders the dialog"
+    if grep -q 'id === "tools-word-count"' "$ROOT/src/App.tsx" \
+        && grep -q 'registerWordCountDialogListener' "$ROOT/src/App.tsx" \
+        && grep -q 'key === "f5" && e.shiftKey' "$ROOT/src/App.tsx" \
+        && grep -q 'Ctrl+Shift+F5: word count (Tools > Word Count)' "$ROOT/src/App.tsx" \
+        && grep -q '<WordCountDialog' "$ROOT/src/App.tsx" \
+        && grep -q 'from "./components/WordCountDialog"' "$ROOT/src/App.tsx" \
+        && [ -f "$ROOT/src/components/WordCountDialog.tsx" ]; then
+        pass "wc.app App.tsx routes tools-word-count + Ctrl+Shift+F5 and renders the dialog"
+    else
+        fail "wc.app App.tsx routes tools-word-count + Ctrl+Shift+F5 and renders the dialog"
+    fi
+}
+
+test_wc_statusbar_shared() {
+    note "wc.statusbar status bar + dialog share counts.ts (plan 09 AC3)"
+    if grep -q 'countText(currentText)' "$ROOT/src/App.tsx" \
+        && grep -q 'export { countWords }' "$ROOT/src/lib/docInfo.ts" \
+        && grep -q 'import { countWords } from "./counts"' "$ROOT/src/lib/docInfo.ts"; then
+        pass "wc.statusbar status bar + dialog share counts.ts (plan 09 AC3)"
+    else
+        fail "wc.statusbar status bar + dialog share counts.ts (plan 09 AC3)"
+    fi
+}
+
+test_wc_suites_green() {
+    note "wc.green word-count vitest suites pass"
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (node / node_modules not available)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/counts.test.ts src/lib/__tests__/wordCountDialog.test.tsx) 2>&1 ); then
+        pass "wc.green word-count vitest suites pass"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "wc.green word-count vitest suites failed (plan 09 task 9.4)"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -4592,6 +4671,12 @@ case "$SUBSET" in
         test_nav_lib
         test_nav_suites_present
         test_nav_suites_green
+        # Task 9.4 (issue #87): word count dialog
+        test_wc_menu_wiring
+        test_wc_counts_lib
+        test_wc_app_wiring
+        test_wc_statusbar_shared
+        test_wc_suites_green
         ;;
     shell)
         test_shell_new_bundled

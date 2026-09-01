@@ -8,6 +8,7 @@ import { fileStat, isAbsolutePath } from "./fileIo";
 import type { Eol, OpenFileResult } from "./fileIo";
 import { docDisplayName } from "./tabClose";
 import { isUntitledPath } from "./newDoc";
+import { countWords } from "./counts";
 
 export interface DocInfo {
   path: string;
@@ -29,12 +30,10 @@ export interface DocInfo {
   dirty: boolean;
 }
 
-// Word count: whitespace-split of the trimmed text — the same rule the
-// status bar uses, so the two surfaces always agree.
-export function countWords(text: string): number {
-  const trimmed = text.trim();
-  return trimmed.length === 0 ? 0 : trimmed.split(/\s+/).length;
-}
+// Word count: re-exported from counts.ts (plan 09 task 9.4, issue #87) so the
+// Info panel, the status bar, and the Word Count dialog all share one rule —
+// whitespace-split of the trimmed text.
+export { countWords };
 
 // Line count: 0 for an empty document, otherwise the number of text lines.
 // A trailing newline does not create a phantom final line ("a\n" is 1 line,
