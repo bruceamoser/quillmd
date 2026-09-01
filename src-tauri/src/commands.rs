@@ -291,6 +291,101 @@ pub fn write_style_overrides(app: tauri::AppHandle, json: String) -> Result<(), 
     write_overrides_file(&path, &json)
 }
 
+// --- spell check (plan 09 task 9.5, issue #88) --------------------------------
+//
+// The bundled English wordlist (resources/wordlist.txt, ~90k words) ships as
+// a Tauri resource; load_wordlist reads it from the resource dir and falls
+// back to the embedded copy (include_str!) so dev builds and the test suite
+// work even before the resource is in place. The include_str! also makes a
+// missing wordlist file a build error, not a runtime surprise.
+//
+// Wordlist settings (the personal dictionary; the session ignore list is
+// frontend memory only and never persists) are stored as JSON in the app
+// config dir (~/.config/quillmd/wordlist-settings.json) — machine-local by
+// design, the same posture as the style overrides. The path-based helpers
+// keep the logic testable; the #[tauri::command] wrappers resolve the dirs.
+
+pub const WORDLIST_RESOURCE_NAME: &str = "wordlist.txt";
+
+/// The embedded wordlist copy (a missing resource file breaks the build).
+pub const EMBEDDED_WORDLIST: &str = include_str!("../resources/wordlist.txt");
+
+/// The bundled wordlist's path in the resource dir.
+pub fn wordlist_file_for<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Option<PathBuf> {
+    app.path()
+        .resource_dir()
+        .ok()
+        .map(|d| d.join(WORDLIST_RESOURCE_NAME))
+}
+
+/// Reads a wordlist file; a missing, unreadable, or blank file reads as None
+/// (the caller falls back to the embedded copy).
+pub fn read_wordlist_file(path: &std::path::Path) -> Option<String> {
+    fs::read_to_string(path).ok().filter(|text| !text.trim().is_empty())
+}
+
+/// The bundled wordlist: the resource file when present, else the embedded
+/// copy.
+#[tauri::command]
+pub fn load_wordlist(app: tauri::AppHandle) -> Result<String, String> {
+    if let Some(path) = wordlist_file_for(&app) {
+        if let Some(text) = read_wordlist_file(&path) {
+            return Ok(text);
+        }
+    }
+    Ok(EMBEDDED_WORDLIST.to_string())
+}
+
+fn wordlist_settings_file<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Option<PathBuf> {
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|d| d.join("wordlist-settings.json"))
+}
+
+/// Reads the wordlist-settings file as raw JSON text; a missing or unreadable
+/// file reads as an empty object so a first run (or a hand-deleted file) is a
+/// clean state, not an error.
+pub fn read_wordlist_settings_file(path: &std::path::Path) -> String {
+    match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(_) => "{}".to_string(),
+    }
+}
+
+/// Writes the wordlist-settings payload after validating it is a JSON object.
+/// The frontend owns the schema (and normalizes it); the Rust side only guards
+/// the file shape so a stray payload can never turn the config file into
+/// something the frontend cannot parse back.
+pub fn write_wordlist_settings_file(path: &std::path::Path, json: &str) -> Result<(), String> {
+    let value: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| err("invalid_json", e))?;
+    if !value.is_object() {
+        return Err(err(
+            "invalid_json",
+            "wordlist settings payload must be a JSON object",
+        ));
+    }
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|e| err("io", format!("create {}: {e}", dir.display())))?;
+    }
+    fs::write(path, json).map_err(|e| err("io", format!("write {}: {e}", path.display())))
+}
+
+#[tauri::command]
+pub fn get_wordlist_settings(app: tauri::AppHandle) -> String {
+    wordlist_settings_file(&app)
+        .map(|p| read_wordlist_settings_file(&p))
+        .unwrap_or_else(|| "{}".to_string())
+}
+
+#[tauri::command]
+pub fn set_wordlist_settings(app: tauri::AppHandle, json: String) -> Result<(), String> {
+    let path =
+        wordlist_settings_file(&app).ok_or_else(|| err("config_dir", "app config dir unavailable"))?;
+    write_wordlist_settings_file(&path, &json)
+}
+
 // --- explorer file operations (plan 03 task 3.6, issue #44) ----------------
 //
 // The Explorer context menu (New file / New folder / Rename / Delete) runs on
@@ -766,6 +861,87 @@ mod tests {
 
         for payload in [r#"[1, 2]"#, r#""h2""#, "not json", "42"] {
             let res = write_overrides_file(&path, payload);
+            assert!(res.is_err(), "{payload} must be rejected");
+            let msg = res.unwrap_err();
+            assert!(msg.starts_with("invalid_json:"), "got {msg}");
+        }
+        // Nothing was written.
+        assert!(!path.exists());
+    }
+
+    // --- spell check (plan 09 task 9.5, issue #88) ----------------------------
+
+    #[test]
+    fn embedded_wordlist_is_populated_and_correct() {
+        let words: Vec<&str> = EMBEDDED_WORDLIST
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect();
+        assert!(words.len() >= 50_000, "wordlist has only {} words", words.len());
+        let set: std::collections::HashSet<&str> = words.iter().copied().collect();
+        // Common words are present, so prose is not flagged...
+        for w in ["the", "quick", "brown", "fox", "markdown", "spellcheck", "wordlist"] {
+            assert!(set.contains(w), "{w} missing from the wordlist");
+        }
+        // ...and the classic planted misspellings are absent (the scanner's
+        // whole job is to flag exactly these).
+        for w in ["teh", "recieve", "seperate", "occured", "definately", "wierd"] {
+            assert!(!set.contains(w), "{w} must not be in the wordlist");
+        }
+    }
+
+    #[test]
+    fn read_wordlist_file_reads_and_missing_or_blank_is_none() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("wordlist.txt");
+        assert_eq!(read_wordlist_file(&path), None);
+
+        fs::write(&path, "alpha\nbeta\n").unwrap();
+        assert_eq!(
+            read_wordlist_file(&path),
+            Some("alpha\nbeta\n".to_string())
+        );
+
+        let blank = dir.path().join("blank.txt");
+        fs::write(&blank, "   \n").unwrap();
+        assert_eq!(read_wordlist_file(&blank), None);
+    }
+
+    #[test]
+    fn wordlist_settings_read_missing_is_empty_object() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("wordlist-settings.json");
+        assert_eq!(read_wordlist_settings_file(&path), "{}");
+    }
+
+    #[test]
+    fn wordlist_settings_write_roundtrips() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("wordlist-settings.json");
+        let payload = r#"{"personal": ["quillmd", "serendipity"]}"#;
+
+        write_wordlist_settings_file(&path, payload).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), payload);
+        assert_eq!(read_wordlist_settings_file(&path), payload);
+    }
+
+    #[test]
+    fn wordlist_settings_write_creates_parent_dirs() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("nested").join("wordlist-settings.json");
+
+        write_wordlist_settings_file(&path, "{}").unwrap();
+        assert!(path.is_file());
+    }
+
+    #[test]
+    fn wordlist_settings_write_rejects_non_object_payloads() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("wordlist-settings.json");
+
+        for payload in [r#"[1, 2]"#, r#""personal""#, "not json", "42"] {
+            let res = write_wordlist_settings_file(&path, payload);
             assert!(res.is_err(), "{payload} must be rejected");
             let msg = res.unwrap_err();
             assert!(msg.starts_with("invalid_json:"), "got {msg}");

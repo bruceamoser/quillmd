@@ -52,6 +52,7 @@ import {
   registerImageInsertListener,
   registerImageReplaceListener,
   registerLinkDialogListener,
+  registerSpellCheckDialogListener,
   registerTableDialogListener,
   registerWordCountDialogListener,
   requestStylesGallery,
@@ -158,6 +159,18 @@ import ImageDialog from "./components/ImageDialog";
 import ImageEditDialog from "./components/ImageEditDialog";
 import InsertTableDialog from "./components/InsertTableDialog";
 import WordCountDialog from "./components/WordCountDialog";
+import SpellCheckDialog from "./components/SpellCheckDialog";
+import {
+  buildKnownSet,
+  ignoreWordForSession,
+  loadSpellcheckSettings,
+  loadWordlist,
+  saveSpellcheckSettings,
+  scanDoc,
+  scanText,
+  type FlaggedWord,
+  type SpellcheckSettings,
+} from "./lib/spellcheck";
 import type { TableInsertSpec } from "./lib/tables";
 import { loadViewMode, saveViewMode } from "./components/viewModes";
 import type { ViewMode } from "./components/viewModes";
@@ -278,6 +291,7 @@ const SHORTCUTS_TEXT = [
   "Ctrl+Shift+E: toggle explorer",
   "Ctrl+Shift+8: toggle navigation pane",
   "Ctrl+Shift+F5: word count (Tools > Word Count)",
+  "Ctrl+Shift+F7: spelling (Tools > Spelling…)",
 ].join("\n");
 
 export default function App() {
@@ -349,6 +363,16 @@ export default function App() {
   const [wordCountDialog, setWordCountDialog] = useState<{
     scoped: boolean;
     counts: TextCounts;
+  } | null>(null);
+  // Spell check dialog (plan 09 task 9.5, issue #88): the registry "spelling"
+  // command (Tools > Spelling…, Ctrl+Shift+F7) requests the dialog. The
+  // flagged terms are a snapshot taken at request time — the doc's prose
+  // scanned against the wordlist ∪ personal dictionary ∪ session ignores —
+  // and the settings are the personal dictionary the "Add to dictionary"
+  // picks persist through (spellcheck.ts).
+  const [spellCheckDialog, setSpellCheckDialog] = useState<{
+    flags: FlaggedWord[];
+    settings: SpellcheckSettings;
   } | null>(null);
   // Broken-image detection (plan 08 task 8.5, issue #80, AC6): the srcs of
   // the active doc whose local file no longer exists on disk (drives the
@@ -1446,11 +1470,12 @@ export default function App() {
     });
   }, []);
 
-  // The dialog's counts are a snapshot of one doc; a tab switch or view-mode
-  // change would leave it showing another doc's numbers, so close it then
+  // The dialogs' snapshots are of one doc; a tab switch or view-mode change
+  // would leave them showing another doc's numbers/flags, so close them then
   // (same rule as the other editor dialogs).
   useEffect(() => {
     setWordCountDialog(null);
+    setSpellCheckDialog(null);
   }, [activePath, viewMode]);
 
   const closeWordCountDialog = useCallback(() => {
@@ -1470,6 +1495,102 @@ export default function App() {
     }
     if (!dispatchEditorCommand("wordCount")) openWordCount(editor);
   }, [openWordCount]);
+
+  // --- spell check dialog (plan 09 task 9.5, issue #88) ------------------------
+  //
+  // The registry "spelling" command (Tools > Spelling…, Ctrl+Shift+F7)
+  // requests the dialog; this listener is the single renderer. At request
+  // time the wordlist (lazy, once per session), the personal dictionary, and
+  // the session ignore list are loaded, and the doc's prose is scanned
+  // against their union: the live ProseMirror doc in WYSIWYG (code is never
+  // scanned, and the first misspelling is selected), otherwise the live
+  // markdown text (source/preview modes).
+  const openSpellCheck = useCallback(
+    async (editor: CoreEditor | null) => {
+      const pathAtRequest = activePath;
+      const [wordlist, settings] = await Promise.all([
+        loadWordlist().catch(() => new Set<string>()),
+        loadSpellcheckSettings(),
+      ]);
+      // A tab switch (or close) during the load means this request is stale:
+      // the close-on-switch effect already ran, so do not re-open the dialog
+      // for another doc's snapshot.
+      if (pathAtRequest !== activePath) return;
+      const known = buildKnownSet(wordlist, settings);
+      const flags = editor ? scanDoc(editor.state.doc, known) : scanText(currentText, known);
+      setSpellCheckDialog({ flags, settings });
+      if (editor && flags.length > 0) {
+        // Select the first misspelling (Word behavior): the scan returns
+        // absolute doc positions, and lowercasing never changes a token's
+        // length, so the word's span is [firstPos, firstPos + len).
+        const first = flags[0];
+        editor
+          .chain()
+          .focus()
+          .setTextSelection({ from: first.firstPos, to: first.firstPos + first.word.length })
+          .run();
+      }
+    },
+    [currentText, activePath],
+  );
+
+  const openSpellCheckRef = useRef(openSpellCheck);
+  openSpellCheckRef.current = openSpellCheck;
+
+  useEffect(() => {
+    return registerSpellCheckDialogListener((editor) => {
+      void openSpellCheckRef.current(editor);
+    });
+  }, []);
+
+  const closeSpellCheckDialog = useCallback(() => {
+    setSpellCheckDialog(null);
+  }, []);
+
+  // "Ignore" (plan 09 AC4): suppresses the term for this session only — the
+  // session ignore list is in-memory and never persists, so a restart
+  // re-flags the term.
+  const handleSpellIgnore = useCallback((word: string) => {
+    ignoreWordForSession(word);
+    setSpellCheckDialog((d) =>
+      d ? { ...d, flags: d.flags.filter((f) => f.word !== word) } : d,
+    );
+  }, []);
+
+  // "Add to dictionary" (plan 09 AC4): adds the term to the personal
+  // dictionary and persists it in app config, so it stays suppressed across
+  // restarts.
+  const handleSpellAddToDictionary = useCallback(
+    (word: string) => {
+      if (!spellCheckDialog) return;
+      const already = spellCheckDialog.settings.personal.includes(word);
+      const settings: SpellcheckSettings = {
+        personal: already
+          ? spellCheckDialog.settings.personal
+          : [...spellCheckDialog.settings.personal, word],
+      };
+      if (!already) void saveSpellcheckSettings(settings).catch(() => undefined);
+      setSpellCheckDialog({
+        settings,
+        flags: spellCheckDialog.flags.filter((f) => f.word !== word),
+      });
+    },
+    [spellCheckDialog],
+  );
+
+  // Spelling entry point for the menu and the Ctrl+Shift+F7 shortcut: with a
+  // mounted WYSIWYG editor the registry command is dispatched (its request
+  // carries the live editor so the dialog can scan its doc and select the
+  // first misspelling); in source/preview modes there is no TipTap instance,
+  // so the dialog scans the live markdown text.
+  const openSpellCheckDialog = useCallback(() => {
+    const editor = currentFindEditor();
+    if (!editor) {
+      void openSpellCheck(null);
+      return;
+    }
+    if (!dispatchEditorCommand("spelling")) void openSpellCheck(editor);
+  }, [openSpellCheck]);
 
   // --- broken-image re-link (plan 08 task 8.5, issue #80, AC6) ----------------
   //
@@ -1952,6 +2073,11 @@ export default function App() {
         // the Ctrl+Shift+F5 shortcut (selection-scoped in WYSIWYG, whole
         // document otherwise).
         openWordCountDialog();
+      } else if (id === "tools-spelling") {
+        // Plan 09 task 9.5 (issue #88): Tools > Spelling… — the same path as
+        // the Ctrl+Shift+F7 shortcut (scans the live doc in WYSIWYG and
+        // selects the first misspelling, whole document otherwise).
+        openSpellCheckDialog();
       } else if (MENU_TO_COMMAND[id]) {
         dispatchEditorCommand(MENU_TO_COMMAND[id]);
       } else if (id === "help-about") {
@@ -1988,6 +2114,7 @@ export default function App() {
       changeAppTheme,
       openModifyStyle,
       openWordCountDialog,
+      openSpellCheckDialog,
       recentFiles,
       activePath,
       openByPath,
@@ -2188,6 +2315,10 @@ export default function App() {
         // Word count (plan 09 task 9.4, issue #87): Tools > Word Count.
         e.preventDefault();
         openWordCountDialog();
+      } else if (key === "f7" && e.shiftKey) {
+        // Spelling (plan 09 task 9.5, issue #88): Tools > Spelling….
+        e.preventDefault();
+        openSpellCheckDialog();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -2207,6 +2338,7 @@ export default function App() {
     findPrev,
     toggleNavigationPane,
     openWordCountDialog,
+    openSpellCheckDialog,
     findPanel.open,
   ]);
 
@@ -2426,6 +2558,14 @@ export default function App() {
                   counts={wordCountDialog.counts}
                   scoped={wordCountDialog.scoped}
                   onClose={closeWordCountDialog}
+                />
+              )}
+              {spellCheckDialog && (
+                <SpellCheckDialog
+                  flags={spellCheckDialog.flags}
+                  onIgnore={handleSpellIgnore}
+                  onAddToDictionary={handleSpellAddToDictionary}
+                  onClose={closeSpellCheckDialog}
                 />
               )}
               {modifyStyleKey !== null && (
