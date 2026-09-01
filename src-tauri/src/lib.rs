@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod convert;
+pub mod egl_probe;
 pub mod fs;
 pub mod menu;
 
@@ -611,6 +612,13 @@ pub fn about_baseline() -> Result<(), SelfTestError> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Linux: WebKitGTK aborts the process when it cannot create an EGL
+    // display (VMs, remote sessions, broken drivers). Probe EGL before the
+    // webview exists and fall back to WebKit's software rendering path so
+    // the app starts on any modern Linux machine (see egl_probe.rs).
+    #[cfg(target_os = "linux")]
+    egl_probe::prepare_webview();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

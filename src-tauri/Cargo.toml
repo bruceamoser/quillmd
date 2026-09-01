@@ -1,6 +1,6 @@
 [package]
 name = "quillmd"
-version = "0.2.1"
+version = "0.2.2"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -26,6 +26,7 @@ sha2 = "0.10"
 notify = "6"
 hex = "0.4"
 tauri-plugin-dialog = "2.7.2"
+libloading = "0.8"
 
 [dev-dependencies]
 tempfile = "3"
