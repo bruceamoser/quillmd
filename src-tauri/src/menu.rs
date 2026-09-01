@@ -191,6 +191,9 @@ fn build_file_menu<R: Runtime>(
         MenuItem::with_id(app, "file-open-folder", "Open Folder...", true, Some("Ctrl+Shift+O"))?;
     let save = MenuItem::with_id(app, "file-save", "Save", true, Some("Ctrl+S"))?;
     let save_as = MenuItem::with_id(app, "file-save-as", "Save As...", true, Some("Ctrl+Shift+S"))?;
+    // Print (PDF)… (plan 10 §2.4, task 10.6, issue #98): a Word muscle-memory
+    // alias that dispatches the PDF export with its save dialog.
+    let print = MenuItem::with_id(app, "file-print", "Print (PDF)…", true, Some("Ctrl+P"))?;
     let make_copy =
         MenuItem::with_id(app, "file-make-a-copy", "Make a Copy", true, None::<&str>)?;
     let close = MenuItem::with_id(app, "file-close", "Close", true, Some("Ctrl+W"))?;
@@ -229,7 +232,7 @@ fn build_file_menu<R: Runtime>(
         .separator()
         .items(&[&open, &open_folder, &make_copy])
         .separator()
-        .items(&[&save, &save_as, &close, &close_all, &info])
+        .items(&[&save, &save_as, &print, &close, &close_all, &info])
         .separator()
         .item(&recent_menu)
         .separator()
