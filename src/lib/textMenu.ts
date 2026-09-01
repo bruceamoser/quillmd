@@ -19,8 +19,9 @@
 //   - surface items carry `action` — a clipboard/view action with no
 //     registry command (Cut / Copy / Paste / Select All are the browser's
 //     execCommand, "Open in WYSIWYG" is a view-mode switch, the link
-//     Open/Remove actions read the link under the caret). The surface runs
-//     these directly; they are excluded from the 1:1 command mapping.
+//     Open/Edit/Copy-address/Remove actions read the link under the caret).
+//     The surface runs these directly; they are excluded from the 1:1
+//     command mapping.
 //   - separators group the items (the clipboard block, the Format groups, ...).
 
 import { isNodeSelection, type Editor as CoreEditor } from "@tiptap/core";
@@ -35,10 +36,12 @@ import {
 import { coveringLinkRange, readLinkPrefill } from "./links";
 
 // A surface action with no registry command (see the file header). The WYSIWYG
-// surface owns cut/copy/paste/paste-as-text/select-all/open-link/remove-link;
-// the source and preview surfaces own open-in-wysiwyg (and the clipboard
-// actions). The surface validates that an action is one it supports before
-// running it.
+// surface owns cut/copy/paste/paste-as-text/select-all and the
+// open-link / copy-address / remove-link link actions (its Edit link item
+// dispatches the registry "link" command); the source and preview surfaces
+// own open-in-wysiwyg (and the clipboard actions; the preview also runs the
+// four link actions on its rendered anchor). The surface validates that an
+// action is one it supports before running it.
 export type TextMenuAction =
   | "cut"
   | "copy"
@@ -46,6 +49,7 @@ export type TextMenuAction =
   | "paste-as-text"
   | "select-all"
   | "open-link"
+  | "edit-link"
   | "remove-link"
   | "copy-address"
   | "open-in-wysiwyg";
@@ -249,10 +253,10 @@ function insertItems(): TextMenuEntry[] {
 }
 
 // The Link item (plan 03 §2): when the caret is on a link it is a submenu
-// (Edit link / Open link / Remove link); otherwise it is the single "Insert
-// link" item. Edit link dispatches the registry "link" command (the dialog
-// prefills from the caret); Open link and Remove link are surface actions
-// that read the link under the caret.
+// (Open link / Edit link / Copy address / Remove link, plan 03 task 3.5);
+// otherwise it is the single "Insert link" item. Edit link dispatches the
+// registry "link" command (the dialog prefills from the caret); the other
+// items are surface actions that read the link under the caret.
 function linkItem(editor: CoreEditor): TextMenuItem {
   const onLink = coveringLinkRange(editor) !== null;
   if (!onLink) {
@@ -263,8 +267,9 @@ function linkItem(editor: CoreEditor): TextMenuItem {
     label: "Link",
     enabled: true,
     submenu: [
-      { id: "text-link-edit", label: "Edit link", enabled: true, command: "link" },
       { id: "text-link-open", label: "Open link", enabled: true, action: "open-link" },
+      { id: "text-link-edit", label: "Edit link", enabled: true, command: "link" },
+      { id: "text-link-copy-address", label: "Copy address", enabled: true, action: "copy-address" },
       { id: "text-link-remove", label: "Remove link", enabled: true, action: "remove-link", danger: true },
     ],
   };
@@ -333,8 +338,12 @@ export function buildSourceMenu(): TextMenuEntry[] {
 // Plan 03 §3: Copy (rendered markdown text), the link menu, and "Open in
 // WYSIWYG". The preview is read-only rendered HTML, so there is no cut /
 // select-all (nothing to edit) — Copy copies the rendered text under the
-// caret, and the link menu offers Open / Copy address for a link under the
-// caret (Edit / Remove are WYSIWYG-only, where the mark is editable).
+// caret, and the link menu offers the full link item set (plan 03 task 3.5,
+// issue #43) for a link under the caret: Open link, Edit link, Copy address,
+// and Remove link. The preview has no editor to run commands on, so the
+// surface resolves those actions itself — Edit / Remove splice the markdown
+// source (src/lib/markdownLinks.ts) and Edit reopens the app's link dialog
+// with a markdown target.
 
 export const PREVIEW_MENU_ITEM_IDS = [
   "preview-copy",
@@ -344,10 +353,11 @@ export const PREVIEW_MENU_ITEM_IDS = [
 
 export type PreviewMenuItemId = (typeof PREVIEW_MENU_ITEM_IDS)[number];
 
-// Builds the preview view's context menu (plan 03 §3). `onLink` reports
-// whether the caret is on a link in the rendered HTML (the surface resolves
-// it from the anchor under the caret); when true the Link item is a submenu
-// (Open link / Copy address), otherwise it is a disabled placeholder. Pure.
+// Builds the preview view's context menu (plan 03 §3, link items per plan 03
+// task 3.5). `onLink` reports whether the caret is on a link in the rendered
+// HTML (the surface resolves it from the anchor under the caret); when true
+// the Link item is a submenu (Open link / Edit link / Copy address / Remove
+// link), otherwise it is a disabled placeholder. Pure.
 export function buildPreviewMenu(onLink: boolean, href: string | null): TextMenuEntry[] {
   const link: TextMenuEntry = onLink
     ? {
@@ -356,7 +366,9 @@ export function buildPreviewMenu(onLink: boolean, href: string | null): TextMenu
         enabled: true,
         submenu: [
           { id: "preview-link-open", label: "Open link", enabled: href !== null, action: "open-link" },
+          { id: "preview-link-edit", label: "Edit link", enabled: href !== null, action: "edit-link" },
           { id: "preview-link-copy-address", label: "Copy address", enabled: href !== null, action: "copy-address" },
+          { id: "preview-link-remove", label: "Remove link", enabled: href !== null, action: "remove-link", danger: true },
         ],
       }
     : { id: "preview-link", label: "Link", enabled: false };

@@ -1068,6 +1068,15 @@ export default function Editor({
         if (href) void openLinkUrl(href);
         break;
       }
+      case "copy-address": {
+        // Copies the link's destination to the clipboard (plan 03 task 3.5,
+        // issue #43) — the preview surface does the same for its anchor.
+        const href = linkHrefAtCaret(ed);
+        if (href && typeof navigator !== "undefined" && navigator.clipboard) {
+          void navigator.clipboard.writeText(href);
+        }
+        break;
+      }
       case "remove-link":
         removeLink(ed);
         break;

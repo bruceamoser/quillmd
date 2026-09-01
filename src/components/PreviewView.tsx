@@ -30,12 +30,20 @@ interface PreviewViewProps {
   // The preview context menu's "Open in WYSIWYG" item (plan 03 task 3.2,
   // issue #40): switches the view mode back to the WYSIWYG editor.
   onOpenInWysiwyg?: () => void;
+  // The link menu's Edit / Remove items (plan 03 task 3.5, issue #43): the
+  // preview has no editor to run the mark on, so it reports the anchor under
+  // the caret (destination + display text) and the app splices the markdown
+  // source — Edit reopens the link dialog with a markdown target.
+  onEditLink?: (href: string, text: string) => void;
+  onRemoveLink?: (href: string, text: string) => void;
 }
 
 export default function PreviewView({
   value,
   theme = "quill",
   onOpenInWysiwyg,
+  onEditLink,
+  onRemoveLink,
 }: PreviewViewProps) {
   const html = useMemo(() => markdownToHtml(value), [value]);
   const articleRef = useRef<HTMLElement | null>(null);
@@ -51,20 +59,23 @@ export default function PreviewView({
   const renderSeq = useRef(0);
 
   // The open preview context menu (plan 03 task 3.2, issue #40): the cursor
-  // position in viewport coordinates, the item set, and the href of the link
-  // under the caret (null when the caret is not on a link) — the dispatch
-  // reads it from the menu state, not from the live DOM.
+  // position in viewport coordinates, the item set, and the href + display
+  // text of the link under the caret (null when the caret is not on a link)
+  // — the dispatch reads it from the menu state, not from the live DOM.
   const [textMenu, setTextMenu] = useState<{
     x: number;
     y: number;
     items: readonly TextMenuEntry[];
     href: string | null;
+    text: string | null;
   } | null>(null);
 
   // The preview menu's pick handler (plan 03 §3): Copy copies the rendered
   // text under the selection (the browser's own selection — the preview is
   // read-only HTML, nothing to edit); the link items act on the anchor under
-  // the caret; Open in WYSIWYG is the mode switch.
+  // the caret; Open in WYSIWYG is the mode switch. Edit link and Remove link
+  // (plan 03 task 3.5, issue #43) report the anchor to the app, which edits
+  // the markdown source (the preview itself never touches the document).
   const dispatchTextMenu = (item: TextMenuItem): void => {
     if (item.action === "open-in-wysiwyg") {
       onOpenInWysiwyg?.();
@@ -77,6 +88,18 @@ export default function PreviewView({
       case "open-link": {
         const href = textMenu?.href;
         if (href) void openLinkUrl(href);
+        break;
+      }
+      case "edit-link": {
+        const href = textMenu?.href;
+        const text = textMenu?.text;
+        if (href && typeof text === "string") onEditLink?.(href, text);
+        break;
+      }
+      case "remove-link": {
+        const href = textMenu?.href;
+        const text = textMenu?.text;
+        if (href && typeof text === "string") onRemoveLink?.(href, text);
         break;
       }
       case "copy-address": {
@@ -183,6 +206,7 @@ export default function PreviewView({
             y: event.clientY,
             items: buildPreviewMenu(anchor !== null, href),
             href,
+            text: anchor?.textContent ?? null,
           });
         }}
       />
