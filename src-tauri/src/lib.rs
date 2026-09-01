@@ -267,6 +267,68 @@ pub fn export_asset_baseline() -> Result<(), SelfTestError> {
     Ok(())
 }
 
+/// Baseline for export-time TOC generation (plan 09 task 9.2, issue #85):
+/// the `<!-- quillmd:toc -->` token in the export source expands to the
+/// target's real table-of-contents construct (a raw typst `#outline()` block
+/// for PDF, a Word TOC field for DOCX), and when pandoc/typst are present a
+/// real export of a fixture doc with the token runs. The source document is
+/// never rewritten (golden rule 1).
+pub fn export_toc_baseline() -> Result<(), SelfTestError> {
+    // The pure expansion contract (always runs, no tools needed).
+    let src = "# Alpha\n\nIntro.\n\n<!-- quillmd:toc -->\n\n## Beta\n";
+    let pdf = convert::expand_toc_tokens(src, convert::TocTarget::Pdf);
+    if !pdf.contains("```{=typst}\n#outline(depth: 4, title: \"Contents\")\n```")
+        || pdf.contains("quillmd:toc")
+    {
+        return Err(SelfTestError("export-toc baseline: PDF expansion wrong".into()));
+    }
+    let docx = convert::expand_toc_tokens(src, convert::TocTarget::Docx);
+    if !docx.contains("```{=openxml}")
+        || !docx.contains(r#"TOC \o "1-4" \h \z \u"#)
+        || docx.contains("quillmd:toc")
+    {
+        return Err(SelfTestError("export-toc baseline: DOCX expansion wrong".into()));
+    }
+    // A token-free document must come back byte-identical.
+    if convert::expand_toc_tokens("# A\n", convert::TocTarget::Pdf) != "# A\n" {
+        return Err(SelfTestError(
+            "export-toc baseline: token-free doc must be untouched".into(),
+        ));
+    }
+
+    // Real exports (only when the tools are present): the temp fixture doc
+    // with the token exports to a valid PDF + DOCX and keeps its token.
+    if !convert::pandoc_available() || !convert::typst_available() {
+        return Ok(());
+    }
+    let dir = std::env::temp_dir().join(format!("quillmd-export-toc-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|e| SelfTestError(format!("mkdir: {e}")))?;
+    let src_path = dir.join("toc.md");
+    std::fs::write(&src_path, src.as_bytes()).map_err(|e| SelfTestError(format!("write: {e}")))?;
+    let pdf = dir.join("toc.pdf");
+    let docx = dir.join("toc.docx");
+    convert::export_pdf(&src_path, &pdf)
+        .map_err(|e| SelfTestError(format!("export_pdf: {e:?}")))?;
+    convert::export_docx(&src_path, &docx)
+        .map_err(|e| SelfTestError(format!("export_docx: {e:?}")))?;
+    let pdf_bytes = std::fs::read(&pdf).map_err(|e| SelfTestError(format!("read pdf: {e}")))?;
+    if pdf_bytes.len() < 4 || &pdf_bytes[..4] != b"%PDF" {
+        return Err(SelfTestError("export-toc baseline: PDF export invalid".into()));
+    }
+    let docx_bytes = std::fs::read(&docx).map_err(|e| SelfTestError(format!("read docx: {e}")))?;
+    if docx_bytes.len() < 2 || &docx_bytes[..2] != b"PK" {
+        return Err(SelfTestError("export-toc baseline: DOCX export invalid".into()));
+    }
+    let src_bytes = std::fs::read(&src_path).map_err(|e| SelfTestError(format!("read src: {e}")))?;
+    let _ = std::fs::remove_dir_all(&dir);
+    if src_bytes != src.as_bytes() {
+        return Err(SelfTestError(
+            "export-toc baseline: source document was rewritten".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Baseline for the file_stat command (plan 01 task 1.5, issue #26): stat a
 /// real temp file and assert the reported size matches the written payload
 /// and the OS exposes a modified time.

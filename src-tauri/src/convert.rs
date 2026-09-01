@@ -8,6 +8,12 @@ use serde::Serialize;
 
 use crate::fs::atomic;
 
+/// The fixed table-of-contents token (plan 09 task 9.1, issue #84). The
+/// clean-path serializer emits exactly this string for a tocBlock node, so
+/// the export layer must recognize exactly this byte sequence — keep in sync
+/// with `TOC_TOKEN` in src/lib/pm.ts.
+const TOC_TOKEN: &str = "<!-- quillmd:toc -->";
+
 /// Structured conversion error, serialized as JSON across IPC so the frontend
 /// can distinguish "install pandoc" from "pick a different target" and real
 /// failures. Never panics: every path returns one of these kinds.
@@ -146,19 +152,24 @@ pub fn export_pdf(src: &Path, out: &Path) -> Result<(), ConvertError> {
     ensure_export_target(src, out, "pdf")?;
     require_pandoc()?;
     require_typst()?;
-    convert_to(src, out, &["-t", "pdf", "--pdf-engine=typst", "-V", "mainfont=DejaVu Sans"])
+    convert_to(
+        src,
+        out,
+        &["-t", "pdf", "--pdf-engine=typst", "-V", "mainfont=DejaVu Sans"],
+        Some(TocTarget::Pdf),
+    )
 }
 
 pub fn export_docx(src: &Path, out: &Path) -> Result<(), ConvertError> {
     ensure_export_target(src, out, "docx")?;
     require_pandoc()?;
-    convert_to(src, out, &["-t", "docx"])
+    convert_to(src, out, &["-t", "docx"], Some(TocTarget::Docx))
 }
 
 pub fn export_epub(src: &Path, out: &Path) -> Result<(), ConvertError> {
     ensure_export_target(src, out, "epub")?;
     require_pandoc()?;
-    convert_to(src, out, &["-t", "epub"])
+    convert_to(src, out, &["-t", "epub"], None)
 }
 
 pub fn export_txt(src: &Path, out: &Path, raw: bool) -> Result<(), ConvertError> {
@@ -170,14 +181,121 @@ pub fn export_txt(src: &Path, out: &Path, raw: bool) -> Result<(), ConvertError>
         Ok(())
     } else {
         require_pandoc()?;
-        convert_to(src, out, &["-t", "plain"])
+        convert_to(src, out, &["-t", "plain"], None)
     }
 }
 
 pub fn import_docx(src: &Path, out_md: &Path) -> Result<(), ConvertError> {
     require_pandoc()?;
     ensure_extension(out_md, "md")?;
-    convert_to(src, out_md, &["-t", "gfm"])
+    convert_to(src, out_md, &["-t", "gfm"], None)
+}
+
+// --- Export-time TOC generation (plan 09 task 9.2, issue #85) ----------------
+//
+// The document stores a table of contents as the fixed comment token
+// `<!-- quillmd:toc -->` (the byte-stable source of truth, golden rule 1).
+// At export time the token is expanded — in a throwaway copy of the markdown
+// only — into the target's real TOC construct:
+//
+// - pdf  -> a raw typst block: `#outline()` renders a clickable outline with
+//           page numbers at the token's position in the typst-rendered PDF
+//           (pandoc passes ```{=typst} blocks through verbatim).
+// - docx -> a raw openxml block carrying a Word TOC field
+//           (`TOC \o "1-4" \h \z \u`), which Word populates from the
+//           document's H1-H4 headings when the document is opened or the
+//           field is updated.
+//
+// The source file is never rewritten: the expansion lands in a temp input
+// next to the source (so relative asset refs, e.g. mermaid diagram PNGs,
+// still resolve) and is removed after the conversion.
+
+/// Which TOC construct an export target expands the token to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TocTarget {
+    Pdf,
+    Docx,
+}
+
+/// The fenced raw block each export target expands the toc token to. The
+/// `depth`/`"1-4"` bounds match the H1-H4 TOC policy (plan 09 §2); the PDF
+/// outline title matches the in-editor TOC card.
+fn toc_replacement_block(target: TocTarget) -> &'static str {
+    match target {
+        TocTarget::Pdf => "```{=typst}\n#outline(depth: 4, title: \"Contents\")\n```",
+        TocTarget::Docx => r#"```{=openxml}
+<w:p>
+<w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r>
+<w:r><w:instrText xml:space="preserve"> TOC \o "1-4" \h \z \u </w:instrText></w:r>
+<w:r><w:fldChar w:fldCharType="separate"/></w:r>
+<w:r><w:t xml:space="preserve">Right-click the table of contents and choose Update Field to populate it.</w:t></w:r>
+<w:r><w:fldChar w:fldCharType="end"/></w:r>
+</w:p>
+```"#,
+    }
+}
+
+/// Expands every toc token in the export source to `target`'s TOC construct.
+///
+/// The replacement is a fenced raw block, which must sit on its own lines to
+/// parse: when the token already stands on its own line (the serializer's
+/// form) the surrounding bytes are kept verbatim; an inline token gets
+/// newline padding instead (LF- and CRLF-aware). Documents without the token
+/// come back byte-identical.
+pub fn expand_toc_tokens(markdown: &str, target: TocTarget) -> String {
+    let block = toc_replacement_block(target);
+    let mut out = String::with_capacity(markdown.len() + block.len());
+    let mut rest = markdown;
+    while let Some(idx) = rest.find(TOC_TOKEN) {
+        let (before, tail) = rest.split_at(idx);
+        out.push_str(before);
+        if !before.is_empty() && !before.ends_with('\n') {
+            out.push_str("\n\n");
+        }
+        out.push_str(block);
+        let after = &tail[TOC_TOKEN.len()..];
+        if !after.is_empty() && !after.starts_with(['\n', '\r']) {
+            out.push_str("\n\n");
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The pandoc input for a TOC-carrying export: `src` itself when it holds no
+/// toc token (no copy, no behavior change), else a temp `.md` copy in the
+/// same directory with every token expanded. The copy is what pandoc converts
+/// and the caller removes it (returned as `Some`). The `.md` extension keeps
+/// pandoc's extension-based input detection on markdown.
+fn toc_expanded_input(src: &Path, target: TocTarget) -> Result<(PathBuf, Option<PathBuf>), ConvertError> {
+    let bytes = fs::read(src).map_err(|e| ConvertError::io(format!("read source: {e}")))?;
+    if !bytes_contain(&bytes, TOC_TOKEN.as_bytes()) {
+        return Ok((src.to_path_buf(), None));
+    }
+    let text = String::from_utf8(bytes).map_err(|_| {
+        ConvertError::io("export source is not valid UTF-8; cannot expand the TOC token".to_string())
+    })?;
+    let expanded = expand_toc_tokens(&text, target);
+    let dir = src
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let n = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let tmp = dir.join(format!(".quillmd-toc-{}-{}.md", std::process::id(), n));
+    atomic::write_file_atomic(&tmp, expanded.as_bytes())
+        .map_err(|e| ConvertError::io(format!("write expanded source: {e}")))?;
+    Ok((tmp.clone(), Some(tmp)))
+}
+
+/// Byte-level containment for the (ASCII) token without requiring a UTF-8
+/// view of the file.
+fn bytes_contain(haystack: &[u8], needle: &[u8]) -> bool {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return false;
+    }
+    haystack.windows(needle.len()).any(|w| w == needle)
 }
 
 // --- Export assets (plan 11 task 11.5, issue #104) ---------------------------
@@ -334,16 +452,27 @@ fn temp_in_same_dir(target: &Path) -> Result<PathBuf, ConvertError> {
 }
 
 /// Runs pandoc into a temp file next to `out`, then atomically renames the temp
-/// into place. A failed conversion leaves the target untouched.
-fn convert_to(src: &Path, out: &Path, extra: &[&str]) -> Result<(), ConvertError> {
+/// into place. A failed conversion leaves the target untouched. When `toc` is
+/// set and the source carries the token, pandoc converts the temp expanded
+/// copy instead of `src` itself (the copy is removed in all cases).
+fn convert_to(src: &Path, out: &Path, extra: &[&str], toc: Option<TocTarget>) -> Result<(), ConvertError> {
+    let (input, toc_tmp) = match toc {
+        Some(target) => toc_expanded_input(src, target)?,
+        None => (src.to_path_buf(), None),
+    };
     let tmp = temp_in_same_dir(out)?;
     let mut args: Vec<OsString> = Vec::with_capacity(extra.len() + 3);
-    args.push(src.as_os_str().to_owned());
+    args.push(input.as_os_str().to_owned());
     args.push(OsString::from("-o"));
     args.push(tmp.as_os_str().to_owned());
     args.extend(extra.iter().map(OsString::from));
 
     let result = run_pandoc(&args);
+    // The expanded-source copy is a scratch file: remove it whether the
+    // conversion succeeded or failed (best-effort, mirrors the asset cleanup).
+    if let Some(t) = &toc_tmp {
+        let _ = fs::remove_file(t);
+    }
     if result.is_err() {
         let _ = fs::remove_file(&tmp);
         return result;
@@ -373,6 +502,7 @@ fn run_pandoc(args: &[OsString]) -> Result<(), ConvertError> {
 mod tests {
     use super::*;
     use std::fs;
+    use std::io::Read;
     use tempfile::tempdir;
 
     fn write_sample(dir: &Path) -> PathBuf {
@@ -592,6 +722,218 @@ mod tests {
         // The unrelated file and the directory survive.
         assert!(stale.exists());
         assert!(dir.path().join("subdir").is_dir());
+    }
+
+    // --- export-time TOC generation (plan 09 task 9.2, issue #85) -----------
+
+    const TOC_SRC: &str = "# Alpha\n\nIntro.\n\n<!-- quillmd:toc -->\n\n## Beta\n\n### Gamma\n";
+
+    #[test]
+    fn expand_toc_tokens_no_token_is_identity() {
+        let src = "# Alpha\n\nNo token here.\n";
+        assert_eq!(expand_toc_tokens(src, TocTarget::Pdf), src);
+        assert_eq!(expand_toc_tokens(src, TocTarget::Docx), src);
+    }
+
+    #[test]
+    fn expand_toc_tokens_pdf_emits_raw_typst_outline() {
+        let out = expand_toc_tokens(TOC_SRC, TocTarget::Pdf);
+        assert_eq!(
+            out,
+            "# Alpha\n\nIntro.\n\n```{=typst}\n#outline(depth: 4, title: \"Contents\")\n```\n\n## Beta\n\n### Gamma\n"
+        );
+        assert!(!out.contains(TOC_TOKEN));
+    }
+
+    #[test]
+    fn expand_toc_tokens_docx_emits_raw_openxml_toc_field() {
+        let out = expand_toc_tokens(TOC_SRC, TocTarget::Docx);
+        assert!(out.starts_with("# Alpha\n\nIntro.\n\n```{=openxml}\n<w:p>"));
+        assert!(out.contains(r#"TOC \o "1-4" \h \z \u"#));
+        assert!(out.contains("fldCharType=\"begin\""));
+        assert!(out.contains("fldCharType=\"separate\""));
+        assert!(out.contains("fldCharType=\"end\""));
+        assert!(out.ends_with("</w:p>\n```\n\n## Beta\n\n### Gamma\n"));
+        assert!(!out.contains(TOC_TOKEN));
+    }
+
+    #[test]
+    fn expand_toc_tokens_replaces_every_token() {
+        let src = "<!-- quillmd:toc -->\n\nmid\n\n<!-- quillmd:toc -->\n";
+        let out = expand_toc_tokens(src, TocTarget::Pdf);
+        assert_eq!(out.matches("```{=typst}").count(), 2);
+        assert!(!out.contains(TOC_TOKEN));
+    }
+
+    #[test]
+    fn expand_toc_tokens_inline_token_gets_line_padding() {
+        let out = expand_toc_tokens("para <!-- quillmd:toc --> tail", TocTarget::Pdf);
+        assert_eq!(
+            out,
+            "para \n\n```{=typst}\n#outline(depth: 4, title: \"Contents\")\n```\n\n tail"
+        );
+    }
+
+    #[test]
+    fn expand_toc_tokens_crlf_source_keeps_token_line_boundaries() {
+        let src = "# Alpha\r\n\r\n<!-- quillmd:toc -->\r\n\r\n## Beta\r\n";
+        let out = expand_toc_tokens(src, TocTarget::Pdf);
+        // No padding is added: the token already stands on its own (CRLF)
+        // line, so the surrounding bytes are verbatim.
+        assert_eq!(
+            out,
+            "# Alpha\r\n\r\n```{=typst}\n#outline(depth: 4, title: \"Contents\")\n```\r\n\r\n## Beta\r\n"
+        );
+    }
+
+    #[test]
+    fn toc_expanded_input_no_token_returns_src_itself() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("doc.md");
+        fs::write(&src, b"# A\n").unwrap();
+        let (input, tmp) = toc_expanded_input(&src, TocTarget::Pdf).unwrap();
+        assert_eq!(input, src);
+        assert!(tmp.is_none());
+    }
+
+    #[test]
+    fn toc_expanded_input_writes_expanded_copy_and_leaves_src_untouched() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("doc.md");
+        fs::write(&src, TOC_SRC.as_bytes()).unwrap();
+        let (input, tmp) = toc_expanded_input(&src, TocTarget::Docx).unwrap();
+        let tmp_path = tmp.expect("a temp copy must be created");
+        assert_eq!(input, tmp_path);
+        // The copy sits next to the source (relative asset refs must keep
+        // resolving) and carries the expansion, not the token.
+        assert_eq!(tmp_path.parent().unwrap(), dir.path());
+        let expanded = fs::read_to_string(&tmp_path).unwrap();
+        assert!(expanded.contains("```{=openxml}"));
+        assert!(expanded.contains(r#"TOC \o "1-4""#));
+        assert!(!expanded.contains(TOC_TOKEN));
+        // The source file is byte-identical (golden rule 1).
+        assert_eq!(fs::read(&src).unwrap(), TOC_SRC.as_bytes());
+        let _ = fs::remove_file(&tmp_path);
+    }
+
+    #[test]
+    fn export_pdf_expands_toc_token() {
+        if !pandoc_available() || !typst_available() {
+            eprintln!("SKIP: pandoc or typst not installed");
+            return;
+        }
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("toc-doc.md");
+        fs::write(&src, TOC_SRC.as_bytes()).unwrap();
+        let out = dir.path().join("toc.pdf");
+        export_pdf(&src, &out).unwrap();
+        let bytes = fs::read(&out).unwrap();
+        assert_eq!(&bytes[..4], b"%PDF");
+        // The temp expanded copy is cleaned up; the source keeps its token.
+        let leftovers: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(".quillmd-toc-")
+            })
+            .collect();
+        assert!(leftovers.is_empty());
+        assert_eq!(fs::read(&src).unwrap(), TOC_SRC.as_bytes());
+    }
+
+    #[test]
+    fn export_pdf_outline_visible_in_pdf_text() {
+        if !pandoc_available() || !typst_available() {
+            eprintln!("SKIP: pandoc or typst not installed");
+            return;
+        }
+        // Note: poppler's pdftotext has no --version (it treats the flag as a
+        // filename), so probe with -v instead of tool_available.
+        let pdftotext_ok = Command::new("pdftotext")
+            .arg("-v")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !pdftotext_ok {
+            eprintln!("SKIP: pdftotext not installed");
+            return;
+        }
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("toc-doc.md");
+        fs::write(&src, TOC_SRC.as_bytes()).unwrap();
+        let out = dir.path().join("toc.pdf");
+        export_pdf(&src, &out).unwrap();
+        let output = tool_command("pdftotext")
+            .arg(&out)
+            .arg("-")
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let text = String::from_utf8_lossy(&output.stdout);
+        // The expanded token rendered a real outline: the card's title plus
+        // an entry for every H1-H4 heading of the fixture doc. Each heading
+        // appears exactly once in the body, so a second occurrence (the
+        // dot-leader outline entry) can only come from the outline.
+        assert!(text.contains("Contents"), "outline title missing:\n{text}");
+        for heading in ["Alpha", "Beta", "Gamma"] {
+            let count = text.matches(heading).count();
+            assert!(
+                count >= 2,
+                "no outline entry for {heading} (found {count} occurrence(s)):\n{text}"
+            );
+        }
+        // The outline sits between the H1 body and the H2 body, so the first
+        // Beta/Gamma occurrences are the outline entries, in document order.
+        let i_alpha = text.find("Alpha").expect("Alpha missing from PDF text");
+        let i_beta = text.find("Beta").expect("Beta missing from PDF text");
+        let i_gamma = text.find("Gamma").expect("Gamma missing from PDF text");
+        assert!(i_alpha < i_beta && i_beta < i_gamma, "outline out of order:\n{text}");
+    }
+
+    #[test]
+    fn export_docx_expands_toc_token_into_field() {
+        if !pandoc_available() {
+            eprintln!("SKIP: pandoc not installed");
+            return;
+        }
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("toc-doc.md");
+        fs::write(&src, TOC_SRC.as_bytes()).unwrap();
+        let out = dir.path().join("toc.docx");
+        export_docx(&src, &out).unwrap();
+
+        // The DOCX is a zip; word/document.xml must carry the TOC field
+        // (begin/instr/separate/end) in place of the comment token.
+        let doc_xml = {
+            let file = fs::File::open(&out).unwrap();
+            let mut zip = zip::ZipArchive::new(file).unwrap();
+            let mut f = zip.by_name("word/document.xml").unwrap();
+            let mut doc_xml = String::new();
+            f.read_to_string(&mut doc_xml).unwrap();
+            doc_xml
+        };
+        assert!(doc_xml.contains(r#"TOC \o "1-4" \h \z \u"#));
+        assert!(doc_xml.contains("fldCharType=\"begin\""));
+        assert!(doc_xml.contains("fldCharType=\"separate\""));
+        assert!(doc_xml.contains("fldCharType=\"end\""));
+        assert!(!doc_xml.contains("quillmd:toc"));
+
+        // The temp expanded copy is cleaned up; the source keeps its token.
+        let leftovers: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(".quillmd-toc-")
+            })
+            .collect();
+        assert!(leftovers.is_empty());
+        assert_eq!(fs::read(&src).unwrap(), TOC_SRC.as_bytes());
     }
 
     #[test]
