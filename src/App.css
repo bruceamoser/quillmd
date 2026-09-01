@@ -75,6 +75,22 @@ body {
   overflow: hidden;
 }
 
+/* --- full screen (plan 10 task 10.3, issue #95) ----------------------------
+   The quillmd-fullscreen class on the app root hides every piece of chrome —
+   header (browser dev), tab bar, status bar, the two side rails, and the
+   WYSIWYG toolbar — leaving the editor only. The native menu bar goes away
+   with the window when the fullscreen API is active; in the chrome-hide-only
+   fallback it stays. */
+
+.quillmd-app.quillmd-fullscreen .quillmd-header,
+.quillmd-app.quillmd-fullscreen .quillmd-tabbar,
+.quillmd-app.quillmd-fullscreen .quillmd-statusbar,
+.quillmd-app.quillmd-fullscreen .quillmd-explorer,
+.quillmd-app.quillmd-fullscreen .quillmd-outline,
+.quillmd-app.quillmd-fullscreen .quillmd-toolbar {
+  display: none;
+}
+
 /* --- document properties flyout (File > Info) ---------------------------- */
 
 .quillmd-docinfo {

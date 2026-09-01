@@ -426,6 +426,16 @@ export default function App() {
   // Advanced tab shows (version + config dir, read from Rust once on mount).
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+  // Full screen (plan 10 task 10.3, issue #95): app-level session state — the
+  // quillmd-fullscreen class on the app root hides the chrome (header, tab
+  // bar, status bar, side rails, editor toolbar), leaving the editor only.
+  // The native menu bar goes away with the window when the fullscreen API is
+  // active; in the chrome-hide-only fallback (API blocked or absent) it stays.
+  const [fullscreen, setFullscreen] = useState(false);
+  // Live mirror of `fullscreen` for the async requestFullscreen settlement
+  // (a rapid enter-exit must not strand the webview in API fullscreen after
+  // the app already left the mode).
+  const fullscreenRef = useRef(false);
   // User style overrides (plan 05 task 5.4, issue #57): the Modify Style
   // look of built-in styles, stored in the app config dir (Rust commands)
   // and rendered as CSS on the content container only — the document bytes
@@ -809,6 +819,54 @@ export default function App() {
     if (!activeDoc) return;
     patchDocSettings({ navigationPane: !activeDoc.settings.navigationPane });
   }, [activeDoc, patchDocSettings]);
+
+  // Full screen exit (plan 10 task 10.3, issue #95): drops the chrome-hide
+  // class and leaves the API fullscreen when active (the resulting
+  // fullscreenchange is a no-op for the state — it is already false).
+  const exitFullscreen = useCallback(() => {
+    setFullscreen(false);
+    fullscreenRef.current = false;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {
+        // already out of the API fullscreen; the class is what mattered
+      });
+    }
+  }, []);
+
+  // Full screen enter/exit (plan 10 task 10.3, issue #95): F11 (the native
+  // menu accelerator under Tauri, the window keydown in browser dev) and the
+  // View > Full Screen menu item both funnel here. Enter hides the chrome
+  // immediately and then requests the API fullscreen so the OS takes the
+  // window (and the native menu bar) with it; Esc is handled by the
+  // browser/OS in that case (fullscreenchange below). If the API is absent or
+  // blocked we fall back to chrome-hide-only and the frontend keydown's Esc
+  // exits instead.
+  const toggleFullscreen = useCallback(() => {
+    if (fullscreenRef.current) {
+      exitFullscreen();
+      return;
+    }
+    setFullscreen(true);
+    fullscreenRef.current = true;
+    const el = document.documentElement;
+    if (typeof el.requestFullscreen === "function") {
+      void el
+        .requestFullscreen()
+        .then(() => {
+          // A rapid F11-F11 exited the mode before the request settled: roll
+          // the API fullscreen back so the webview and the app state agree.
+          if (!fullscreenRef.current && document.fullscreenElement) {
+            void document.exitFullscreen().catch(() => {});
+          }
+        })
+        .catch(() => {
+          // The fullscreen API is blocked (policy/permission): the
+          // chrome-hide-only fallback stays active and Esc/F11 are handled by
+          // the frontend keydown below.
+        });
+    }
+    // No requestFullscreen (some webviews): chrome-hide-only from the start.
+  }, [exitFullscreen]);
 
   // Paste as text (plan 02 §2.9, issue #36): the Edit menu item reads the
   // system clipboard (the native accelerator has already consumed the key
@@ -2226,6 +2284,10 @@ export default function App() {
         toggleNavigationPane();
       } else if (id === "view-statusbar") {
         setStatusbarVisible((visible) => !visible);
+      } else if (id === "view-fullscreen") {
+        // View > Full Screen (plan 10 task 10.3, issue #95): the same
+        // enter/exit the F11 accelerator and the browser-dev keydown use.
+        toggleFullscreen();
       } else if (id === "view-show-marks") {
         toggleShowMarks();
       } else if (id === "view-word-wrap") {
@@ -2349,6 +2411,7 @@ export default function App() {
       toggleWordWrap,
       toggleSpellcheck,
       toggleNavigationPane,
+      toggleFullscreen,
       doPasteAsText,
       stepZoom,
       changeZoom,
@@ -2424,6 +2487,21 @@ export default function App() {
   useEffect(() => {
     document.documentElement.style.fontSize = `${appSettings.uiScale}%`;
   }, [appSettings.uiScale]);
+
+  // Full screen (plan 10 task 10.3, issue #95): when the browser/OS ends the
+  // API fullscreen (its Esc, or a platform exit), drop the chrome-hide class
+  // with it. The event fires on every change; a null fullscreenElement is the
+  // exit (the enter is a no-op — the class was applied before the request).
+  useEffect(() => {
+    const onChange = () => {
+      if (!document.fullscreenElement) {
+        fullscreenRef.current = false;
+        setFullscreen(false);
+      }
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
 
   // Style inspector (plan 05 task 5.5, issue #58): the WYSIWYG editor
   // publishes the built-in style that owns the block under the cursor (null
@@ -2538,9 +2616,26 @@ export default function App() {
         else findNext();
         return;
       }
-      if (e.key === "Escape" && findPanel.open) {
-        closeFindPanel();
+      // Full screen (plan 10 task 10.3, issue #95): F11 toggles (the native
+      // menu accelerator owns F11 under Tauri; this covers browser dev) and
+      // Esc exits — idempotently, so it is safe whether or not the browser
+      // also consumes the Esc for the API fullscreen (the fullscreenchange
+      // listener settles the state either way).
+      if (e.key === "F11") {
+        e.preventDefault();
+        toggleFullscreen();
         return;
+      }
+      if (e.key === "Escape") {
+        if (fullscreenRef.current) {
+          e.preventDefault();
+          exitFullscreen();
+          return;
+        }
+        if (findPanel.open) {
+          closeFindPanel();
+          return;
+        }
       }
       const mod = e.ctrlKey || e.metaKey;
       if (!mod) return;
@@ -2615,6 +2710,8 @@ export default function App() {
     toggleNavigationPane,
     openWordCountDialog,
     openSpellCheckDialog,
+    toggleFullscreen,
+    exitFullscreen,
     findPanel.open,
   ]);
 
@@ -2698,7 +2795,7 @@ export default function App() {
   }
 
   return (
-    <main className="quillmd-app">
+    <main className={fullscreen ? "quillmd-app quillmd-fullscreen" : "quillmd-app"}>
       {/* View-only style overrides (plan 05 task 5.4, issue #57): restyles
           the WYSIWYG/preview content without touching the document bytes. */}
       <style>{overridesCss}</style>

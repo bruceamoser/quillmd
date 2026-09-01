@@ -291,6 +291,12 @@ fn build_view_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> 
     // state persists per doc on the frontend.
     let navigation = MenuItem::with_id(app, "view-navigation", "Toggle Navigation Pane", true, Some("Ctrl+Shift+8"))?;
     let statusbar = MenuItem::with_id(app, "view-statusbar", "Toggle Status Bar", true, None::<&str>)?;
+    // Full screen (plan 10 task 10.3, issue #95): hides the menu bar, toolbar,
+    // status bar, and side rails, leaving the editor only; F11 enters/exits
+    // and Esc exits (the browser/OS when the fullscreen API is active, the
+    // frontend keydown in the chrome-hide-only fallback). The frontend
+    // (App.tsx) resolves the id.
+    let full_screen = MenuItem::with_id(app, "view-fullscreen", "Full Screen", true, Some("F11"))?;
 
     // View-level document preferences (plan 02 task 2.5, issue #34): line
     // spacing presets, formatting marks, and word wrap. These are view-only —
@@ -376,7 +382,7 @@ fn build_view_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> 
         .item(&theme)
         .item(&default_theme)
         .separator()
-        .items(&[&explorer, &navigation, &statusbar])
+        .items(&[&explorer, &navigation, &statusbar, &full_screen])
         .build()?;
     Ok(view)
 }
