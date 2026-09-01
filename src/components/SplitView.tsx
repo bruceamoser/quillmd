@@ -11,6 +11,10 @@ interface SplitViewProps {
   // WYSIWYG editor applies line spacing/wrap/marks to its DOM, the source
   // pane honors word wrap.
   settings?: DocSettings;
+  // The "show line numbers in source" app setting (plan 10 task 10.2,
+  // issue #94): an app-wide preference (AppSettings), not a per-doc one, so
+  // it reaches the source pane through its own prop.
+  showLineNumbers?: boolean;
   // The active document theme (plan 11 task 11.3, issue #102): forwarded to
   // the WYSIWYG editor so its mermaid cards render with the mapped theme.
   theme?: ThemeId;
@@ -26,6 +30,7 @@ export default function SplitView({
   onChange,
   readOnly = false,
   settings,
+  showLineNumbers = false,
   theme,
   onOpenInWysiwyg,
 }: SplitViewProps) {
@@ -46,6 +51,7 @@ export default function SplitView({
           onChange={onChange}
           readOnly={readOnly}
           wrap={settings?.wordWrap ?? true}
+          lineNumbers={showLineNumbers}
           onOpenInWysiwyg={onOpenInWysiwyg}
         />
       </div>

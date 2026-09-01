@@ -7,7 +7,8 @@
 
 import { MARKDOWN_FILTER, pickSavePath } from "./dialogs";
 import { saveAs } from "./fileIo";
-import type { OpenFileResult } from "./fileIo";
+import type { Eol, OpenFileResult } from "./fileIo";
+import type { DefaultEol } from "./settings";
 
 export const UNTITLED_PREFIX = ":new:";
 
@@ -37,17 +38,46 @@ export function untitledDisplayName(path: string): string {
   return `Untitled ${n}`;
 }
 
+// Whether the runtime platform is Windows (the "auto" EOL default follows
+// it: CRLF on Windows, LF elsewhere). navigator is the only signal available
+// in the webview; any absence reads as non-Windows (LF).
+export function platformIsWindows(): boolean {
+  try {
+    return /win/i.test(navigator.platform || navigator.userAgent || "");
+  } catch {
+    return false;
+  }
+}
+
+// Resolves the "default EOL" app setting (plan 10 task 10.2, issue #94) to
+// the concrete EOL a new (untitled) document uses: "lf" / "crlf" pass
+// through, "auto" follows the platform. Existing documents keep their
+// per-doc detection; this only seeds new ones.
+export function resolveDefaultEol(
+  setting: DefaultEol,
+  isWindows: boolean = platformIsWindows(),
+): Eol {
+  if (setting === "lf") return "lf";
+  if (setting === "crlf") return "crlf";
+  return isWindows ? "crlf" : "lf";
+}
+
 // Builds the in-memory OpenFileResult for a new (blank or template)
 // document. LF without BOM is the default on-disk shape for a file that
 // does not exist yet; both are re-detected from the real file after the
-// first save.
-export function makeUntitledDoc(path: string, content: string): OpenFileResult {
+// first save. `eol` (plan 10 task 10.2) seeds the default-EOL setting for
+// new docs; it defaults to LF so callers without a setting are unchanged.
+export function makeUntitledDoc(
+  path: string,
+  content: string,
+  eol: Eol = "lf",
+): OpenFileResult {
   return {
     path,
     source: content,
     originalBytes: new TextEncoder().encode(content),
     hash: "",
-    eol: "lf",
+    eol,
     bom: false,
     snapshot: null,
   };

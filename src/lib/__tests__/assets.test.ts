@@ -114,7 +114,12 @@ describe("copy_asset / file_exists invoke bridge", () => {
     g.isTauri = true;
     const calls = tauriIpc((cmd, payload) => {
       expect(cmd).toBe("copy_asset");
-      expect(payload).toEqual({ src: "/in/photos/a.png", docDir: "/docs", assetFolder: "assets" });
+      expect(payload).toEqual({
+        src: "/in/photos/a.png",
+        docDir: "/docs",
+        assetFolder: "assets",
+        collision: "suffix",
+      });
       return "assets/a.png";
     });
     await expect(copyAsset("/in/photos/a.png", "/docs", "assets")).resolves.toBe("assets/a.png");
@@ -129,6 +134,21 @@ describe("copy_asset / file_exists invoke bridge", () => {
       src: "/in/photos/a.png",
       docDir: "/docs",
       assetFolder: "assets",
+      collision: "suffix",
+    });
+  });
+
+  it("copyAsset passes a non-default collision through to copy_asset", async () => {
+    // Plan 10 task 10.2 (issue #94): the "never" (fixed-name / overwrite)
+    // behavior is a real option, not hardcoded to suffix.
+    g.isTauri = true;
+    const calls = tauriIpc(() => "a.png");
+    await copyAsset("/in/photos/a.png", "/docs", "assets", "never");
+    expect(calls[0].payload).toEqual({
+      src: "/in/photos/a.png",
+      docDir: "/docs",
+      assetFolder: "assets",
+      collision: "never",
     });
   });
 
@@ -180,6 +200,7 @@ describe("assetSrcForPickedFile (plan 08 task 8.3 copy rule)", () => {
         src: "/other/photo.png",
         docDir: "/docs",
         assetFolder: "assets",
+        collision: "suffix",
       });
       return "assets/photo-1.png";
     });
@@ -197,6 +218,21 @@ describe("assetSrcForPickedFile (plan 08 task 8.3 copy rule)", () => {
       src: "/other/photo.png",
       docDir: "/docs",
       assetFolder: "doc",
+      collision: "suffix",
+    });
+  });
+
+  it("passes the collision setting through to copy_asset", async () => {
+    // Plan 10 task 10.2 (issue #94): the collision behavior chosen in the
+    // Settings dialog reaches the Rust copy_asset command.
+    g.isTauri = true;
+    const calls = tauriIpc(() => "photo.png");
+    await assetSrcForPickedFile("/docs/notes.md", "/other/photo.png", "assets", "never");
+    expect(calls[0].payload).toEqual({
+      src: "/other/photo.png",
+      docDir: "/docs",
+      assetFolder: "assets",
+      collision: "never",
     });
   });
 
@@ -210,6 +246,7 @@ describe("assetSrcForPickedFile (plan 08 task 8.3 copy rule)", () => {
       src: "C:\\other\\photo.png",
       docDir: "C:/docs",
       assetFolder: "assets",
+      collision: "suffix",
     });
   });
 

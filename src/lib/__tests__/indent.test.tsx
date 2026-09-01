@@ -22,6 +22,7 @@ import {
 } from "../../components/Editor";
 import { markdownToTiptap, tiptapToMarkdown } from "../pm";
 import { EDITOR_COMMANDS } from "../editorCommands";
+import type { TabKeyBehavior } from "../../lib/settings";
 import Toolbar from "../../components/Toolbar";
 
 // React 19 act() requires the environment flag in jsdom.
@@ -72,7 +73,7 @@ function md(editor: Editor): string {
 function press(
   editor: Editor,
   key: string,
-  opts: { ctrl?: boolean; shift?: boolean } = {},
+  opts: { ctrl?: boolean; shift?: boolean; tabKey?: TabKeyBehavior } = {},
 ): KeyboardEvent {
   const event = new KeyboardEvent("keydown", {
     key,
@@ -81,7 +82,7 @@ function press(
     bubbles: true,
     cancelable: true,
   });
-  handleEditorKeyDown(editor, event);
+  handleEditorKeyDown(editor, event, opts.tabKey ?? "indent");
   return event;
 }
 
@@ -244,6 +245,41 @@ describe("Tab / Shift+Tab in the editor view", () => {
     expect(press(editor, "Tab").defaultPrevented).toBe(false);
     expect(md(editor)).toBe("Hello world\n");
     expect(press(editor, "Tab", { shift: true }).defaultPrevented).toBe(false);
+    expect(md(editor)).toBe("Hello world\n");
+  });
+});
+
+describe("tab-key behavior setting (plan 10 task 10.2, issue #94)", () => {
+  it("'spaces': Tab on a bare paragraph inserts four spaces at the caret", () => {
+    const editor = trackedEditor("HelloXworld");
+    cursorAfter(editor, "Hello");
+    expect(press(editor, "Tab", { tabKey: "spaces" }).defaultPrevented).toBe(true);
+    expect(md(editor)).toBe("Hello    Xworld\n");
+  });
+
+  it("'spaces': Tab still nests list items and adds quote levels", () => {
+    const editor = trackedEditor("- one\n- two\n");
+    cursorAfter(editor, "two");
+    expect(press(editor, "Tab", { tabKey: "spaces" }).defaultPrevented).toBe(true);
+    expect(md(editor)).toBe("- one\n  - two\n");
+
+    const quote = trackedEditor("> Hello\n");
+    cursorAfter(quote, "Hello");
+    expect(press(quote, "Tab", { tabKey: "spaces" }).defaultPrevented).toBe(true);
+    expect(md(quote)).toBe("> > Hello\n");
+  });
+
+  it("'spaces': Shift+Tab outside a nestable context is left to the browser", () => {
+    const editor = trackedEditor("Hello world");
+    cursorAfter(editor, "Hello");
+    expect(press(editor, "Tab", { shift: true, tabKey: "spaces" }).defaultPrevented).toBe(false);
+    expect(md(editor)).toBe("Hello world\n");
+  });
+
+  it("'indent' (the handler default): Tab on a bare paragraph is not consumed", () => {
+    const editor = trackedEditor("Hello world");
+    cursorAfter(editor, "Hello");
+    expect(press(editor, "Tab", { tabKey: "indent" }).defaultPrevented).toBe(false);
     expect(md(editor)).toBe("Hello world\n");
   });
 });

@@ -599,6 +599,7 @@ pub fn run() {
             commands::write_style_overrides,
             commands::read_settings,
             commands::write_settings,
+            commands::get_app_info,
             commands::load_wordlist,
             commands::get_wordlist_settings,
             commands::set_wordlist_settings,

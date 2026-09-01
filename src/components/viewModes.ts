@@ -2,19 +2,21 @@ export type ViewMode = "wysiwyg" | "source" | "split" | "preview";
 
 const MODE_KEY = "quillmd.viewMode";
 
-// Remember last-used mode per file (spec §2.2.1). Falls back to "wysiwyg".
-export function loadViewMode(path: string): ViewMode {
+// Remember last-used mode per file (spec §2.2.1). Falls back to `fallback`
+// (the "default view mode" app setting, plan 10 task 10.2, issue #94;
+// "wysiwyg" when unset) for a path with no remembered mode.
+export function loadViewMode(path: string, fallback: ViewMode = "wysiwyg"): ViewMode {
   try {
     const raw = localStorage.getItem(MODE_KEY);
-    if (!raw) return "wysiwyg";
+    if (!raw) return fallback;
     const map = JSON.parse(raw) as Record<string, unknown>;
     const value = map[path];
     if (value === "wysiwyg" || value === "source" || value === "split" || value === "preview") {
       return value;
     }
-    return "wysiwyg";
+    return fallback;
   } catch {
-    return "wysiwyg";
+    return fallback;
   }
 }
 

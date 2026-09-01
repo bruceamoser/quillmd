@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { createDocument, encodeDocument, saveDocument } from "./lib/pipeline";
@@ -30,6 +31,7 @@ import {
   makeUntitledDoc,
   nextUntitledPath,
   rekeyDocRecord,
+  resolveDefaultEol,
   saveNewDocument,
   untitledDefaultName,
   untitledDisplayName,
@@ -68,7 +70,7 @@ import {
   readImagePrefill,
 } from "./lib/images";
 import type { ImageEditPayload, ImageEditPrefill, ImagePayload } from "./lib/images";
-import { assetSrcForPickedFile, loadAssetFolder } from "./lib/assets";
+import { assetSrcForPickedFile } from "./lib/assets";
 import { findMissingImageSrcs, relinkFolderFor } from "./lib/missingImages";
 import type { EditorCommandId, LineSpacingValue } from "./lib/editorCommands";
 import {
@@ -101,6 +103,8 @@ import {
 import type { ThemeId } from "./lib/theme";
 import { isEditorFontFamily, isEditorFontSize, loadEditorFont, saveEditorFont } from "./lib/editorFont";
 import type { EditorFontSettings } from "./lib/editorFont";
+import { DEFAULT_SETTINGS, useSettings } from "./lib/settings";
+import type { AppSettings } from "./lib/settings";
 import { readClipboardText } from "./lib/clipboard";
 import { handleDroppedPaths } from "./lib/dragDrop";
 import {
@@ -164,6 +168,8 @@ import WordCountDialog from "./components/WordCountDialog";
 import SpellCheckDialog from "./components/SpellCheckDialog";
 import DateTimeDialog from "./components/DateTimeDialog";
 import SymbolDialog from "./components/SymbolDialog";
+import SettingsDialog from "./components/SettingsDialog";
+import type { AppInfo } from "./components/SettingsDialog";
 import {
   buildKnownSet,
   ignoreWordForSession,
@@ -300,6 +306,7 @@ const SHORTCUTS_TEXT = [
   "Ctrl+Shift+8: toggle navigation pane",
   "Ctrl+Shift+F5: word count (Tools > Word Count)",
   "Ctrl+Shift+F7: spelling (Tools > Spelling…)",
+  "Ctrl+,: settings (Tools > Settings…)",
 ].join("\n");
 
 export default function App() {
@@ -405,6 +412,20 @@ export default function App() {
   // present, otherwise this app-wide default. Cosmetic only — the document
   // bytes are never touched.
   const [appTheme, setAppTheme] = useState<ThemeId>(() => loadThemeDefault());
+  // App-wide settings (plan 10 task 10.2, issue #94): the unified settings.json
+  // record, read through useSettings (async; null until the first read
+  // resolves). `appSettings` is the always-present view (defaults until
+  // loaded) so the render and callbacks never branch on null.
+  const {
+    settings,
+    update: updateAppSettings,
+    reset: resetAppSettings,
+  } = useSettings();
+  const appSettings = settings ?? DEFAULT_SETTINGS;
+  // The Settings dialog (Tools > Settings… / Ctrl+,) and the app info its
+  // Advanced tab shows (version + config dir, read from Rust once on mount).
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   // User style overrides (plan 05 task 5.4, issue #57): the Modify Style
   // look of built-in styles, stored in the app config dir (Rust commands)
   // and rendered as CSS on the content container only — the document bytes
@@ -497,29 +518,37 @@ export default function App() {
     [activePath, updateDoc],
   );
 
-  const addDoc = useCallback((opened: OpenFileResult) => {
-    setDocs((prev) => ({
-      ...prev,
-      [opened.path]: {
-        open: opened,
-        currentText: opened.source,
-        viewMode: loadViewMode(opened.path),
-        settings: loadDocSettings(opened.path),
-      },
-    }));
-    setActivePath(opened.path);
-    setStatus(`Opened ${opened.path} (${opened.eol.toUpperCase()})`);
-    if (opened.snapshot && opened.snapshot.length > 0) {
-      const restore = window.confirm(
-        "A crash-recovery snapshot exists with unsaved edits. Restore it?",
-      );
-      if (restore) {
-        const restored = new TextDecoder("utf-8").decode(opened.snapshot);
-        updateDoc(opened.path, { currentText: restored });
-        setStatus("Restored unsaved edits from snapshot");
+  const addDoc = useCallback(
+    (opened: OpenFileResult) => {
+      // Plan 10 task 10.2 (issue #94): the app-wide defaults seed the per-doc
+      // state a doc has not overridden yet — the view mode (no saved per-path
+      // pick) and the spellcheck default.
+      setDocs((prev) => ({
+        ...prev,
+        [opened.path]: {
+          open: opened,
+          currentText: opened.source,
+          viewMode: loadViewMode(opened.path, appSettings.defaultViewMode),
+          settings: loadDocSettings(opened.path, {
+            spellcheck: appSettings.spellcheck,
+          }),
+        },
+      }));
+      setActivePath(opened.path);
+      setStatus(`Opened ${opened.path} (${opened.eol.toUpperCase()})`);
+      if (opened.snapshot && opened.snapshot.length > 0) {
+        const restore = window.confirm(
+          "A crash-recovery snapshot exists with unsaved edits. Restore it?",
+        );
+        if (restore) {
+          const restored = new TextDecoder("utf-8").decode(opened.snapshot);
+          updateDoc(opened.path, { currentText: restored });
+          setStatus("Restored unsaved edits from snapshot");
+        }
       }
-    }
-  }, [updateDoc]);
+    },
+    [updateDoc, appSettings],
+  );
 
   const addRecent = useCallback(
     async (path: string) => {
@@ -587,20 +616,29 @@ export default function App() {
       }
       const template = templateId ? templateById(templateId) : undefined;
       const content = template?.content ?? "";
-      const opened = makeUntitledDoc(nextUntitledPath(Object.keys(docs)), content);
+      // Plan 10 task 10.2 (issue #94): seed the new doc from the app-wide
+      // defaults — the default EOL (new docs only; existing keep their
+      // detected EOL), the default view mode, and the spellcheck default.
+      const opened = makeUntitledDoc(
+        nextUntitledPath(Object.keys(docs)),
+        content,
+        resolveDefaultEol(appSettings.defaultEol),
+      );
       setDocs((prev) => ({
         ...prev,
         [opened.path]: {
           open: opened,
           currentText: content,
-          viewMode: loadViewMode(opened.path),
-          settings: loadDocSettings(opened.path),
+          viewMode: loadViewMode(opened.path, appSettings.defaultViewMode),
+          settings: loadDocSettings(opened.path, {
+            spellcheck: appSettings.spellcheck,
+          }),
         },
       }));
       setActivePath(opened.path);
       setStatus(template ? `New from template: ${template.label}` : "New untitled document");
     },
-    [docs],
+    [docs, appSettings],
   );
 
   // Re-keys an untitled tab from its synthetic :new:<n> path to a real path
@@ -817,8 +855,12 @@ export default function App() {
       setEditorFont(next);
       saveEditorFont(next);
       dispatchEditorCommand("editorFont", next);
+      // Plan 10 task 10.2 (issue #94): keep the unified settings.json record
+      // in sync so the Settings dialog and restart reflect every pick, not
+      // just the dialog's own.
+      void updateAppSettings({ editorFont: next });
     },
-    [editorFont],
+    [editorFont, updateAppSettings],
   );
 
   // Theme picks (plan 05 task 5.3, issue #56). The View > Theme submenu sets
@@ -834,10 +876,53 @@ export default function App() {
     [patchDocSettings],
   );
 
-  const changeAppTheme = useCallback((theme: ThemeId) => {
-    setAppTheme(theme);
-    saveThemeDefault(theme);
-  }, []);
+  const changeAppTheme = useCallback(
+    (theme: ThemeId) => {
+      setAppTheme(theme);
+      saveThemeDefault(theme);
+      // Plan 10 task 10.2 (issue #94): keep the unified settings.json record
+      // in sync so the Settings dialog and restart reflect every pick (the
+      // View > Default theme menu included), not just the dialog's own.
+      void updateAppSettings({ theme });
+    },
+    [updateAppSettings],
+  );
+
+  // Settings dialog (plan 10 task 10.2, issue #94): the dialog reports a
+  // partial patch (one field per control change). Non-appearance fields go
+  // straight to settings.json; theme/editorFont go through the existing
+  // change* handlers, which live-apply AND sync settings.json (single write).
+  const handleSettingsChange = useCallback(
+    (patch: Partial<AppSettings>) => {
+      const { theme, editorFont, ...rest } = patch;
+      if (Object.keys(rest).length > 0) void updateAppSettings(rest);
+      if (theme !== undefined) changeAppTheme(theme);
+      if (editorFont !== undefined) changeEditorFont(editorFont);
+    },
+    [updateAppSettings, changeAppTheme, changeEditorFont],
+  );
+
+  // Reset to defaults (plan 10 AC2): settings.json back to DEFAULT_SETTINGS,
+  // plus the live theme/font restored to their defaults.
+  // Await the reset before the theme/font sync writes: each does a
+  // read-modify-write of the same settings.json, and starting them before the
+  // reset lands would re-publish the pre-reset values (plan 10 AC2).
+  const handleSettingsReset = useCallback(async () => {
+    await resetAppSettings();
+    changeAppTheme(DEFAULT_SETTINGS.theme);
+    changeEditorFont(DEFAULT_SETTINGS.editorFont);
+  }, [resetAppSettings, changeAppTheme, changeEditorFont]);
+
+  // Open the app config dir in the OS file manager (plan 10, Advanced tab).
+  const openConfigDir = useCallback(async () => {
+    if (!runningInTauri() || !appInfo) return;
+    try {
+      const { openPath } = await import("@tauri-apps/plugin-opener");
+      await openPath(appInfo.configDir);
+    } catch (e) {
+      setStatus(`Could not open config dir: ${String(e)}`);
+    }
+  }, [appInfo, setStatus]);
 
   // Modify Style (plan 05 task 5.4, issue #57): Format > Styles > "Modify…"
   // opens the in-app dialog. Word preselects the style under the cursor, so
@@ -1262,7 +1347,14 @@ export default function App() {
     async (editor: CoreEditor, filePath: string): Promise<boolean> => {
       const docPath = activeDoc?.open.path ?? "";
       try {
-        const src = await assetSrcForPickedFile(docPath, filePath, loadAssetFolder());
+        // Plan 10 task 10.2 (issue #94): the asset folder and collision
+        // behavior come from the app-wide settings (the Settings dialog).
+        const src = await assetSrcForPickedFile(
+          docPath,
+          filePath,
+          appSettings.assetFolder,
+          appSettings.assetCollision,
+        );
         if (insertImage(editor, { src, alt: "" })) {
           setStatus(`Inserted image ${src}`);
           return true;
@@ -1273,7 +1365,7 @@ export default function App() {
         return false;
       }
     },
-    [activeDoc, setStatus],
+    [activeDoc, setStatus, appSettings],
   );
 
   const insertImageFromFile = useCallback(async (editor: CoreEditor) => {
@@ -1391,7 +1483,12 @@ export default function App() {
       if (!target) return;
       const docPath = activeDoc?.open.path ?? "";
       try {
-        const src = await assetSrcForPickedFile(docPath, picked[0], loadAssetFolder());
+        const src = await assetSrcForPickedFile(
+          docPath,
+          picked[0],
+          appSettings.assetFolder,
+          appSettings.assetCollision,
+        );
         const { state } = editor;
         const tr = state.tr;
         tr.setNodeMarkup(target.pos, null, { ...target.node.attrs, src });
@@ -1404,7 +1501,7 @@ export default function App() {
         setStatus(`Could not replace image: ${String(e)}`);
       }
     },
-    [activeDoc, setStatus],
+    [activeDoc, setStatus, appSettings],
   );
 
   const replaceImageRef = useRef(replaceImage);
@@ -1736,7 +1833,12 @@ export default function App() {
       });
       if (!picked || picked.length === 0) return;
       try {
-        const newSrc = await assetSrcForPickedFile(docPath, picked[0], loadAssetFolder());
+        const newSrc = await assetSrcForPickedFile(
+          docPath,
+          picked[0],
+          appSettings.assetFolder,
+          appSettings.assetCollision,
+        );
         const node = editor.state.doc.nodeAt(pos);
         if (node?.type.name === "image" && node.attrs.src === src) {
           const tr = editor.state.tr;
@@ -1751,7 +1853,7 @@ export default function App() {
         setStatus(`Could not re-link image: ${String(e)}`);
       }
     },
-    [activePath, setStatus],
+    [activePath, setStatus, appSettings],
   );
 
   // The node view reads the handler through a module holder and re-renders
@@ -2215,6 +2317,10 @@ export default function App() {
         // Plan 09 task 9.7 (issue #90): Tools > Clear Document — native
         // confirm, then a single undoable clear on the active surface.
         void clearDocument();
+      } else if (id === "tools-settings") {
+        // Plan 10 task 10.2 (issue #94): Tools > Settings… — the tabbed
+        // app-wide preferences dialog (also Ctrl+,).
+        setSettingsDialogOpen(true);
       } else if (MENU_TO_COMMAND[id]) {
         dispatchEditorCommand(MENU_TO_COMMAND[id]);
       } else if (id === "help-about") {
@@ -2292,6 +2398,32 @@ export default function App() {
       disposed = true;
     };
   }, []);
+
+  // App info for the Settings dialog's Advanced tab (plan 10 task 10.2,
+  // issue #94): the version (CARGO_PKG_VERSION) and the app config dir, read
+  // once from Rust on mount. Null in browser dev (no Tauri) — the dialog then
+  // shows placeholders and disables the open-config-dir button.
+  useEffect(() => {
+    if (!runningInTauri()) return;
+    let disposed = false;
+    void (async () => {
+      try {
+        const info = await invoke<{ version: string; config_dir: string }>("get_app_info");
+        if (!disposed) setAppInfo({ version: info.version, configDir: info.config_dir });
+      } catch {
+        // best-effort; the dialog falls back to placeholders
+      }
+    })();
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  // UI scale (plan 10 task 10.2, issue #94): the root font-size percentage,
+  // applied on settings load and on every change (100/110/125%).
+  useEffect(() => {
+    document.documentElement.style.fontSize = `${appSettings.uiScale}%`;
+  }, [appSettings.uiScale]);
 
   // Style inspector (plan 05 task 5.5, issue #58): the WYSIWYG editor
   // publishes the built-in style that owns the block under the cursor (null
@@ -2459,6 +2591,10 @@ export default function App() {
         // Spelling (plan 09 task 9.5, issue #88): Tools > Spelling….
         e.preventDefault();
         openSpellCheckDialog();
+      } else if (key === ",") {
+        // Settings (plan 10 task 10.2, issue #94): Tools > Settings… (Ctrl+,).
+        e.preventDefault();
+        setSettingsDialogOpen(true);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -2512,6 +2648,7 @@ export default function App() {
             value={currentText}
             onChange={setActiveText}
             wrap={activeDoc.settings.wordWrap}
+            lineNumbers={appSettings.showSourceLineNumbers}
             onOpenInWysiwyg={() => setMode("wysiwyg")}
           />
         );
@@ -2523,6 +2660,7 @@ export default function App() {
             onChange={setActiveText}
             settings={activeDoc.settings}
             theme={activeTheme}
+            showLineNumbers={appSettings.showSourceLineNumbers}
             onOpenInWysiwyg={() => setMode("wysiwyg")}
           />
         );
@@ -2550,6 +2688,9 @@ export default function App() {
             missingImages={missingImages}
             onReLinkImage={stableReLinkImage}
             theme={activeTheme}
+            tabKey={appSettings.tabKey}
+            pasteAsPlainText={appSettings.pasteAsPlainText}
+            autoCloseMarkers={appSettings.autoCloseMarkers}
           />
         );
         break;
@@ -2780,6 +2921,17 @@ export default function App() {
       </div>
 
       {status && <div className="quillmd-status-toast">{status}</div>}
+
+      {settingsDialogOpen && (
+        <SettingsDialog
+          settings={appSettings}
+          onChange={handleSettingsChange}
+          onReset={handleSettingsReset}
+          onClose={() => setSettingsDialogOpen(false)}
+          appInfo={appInfo}
+          onOpenConfigDir={() => void openConfigDir()}
+        />
+      )}
 
       <input
         ref={fileInputRef}

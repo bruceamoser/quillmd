@@ -8,7 +8,9 @@ import {
   isUntitledPath,
   makeUntitledDoc,
   nextUntitledPath,
+  platformIsWindows,
   rekeyDocRecord,
+  resolveDefaultEol,
   saveNewDocument,
   untitledDefaultName,
   untitledDisplayName,
@@ -108,6 +110,36 @@ describe("makeUntitledDoc (#24)", () => {
     const opened = makeUntitledDoc(":new:2", content);
     expect(opened.source).toBe(content);
     expect(new TextDecoder().decode(opened.originalBytes)).toBe(content);
+  });
+
+  it("seeds the default-EOL setting for new documents (plan 10 task 10.2)", () => {
+    expect(makeUntitledDoc(":new:1", "", "crlf").eol).toBe("crlf");
+    // Callers without a setting are unchanged (LF).
+    expect(makeUntitledDoc(":new:1", "").eol).toBe("lf");
+  });
+});
+
+describe("resolveDefaultEol (plan 10 task 10.2, issue #94)", () => {
+  it("passes explicit EOLs through", () => {
+    expect(resolveDefaultEol("lf", true)).toBe("lf");
+    expect(resolveDefaultEol("crlf", false)).toBe("crlf");
+  });
+
+  it("resolves auto to the platform EOL", () => {
+    expect(resolveDefaultEol("auto", true)).toBe("crlf");
+    expect(resolveDefaultEol("auto", false)).toBe("lf");
+  });
+
+  it("defaults to the running platform", () => {
+    expect(resolveDefaultEol("auto")).toBe(platformIsWindows() ? "crlf" : "lf");
+  });
+
+  it("platformIsWindows reads the webview platform signal", () => {
+    vi.stubGlobal("navigator", { platform: "Win32" });
+    expect(platformIsWindows()).toBe(true);
+    vi.stubGlobal("navigator", { platform: "MacIntel" });
+    expect(platformIsWindows()).toBe(false);
+    vi.unstubAllGlobals();
   });
 });
 

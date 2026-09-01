@@ -169,6 +169,17 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
     expect(loadDocSettings("/a.md")).toEqual(DEFAULT_DOC_SETTINGS);
   });
 
+  it("seeds app-level defaults between the hardcoded defaults and the stored record (plan 10 task 10.2)", () => {
+    // The app's spellcheck default seeds paths without a stored record.
+    expect(loadDocSettings("/a.md", { spellcheck: false }).spellcheck).toBe(false);
+    // A stored per-path value wins over the app default.
+    saveDocSettings("/a.md", { ...DEFAULT_DOC_SETTINGS, spellcheck: true });
+    expect(loadDocSettings("/a.md", { spellcheck: false }).spellcheck).toBe(true);
+    // Other paths still get the app default, and the stored record is intact.
+    expect(loadDocSettings("/b.md", { spellcheck: false }).spellcheck).toBe(false);
+    expect(loadDocSettings("/a.md", { spellcheck: false }).spellcheck).toBe(true);
+  });
+
   it("leaves an unrelated localStorage map untouched", () => {
     localStorage.setItem("quillmd.viewMode", JSON.stringify({ "/a.md": "source" }));
     saveDocSettings("/a.md", {

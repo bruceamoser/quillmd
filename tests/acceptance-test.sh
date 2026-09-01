@@ -4722,6 +4722,95 @@ test_doctools_pdf_visual() {
     fi
 }
 
+# --- p4-view-settings: settings dialog (task 10.2, issue #94) --------------------
+# Tools > Settings… (Ctrl+,): a tabbed dialog (General / Appearance / Editor /
+# Advanced) over the unified settings.json record, so every pick persists across
+# restarts. Appearance (theme + editor font) applies live AND is synced to
+# settings.json; Reset restores the defaults (plan 10 AC2). The dialog's deep
+# behavior (tabs, every field, live-apply, reset, menu/shortcut wiring) is
+# pinned in settingsDialog.test.tsx, which runs below; the settings-driven
+# editor behaviors (tab key, paste-as-plain) and the per-doc/per-app default
+# resolution it configures are pinned in the suites that run alongside it.
+
+test_settings_menu_wiring() {
+    note "settings.menu Tools > Settings… (tools-settings, Ctrl+,) present"
+    if grep -q 'MenuItem::with_id(app, "tools-settings", "Settings…", true, Some("Ctrl+,"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'SubmenuBuilder::new(app, "Tools")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '\.items(&\[&file, &edit, &view, &insert, &format, &tools, &help\])' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "settings.menu Tools > Settings… (tools-settings, Ctrl+,) present"
+    else
+        fail "settings.menu Tools > Settings… (tools-settings, Ctrl+,) present"
+    fi
+}
+
+test_settings_rust_commands() {
+    note "settings.rust get_app_info + AssetCollision commands present"
+    if grep -q 'pub struct AppInfo' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'pub fn get_app_info' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'commands::get_app_info' "$ROOT/src-tauri/src/lib.rs" \
+        && grep -q 'pub enum AssetCollision' "$ROOT/src-tauri/src/fs/assets.rs" \
+        && grep -q 'pub fn parse_asset_collision' "$ROOT/src-tauri/src/fs/assets.rs"; then
+        pass "settings.rust get_app_info + AssetCollision commands present"
+    else
+        fail "settings.rust get_app_info + AssetCollision commands present"
+    fi
+}
+
+test_settings_dialog_component() {
+    note "settings.dialog SettingsDialog.tsx (4 tabs + AppInfo + fields)"
+    if [ -f "$ROOT/src/components/SettingsDialog.tsx" ] \
+        && grep -q 'id: "general"' "$ROOT/src/components/SettingsDialog.tsx" \
+        && grep -q 'id: "appearance"' "$ROOT/src/components/SettingsDialog.tsx" \
+        && grep -q 'id: "editor"' "$ROOT/src/components/SettingsDialog.tsx" \
+        && grep -q 'id: "advanced"' "$ROOT/src/components/SettingsDialog.tsx" \
+        && grep -q 'export interface AppInfo' "$ROOT/src/components/SettingsDialog.tsx" \
+        && grep -q 'quillmd-settings-dialog' "$ROOT/src/components/SettingsDialog.tsx" \
+        && grep -q 'Default view mode' "$ROOT/src/components/SettingsDialog.tsx" \
+        && grep -q 'Default line endings' "$ROOT/src/components/SettingsDialog.tsx" \
+        && grep -q 'Asset name collision' "$ROOT/src/components/SettingsDialog.tsx" \
+        && grep -q 'UI scale' "$ROOT/src/components/SettingsDialog.tsx" \
+        && grep -q 'Tab key' "$ROOT/src/components/SettingsDialog.tsx" \
+        && grep -q 'Auto-close brackets/markers' "$ROOT/src/components/SettingsDialog.tsx" \
+        && grep -q 'Paste as plain text by default' "$ROOT/src/components/SettingsDialog.tsx"; then
+        pass "settings.dialog SettingsDialog.tsx (4 tabs + AppInfo + fields)"
+    else
+        fail "settings.dialog SettingsDialog.tsx (4 tabs + AppInfo + fields)"
+    fi
+}
+
+test_settings_app_wiring() {
+    note "settings.app App.tsx routes tools-settings + Ctrl+, and renders the dialog"
+    if grep -q 'id === "tools-settings"' "$ROOT/src/App.tsx" \
+        && grep -q 'key === ","' "$ROOT/src/App.tsx" \
+        && grep -q '<SettingsDialog' "$ROOT/src/App.tsx" \
+        && grep -q 'from "./components/SettingsDialog"' "$ROOT/src/App.tsx" \
+        && grep -q 'useSettings' "$ROOT/src/App.tsx" \
+        && grep -q 'handleSettingsChange' "$ROOT/src/App.tsx" \
+        && grep -q 'handleSettingsReset' "$ROOT/src/App.tsx" \
+        && grep -q 'get_app_info' "$ROOT/src/App.tsx" \
+        && grep -q 'uiScale' "$ROOT/src/App.tsx" \
+        && grep -q 'Ctrl+,: settings (Tools > Settings…)' "$ROOT/src/App.tsx"; then
+        pass "settings.app App.tsx routes tools-settings + Ctrl+, and renders the dialog"
+    else
+        fail "settings.app App.tsx routes tools-settings + Ctrl+, and renders the dialog"
+    fi
+}
+
+test_settings_suites_green() {
+    note "settings.green settings + settings-driven vitest suites pass"
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (node / node_modules not available)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/settingsDialog.test.tsx src/lib/__tests__/indent.test.tsx src/lib/__tests__/paste.test.tsx src/lib/__tests__/newDoc.test.ts src/lib/__tests__/docSettings.test.ts src/lib/__tests__/viewModes.test.ts) 2>&1 ); then
+        pass "settings.green settings + settings-driven vitest suites pass"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "settings.green settings vitest suites failed (plan 10 task 10.2)"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -5165,6 +5254,14 @@ case "$SUBSET" in
         test_doctools_ac7_clear
         test_doctools_pdf_visual
         ;;
+    p4-view-settings)
+        # Task 10.2 (issue #94): settings dialog
+        test_settings_menu_wiring
+        test_settings_rust_commands
+        test_settings_dialog_component
+        test_settings_app_wiring
+        test_settings_suites_green
+        ;;
     shell)
         test_shell_new_bundled
         test_shell_new_menu_wiring
@@ -5437,7 +5534,7 @@ case "$SUBSET" in
         test_doctools_pdf_visual
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|p2-style-inspector|p2-tables|p2-mermaid-export|p2-mermaid|p3-context|p4-doc-tools|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|p2-style-inspector|p2-tables|p2-mermaid-export|p2-mermaid|p3-context|p4-doc-tools|p4-view-settings|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac

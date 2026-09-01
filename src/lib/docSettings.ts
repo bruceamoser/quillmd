@@ -46,9 +46,11 @@ const SETTINGS_KEY = "quillmd.docSettings";
 
 // Merge a possibly-partial or corrupted stored record onto the defaults so a
 // bad localStorage payload can never take down a tab (same posture as
-// loadViewMode).
-function normalize(raw: unknown): DocSettings {
-  const out: DocSettings = { ...DEFAULT_DOC_SETTINGS };
+// loadViewMode). `base` lets the caller seed app-level defaults (plan 10
+// task 10.2: the spellcheck default comes from the app settings) that sit
+// between the hardcoded defaults and the stored per-path record.
+function normalize(raw: unknown, base: DocSettings = DEFAULT_DOC_SETTINGS): DocSettings {
+  const out: DocSettings = { ...base };
   if (typeof raw !== "object" || raw === null) return out;
   const record = raw as Record<string, unknown>;
   if (isLineSpacingValue(record.lineSpacing)) out.lineSpacing = record.lineSpacing;
@@ -63,14 +65,15 @@ function normalize(raw: unknown): DocSettings {
   return out;
 }
 
-export function loadDocSettings(path: string): DocSettings {
+export function loadDocSettings(path: string, defaults?: Partial<DocSettings>): DocSettings {
+  const base: DocSettings = { ...DEFAULT_DOC_SETTINGS, ...defaults };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return { ...DEFAULT_DOC_SETTINGS };
+    if (!raw) return base;
     const map = JSON.parse(raw) as Record<string, unknown>;
-    return normalize(map[path]);
+    return normalize(map[path], base);
   } catch {
-    return { ...DEFAULT_DOC_SETTINGS };
+    return base;
   }
 }
 

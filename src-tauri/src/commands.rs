@@ -196,14 +196,26 @@ pub fn list_dir(path: String) -> Result<Vec<DirEntry>, String> {
 /// Copies a picked file next to the open document and returns the
 /// markdown-relative path to embed in the document (plan 08 task 8.3,
 /// issue #78). `asset_folder` is "assets" (an `assets/` subfolder next to
-/// the doc, the default) or "doc" (the doc's own folder). Collision-safe:
-/// `photo.png`, `photo-1.png`, ... The copy is atomic and the target is
-/// validated to stay inside the document's folder.
+/// the doc, the default) or "doc" (the doc's own folder). `collision` is
+/// "suffix" (the plan 08 default: `photo.png`, `photo-1.png`, ...) or
+/// "never" (keep the picked name and overwrite, plan 10 task 10.2, issue
+/// #94); omitted or unknown values refuse rather than guess. The copy is
+/// atomic and the target is validated to stay inside the document's folder.
 #[tauri::command]
-pub fn copy_asset(src: String, doc_dir: String, asset_folder: String) -> Result<String, String> {
+pub fn copy_asset(
+    src: String,
+    doc_dir: String,
+    asset_folder: String,
+    collision: Option<String>,
+) -> Result<String, String> {
     let folder = assets::parse_asset_folder(&asset_folder)
         .ok_or_else(|| err("bad_request", format!("unknown asset folder setting: {asset_folder}")))?;
-    assets::copy_asset(&PathBuf::from(&src), &PathBuf::from(&doc_dir), folder)
+    let collision = match collision.as_deref() {
+        None => assets::AssetCollision::Suffix,
+        Some(value) => assets::parse_asset_collision(value)
+            .ok_or_else(|| err("bad_request", format!("unknown asset collision setting: {value}")))?,
+    };
+    assets::copy_asset(&PathBuf::from(&src), &PathBuf::from(&doc_dir), folder, collision)
         .map_err(|e| err("asset_copy", e))
 }
 
@@ -443,6 +455,28 @@ pub fn write_settings(app: tauri::AppHandle, json: String) -> Result<(), String>
     let path =
         settings_file(&app).ok_or_else(|| err("config_dir", "app config dir unavailable"))?;
     write_settings_file(&path, &json)
+}
+
+/// App info for the Settings dialog's Advanced tab (plan 10 task 10.2,
+/// issue #94): the crate version and the app config dir where settings.json
+/// lives. The frontend shows both (the "about info") and opens the config
+/// dir through plugin-opener.
+#[derive(serde::Serialize)]
+pub struct AppInfo {
+    pub version: String,
+    pub config_dir: String,
+}
+
+#[tauri::command]
+pub fn get_app_info(app: tauri::AppHandle) -> Result<AppInfo, String> {
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| err("config_dir", e))?;
+    Ok(AppInfo {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        config_dir: config_dir.to_string_lossy().to_string(),
+    })
 }
 
 // --- explorer file operations (plan 03 task 3.6, issue #44) ----------------
@@ -800,6 +834,7 @@ mod tests {
             src.display().to_string(),
             doc_dir.display().to_string(),
             "assets".to_string(),
+            None,
         )
         .unwrap();
         assert_eq!(rel, "assets/photo.png");
@@ -811,6 +846,7 @@ mod tests {
             src.display().to_string(),
             doc_dir.display().to_string(),
             "assets".to_string(),
+            Some("suffix".to_string()),
         )
         .unwrap();
         assert_eq!(rel, "assets/photo-1.png");
@@ -827,6 +863,7 @@ mod tests {
             src.display().to_string(),
             doc_dir.display().to_string(),
             "doc".to_string(),
+            None,
         )
         .unwrap();
         assert_eq!(rel, "pic.jpg");
@@ -842,6 +879,7 @@ mod tests {
             dir.path().join("a.png").display().to_string(),
             doc_dir.display().to_string(),
             "everywhere".to_string(),
+            None,
         )
         .unwrap_err();
         assert!(bad_setting.starts_with("bad_request:"), "got {bad_setting}");
@@ -850,6 +888,7 @@ mod tests {
             dir.path().join("missing.png").display().to_string(),
             doc_dir.display().to_string(),
             "assets".to_string(),
+            None,
         )
         .unwrap_err();
         assert!(missing.starts_with("asset_copy:"), "got {missing}");
@@ -862,10 +901,53 @@ mod tests {
                 con.display().to_string(),
                 doc_dir.display().to_string(),
                 "assets".to_string(),
+                None,
             )
             .unwrap_err()
         };
         assert!(reserved.contains("reserved"), "got {reserved}");
+    }
+
+    #[test]
+    fn copy_asset_command_collision_never_overwrites_and_rejects_unknown() {
+        let dir = tempdir().unwrap();
+        let doc_dir = dir.path().join("docs");
+        let src = dir.path().join("photo.png");
+        fs::write(&src, b"v1").unwrap();
+
+        // "never" keeps the picked (fixed) name and overwrites on re-copy.
+        let rel = copy_asset(
+            src.display().to_string(),
+            doc_dir.display().to_string(),
+            "assets".to_string(),
+            Some("never".to_string()),
+        )
+        .unwrap();
+        assert_eq!(rel, "assets/photo.png");
+        fs::write(&src, b"v2").unwrap();
+        let rel = copy_asset(
+            src.display().to_string(),
+            doc_dir.display().to_string(),
+            "assets".to_string(),
+            Some("never".to_string()),
+        )
+        .unwrap();
+        assert_eq!(rel, "assets/photo.png");
+        assert_eq!(
+            fs::read(doc_dir.join("assets").join("photo.png")).unwrap(),
+            b"v2"
+        );
+        assert!(!doc_dir.join("assets").join("photo-1.png").exists());
+
+        // An unknown collision value is refused (bad_request), not guessed.
+        let bad = copy_asset(
+            src.display().to_string(),
+            doc_dir.display().to_string(),
+            "assets".to_string(),
+            Some("sometimes".to_string()),
+        )
+        .unwrap_err();
+        assert!(bad.starts_with("bad_request:"), "got {bad}");
     }
 
     #[test]

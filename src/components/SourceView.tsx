@@ -29,6 +29,10 @@ interface SourceViewProps {
   // Word wrap (plan 02 task 2.5): on by default (lineWrapping extension); off
   // keeps CodeMirror's default horizontal scroll for long lines.
   wrap?: boolean;
+  // Line-number gutter (plan 10 task 10.2, issue #94): the "show line numbers
+  // in source" app setting. Off by default (the 10.1 default; the setting is
+  // an opt-in), overriding CodeMirror basicSetup's own default-on gutter.
+  lineNumbers?: boolean;
   // The source context menu's "Open in WYSIWYG" item (plan 03 task 3.2,
   // issue #40): switches the view mode back to the WYSIWYG editor.
   onOpenInWysiwyg?: () => void;
@@ -39,6 +43,7 @@ export default function SourceView({
   onChange,
   readOnly = false,
   wrap = true,
+  lineNumbers = false,
   onOpenInWysiwyg,
 }: SourceViewProps) {
   // CodeMirror 6 does not wrap lines by default (long lines scroll
@@ -135,7 +140,10 @@ export default function SourceView({
         readOnly={readOnly}
         height="100%"
         theme="dark"
-        basicSetup={{ searchKeymap: false }}
+        // searchKeymap is off (the app's find bar is the only search UI);
+        // lineNumbers follows the "show line numbers in source" setting
+        // (plan 10 task 10.2, issue #94).
+        basicSetup={{ searchKeymap: false, lineNumbers }}
         onCreateEditor={(view) => {
           viewRef.current = view;
         }}

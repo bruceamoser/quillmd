@@ -571,10 +571,15 @@ fn build_tools_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>>
     // CodeMirror source view), so a single Ctrl+Z restores the full prior text.
     let clear_document =
         MenuItem::with_id(app, "tools-clear-document", "Clear Document", true, None::<&str>)?;
+    // Settings (plan 10 task 10.2, issue #94): the tabbed app-settings dialog
+    // (General/Appearance/Editor/Advanced). The frontend (App.tsx) resolves
+    // the id; the accelerator matches the browser-dev Ctrl+, shortcut.
+    let settings = MenuItem::with_id(app, "tools-settings", "Settings…", true, Some("Ctrl+,"))?;
     let tools = SubmenuBuilder::new(app, "Tools")
         .item(&word_count)
         .item(&spelling)
         .item(&clear_document)
+        .item(&settings)
         .build()?;
     Ok(tools)
 }
