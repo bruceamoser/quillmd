@@ -233,12 +233,27 @@
       #                       assets cleaned up on every path), the File >
       #                       Export routing through the current document
       #                       text (fileMenu.ts + App.tsx), and the plan 11
-      #                       AC5 coverage (2 diagrams -> 2 PNGs in the right
-      #                       positions; a broken diagram refuses the export
-      #                       with a named error) pinned in
-      #                       mermaidExport.test.ts + the on-disk fixture
-      #                       fixtures/clean/mermaid-export.md
-      #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
+       #                       AC5 coverage (2 diagrams -> 2 PNGs in the right
+       #                       positions; a broken diagram refuses the export
+       #                       with a named error) pinned in
+       #                       mermaidExport.test.ts + the on-disk fixture
+       #                       fixtures/clean/mermaid-export.md
+       #           p2-mermaid -> plan 11 full acceptance gate (task 11.7,
+       #                       issue #106): AC1-AC8 coverage pinned in the
+       #                       mermaid vitest suites + the app-level wiring
+       #                       the GUI driver cannot reach headlessly (Insert
+       #                       > Diagram menu id, /diagram, toolbar, the
+       #                       shared render service, the source-view
+       #                       highlight language, the card CSS), the AC8
+       #                       startup perf gate (lazy mermaid import + the
+       #                       <100ms budget) actually run here, the AC5
+       #                       export gate (the p2-mermaid-export checks),
+       #                       and the Windows manual pass (insert -> edit
+       #                       -> export PDF/DOCX: the CRLF save-pipeline
+       #                       round-trip for diagram docs, the
+       #                       reserved-name-safe PNG asset gate, and the
+       #                       pandoc PDF/DOCX conversion)
+       #           shell  -> p0-shell app-shell checks (File > New / New from template, issue #24)
 #           copyclose -> p0-shell Make a copy / Close / Close All (issue #25)
 #           info   -> p0-shell File > Info / document properties (issue #26)
 #           dragdrop -> p0-shell drag & drop open (issue #27)
@@ -3434,6 +3449,147 @@ test_mermaidexport_ac5() {
     fi
 }
 
+# --- p2-mermaid: plan 11 full acceptance gate (task 11.7, issue #106) ----------
+# The per-task behavior is pinned in the vitest suites (mermaid.test.tsx,
+# mermaidCard.test.tsx, mermaidRender.test.ts, previewMermaid.test.tsx,
+# mermaidHighlight.test.tsx, diagramMenu.test.tsx, mermaidExport.test.ts,
+# mermaidStartup.test.tsx); this section is the plan 11 §4 acceptance gate:
+# the app-level wiring the GUI driver cannot reach headlessly, the AC1-AC8
+# coverage pinned in the suites, the AC8 startup perf gate (lazy import +
+# <100ms budget) actually run here, the AC5 export gate (the p2-mermaid-
+# export checks), and the Windows manual pass (insert -> edit -> export
+# PDF/DOCX).
+
+test_mermaid_ac1_insert() {
+    note "mermaid.AC1 Insert > Diagram + /diagram + toolbar -> starter-template fence (plan 11 AC1)"
+    if grep -q 'MenuItem::with_id(app, "insert-diagram", "Diagram (Mermaid)", true, None::<&str>)' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '"insert-diagram": "diagram"' "$ROOT/src/App.tsx" \
+        && grep -q '"diagram"' "$ROOT/src/components/Toolbar.tsx" \
+        && grep -q 'commandAction("diagram", "diagram", "Diagram", "Mermaid diagram")' "$ROOT/src/components/Editor.tsx" \
+        && grep -q 'export const MERMAID_STARTER_TEMPLATE' "$ROOT/src/lib/editorCommands.ts" \
+        && [ -f "$FIXTURES/clean/mermaid.md" ] \
+        && grep -q 'graph TD' "$FIXTURES/clean/mermaid.md" \
+        && grep -q 'inserts a mermaid fence with the starter template (AC1)' "$ROOT/src/lib/__tests__/mermaid.test.tsx"; then
+        pass "AC1: menu id -> diagram command -> starter-template fence (menu, slash, toolbar)"
+    else
+        fail "AC1 coverage missing (menu.rs, App.tsx, Toolbar.tsx, Editor.tsx slash action)"
+    fi
+}
+
+test_mermaid_ac2_rerender() {
+    note "mermaid.AC2 source edits re-render (~300ms); a syntax error shows the badge without breaking the doc (plan 11 AC2)"
+    local f="$ROOT/src/lib/__tests__/mermaidCard.test.tsx"
+    if grep -q 'RE_RENDER_DELAY_MS = 300' "$ROOT/src/components/MermaidCard.tsx" \
+        && grep -q 'renders the fence source as a live, responsive SVG' "$f" \
+        && grep -q 'shows the badge and footer, with the source visible (never blank)' "$f" \
+        && grep -q 'returns the error as data for a syntax error (never rejects)' "$ROOT/src/lib/__tests__/mermaidRender.test.ts"; then
+        pass "AC2: 300ms debounced re-render + error badge (source never blank)"
+    else
+        fail "AC2 coverage missing (MermaidCard.tsx, mermaidCard.test.tsx, mermaidRender.test.ts)"
+    fi
+}
+
+test_mermaid_ac3_shared_svg() {
+    note "mermaid.AC3 WYSIWYG + Preview share one render service; a theme switch re-renders (plan 11 AC3)"
+    local card="$ROOT/src/lib/__tests__/mermaidCard.test.tsx"
+    if grep -q 'renders through the shared render service (same SVG as the service)' "$ROOT/src/lib/__tests__/previewMermaid.test.tsx" \
+        && grep -q 'renders the same source differently for light vs dark (AC3)' "$ROOT/src/lib/__tests__/mermaidRender.test.ts" \
+        && grep -q 're-renders with the mapped mermaid theme when the QuillMD theme changes' "$card" \
+        && grep -q 'export function mermaidThemeFor' "$ROOT/src/lib/mermaidRender.ts" \
+        && grep -q 'setMermaidCardTheme(theme)' "$ROOT/src/components/Editor.tsx"; then
+        pass "AC3: shared render service (card + preview) + theme-mapped re-render"
+    else
+        fail "AC3 coverage missing (previewMermaid.test.tsx, mermaidRender, Editor.tsx theme wiring)"
+    fi
+}
+
+test_mermaid_ac4_fit_scroll() {
+    note "mermaid.AC4 wide diagrams fit or scroll; the SVG stays sharp (plan 11 AC4)"
+    local card="$ROOT/src/lib/__tests__/mermaidCard.test.tsx"
+    if grep -q 'renders the fence source as a live, responsive SVG' "$card" \
+        && grep -q 'viewBox' "$card" \
+        && grep -A2 '^\.quillmd-mermaid-svg {' "$ROOT/src/App.css" | grep -q 'overflow-x: auto' \
+        && grep -A5 '^\.quillmd-mermaid-svg svg {' "$ROOT/src/App.css" | grep -q 'max-width: 100%'; then
+        pass "AC4: viewBox + width 100% fit, overflow-x scroll fallback, sharp SVG"
+    else
+        fail "AC4 coverage missing (mermaidCard.test.tsx, App.css .quillmd-mermaid-svg)"
+    fi
+}
+
+test_mermaid_ac5_export() {
+    note "mermaid.AC5 export: 2 diagrams -> 2 PNGs; broken diagram refused with a named error (plan 11 AC5)"
+    # The full export gate (Rust commands + self-test, pipeline module, and
+    # the fixture export suite) is the p2-mermaid-export section.
+    test_mermaidexport_selftest
+    test_mermaidexport_rust_commands
+    test_mermaidexport_pipeline_module
+    test_mermaidexport_ac5
+}
+
+test_mermaid_ac6_source_highlight() {
+    note "mermaid.AC6 the source view colors diagram keywords inside the fence (plan 11 AC6)"
+    local f="$ROOT/src/lib/__tests__/mermaidHighlight.test.tsx"
+    if grep -q 'colors the keywords inside a ```mermaid fence' "$f" \
+        && grep -q 'selects the language by the fence info string (AC6)' "$f" \
+        && grep -q 'colors the mermaid keywords in the live source view' "$f" \
+        && grep -q 'export const mermaidStreamLanguage' "$ROOT/src/lib/mermaidHighlight.ts" \
+        && grep -q 'mermaidCodeLanguage' "$ROOT/src/components/SourceView.tsx"; then
+        pass "AC6: keyword coloring in the source view (language from the fence info)"
+    else
+        fail "AC6 coverage missing (mermaidHighlight.test.ts, mermaidHighlight.ts, SourceView.tsx)"
+    fi
+}
+
+test_mermaid_ac7_undo() {
+    note "mermaid.AC7 undo/redo work at the markdown-text level for diagram edits (plan 11 AC7)"
+    local menu="$ROOT/src/lib/__tests__/diagramMenu.test.tsx"
+    local card="$ROOT/src/lib/__tests__/mermaidCard.test.tsx"
+    if grep -q 'undo restores the prior fence exactly (plan 11 AC7)' "$menu" \
+        && grep -q 'edits flow through the document; undo restores the prior fence text' "$card"; then
+        pass "AC7: undo restores the prior fence bytes (context menu + card edits)"
+    else
+        fail "AC7 coverage missing (diagramMenu.test.tsx, mermaidCard.test.tsx)"
+    fi
+}
+
+test_mermaid_ac8_startup_perf() {
+    note "mermaid.AC8 startup perf gate: mermaid is lazily imported and editor startup stays under 100ms (plan 11 AC8)"
+    local f="$ROOT/src/lib/__tests__/mermaidStartup.test.tsx"
+    if grep -q "the app's startup module graph does not import mermaid (lazy import)" "$f" \
+        && grep -q 'STARTUP_BUDGET_MS = 100' "$f" \
+        && grep -q 'mermaidPromise = import("mermaid")' "$ROOT/src/lib/mermaidRender.ts" \
+        && ! grep -q 'from "mermaid"' "$ROOT/src/lib/mermaidRender.ts"; then
+        pass "AC8: lazy import + 100ms startup budget pinned in mermaidStartup.test.tsx"
+    else
+        fail "AC8 coverage missing (mermaidStartup.test.tsx, mermaidRender.ts lazy import)"
+    fi
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (running the startup gate needs node + node_modules)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/mermaidStartup.test.tsx) 2>&1 ); then
+        pass "mermaid startup perf suite green (also runs in CI via npm test)"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "mermaid startup perf suite failed"
+    fi
+}
+
+test_mermaid_windows_manual() {
+    note "mermaid.windows insert -> edit -> export PDF/DOCX manual pass wiring"
+    if grep -q 'round-trips the mermaid fixture byte-identically on CRLF (save pipeline)' "$ROOT/src/lib/__tests__/mermaid.test.tsx" \
+        && grep -q 'if (opts.eol === "crlf")' "$ROOT/src/lib/pipeline.ts" \
+        && grep -q 'is_windows_reserved' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q 'fn export_asset_baseline' "$ROOT/src-tauri/src/lib.rs" \
+        && grep -q 'pub fn export_pdf' "$ROOT/src-tauri/src/convert.rs" \
+        && grep -q 'pub fn export_docx' "$ROOT/src-tauri/src/convert.rs"; then
+        pass "windows: CRLF round-trip for diagram docs + reserved-name-safe PNG assets + PDF/DOCX conversion"
+    else
+        fail "windows manual pass wiring missing (CRLF save pipeline, export asset gate, PDF/DOCX)"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -3791,6 +3947,19 @@ case "$SUBSET" in
         test_mermaidexport_pipeline_module
         test_mermaidexport_ac5
         ;;
+    p2-mermaid)
+        # Task 11.7 (issue #106): plan 11 full acceptance gate
+        test_mermaid_ac1_insert
+        test_mermaid_ac2_rerender
+        test_mermaid_ac3_shared_svg
+        test_mermaid_ac4_fit_scroll
+        test_mermaid_ac5_export
+        test_mermaid_ac6_source_highlight
+        test_mermaid_ac7_undo
+        test_mermaid_ac8_startup_perf
+        # Windows manual pass (insert -> edit -> export PDF/DOCX)
+        test_mermaid_windows_manual
+        ;;
     shell)
         test_shell_new_bundled
         test_shell_new_menu_wiring
@@ -4028,9 +4197,18 @@ case "$SUBSET" in
         test_mermaidexport_rust_commands
         test_mermaidexport_pipeline_module
         test_mermaidexport_ac5
+        test_mermaid_ac1_insert
+        test_mermaid_ac2_rerender
+        test_mermaid_ac3_shared_svg
+        test_mermaid_ac4_fit_scroll
+        test_mermaid_ac5_export
+        test_mermaid_ac6_source_highlight
+        test_mermaid_ac7_undo
+        test_mermaid_ac8_startup_perf
+        test_mermaid_windows_manual
         ;;
     *)
-        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|p2-style-inspector|p2-tables|p2-mermaid-export|shell|copyclose|info|dragdrop|all)" >&2
+        echo "Unknown subset: $SUBSET (core|export|pkg|p0-shell|p1-editor|p1-find|p1-media|p1-assets|p1-imageedit|p1-links|p1-dnd|p2-fonts|p2-colors|p2-font-toolbar|p2-font-menu|p2-clear-format|p2-styles|p2-styles-menu|p2-themes|p2-style-modify|p2-style-inspector|p2-tables|p2-mermaid-export|p2-mermaid|shell|copyclose|info|dragdrop|all)" >&2
         exit 2
         ;;
 esac
