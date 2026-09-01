@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
@@ -7,6 +7,9 @@ import rehypeStringify from "rehype-stringify";
 import { middleClickLinkHref, openLinkUrl } from "../lib/links";
 import { renderMermaid } from "../lib/mermaidRender";
 import type { ThemeId } from "../lib/theme";
+import ContextMenu from "./ContextMenu";
+import { buildPreviewMenu, toContextEntries } from "../lib/textMenu";
+import type { TextMenuItem, TextMenuEntry } from "../lib/textMenu";
 
 function markdownToHtml(markdown: string): string {
   const file = unified()
@@ -24,9 +27,16 @@ interface PreviewViewProps {
   // fences render with the mapped light/dark mermaid theme, the same mapping
   // the WYSIWYG card uses (plan 11 AC3 — preview re-renders on theme switch).
   theme?: ThemeId;
+  // The preview context menu's "Open in WYSIWYG" item (plan 03 task 3.2,
+  // issue #40): switches the view mode back to the WYSIWYG editor.
+  onOpenInWysiwyg?: () => void;
 }
 
-export default function PreviewView({ value, theme = "quill" }: PreviewViewProps) {
+export default function PreviewView({
+  value,
+  theme = "quill",
+  onOpenInWysiwyg,
+}: PreviewViewProps) {
   const html = useMemo(() => markdownToHtml(value), [value]);
   const articleRef = useRef<HTMLElement | null>(null);
   // The diagram source of every rendered holder. The holder replaces the
@@ -39,6 +49,46 @@ export default function PreviewView({ value, theme = "quill" }: PreviewViewProps
   // (doc or theme changed) are dropped, so a stale SVG can never land on the
   // fresh document.
   const renderSeq = useRef(0);
+
+  // The open preview context menu (plan 03 task 3.2, issue #40): the cursor
+  // position in viewport coordinates, the item set, and the href of the link
+  // under the caret (null when the caret is not on a link) — the dispatch
+  // reads it from the menu state, not from the live DOM.
+  const [textMenu, setTextMenu] = useState<{
+    x: number;
+    y: number;
+    items: readonly TextMenuEntry[];
+    href: string | null;
+  } | null>(null);
+
+  // The preview menu's pick handler (plan 03 §3): Copy copies the rendered
+  // text under the selection (the browser's own selection — the preview is
+  // read-only HTML, nothing to edit); the link items act on the anchor under
+  // the caret; Open in WYSIWYG is the mode switch.
+  const dispatchTextMenu = (item: TextMenuItem): void => {
+    if (item.action === "open-in-wysiwyg") {
+      onOpenInWysiwyg?.();
+      return;
+    }
+    switch (item.action) {
+      case "copy":
+        document.execCommand("copy");
+        break;
+      case "open-link": {
+        const href = textMenu?.href;
+        if (href) void openLinkUrl(href);
+        break;
+      }
+      case "copy-address": {
+        const href = textMenu?.href;
+        if (!href) return;
+        if (typeof navigator !== "undefined" && navigator.clipboard) {
+          void navigator.clipboard.writeText(href);
+        }
+        break;
+      }
+    }
+  };
 
   // The document HTML is applied by hand, and only when it changes (value).
   // dangerouslySetInnerHTML would re-apply on every re-render — including a
@@ -120,7 +170,31 @@ export default function PreviewView({ value, theme = "quill" }: PreviewViewProps
           event.preventDefault();
           void openLinkUrl(href);
         }}
+        // Right-click (plan 03 task 3.2, issue #40): the preview context
+        // menu. The link item's state comes from the anchor under the caret
+        // (the rendered HTML carries the href the WYSIWYG mark would).
+        onContextMenu={(event) => {
+          event.preventDefault();
+          const target = event.target instanceof Element ? event.target : null;
+          const anchor = target?.closest("a[href]") ?? null;
+          const href = anchor?.getAttribute("href") || null;
+          setTextMenu({
+            x: event.clientX,
+            y: event.clientY,
+            items: buildPreviewMenu(anchor !== null, href),
+            href,
+          });
+        }}
       />
+      {textMenu && (
+        <ContextMenu
+          x={textMenu.x}
+          y={textMenu.y}
+          items={toContextEntries(textMenu.items, dispatchTextMenu)}
+          onClose={() => setTextMenu(null)}
+          label="Preview menu"
+        />
+      )}
     </div>
   );
 }
