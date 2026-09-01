@@ -18,7 +18,7 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
     localStorage.clear();
   });
 
-  it("defaults to single spacing, wrap on, marks off, 100% zoom, spellcheck on, no theme override", () => {
+  it("defaults to single spacing, wrap on, marks off, 100% zoom, spellcheck on, no theme override, pane off", () => {
     expect(DEFAULT_DOC_SETTINGS).toEqual({
       lineSpacing: "single",
       wordWrap: true,
@@ -26,6 +26,7 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
       zoom: 100,
       spellcheck: true,
       theme: null,
+      navigationPane: false,
     });
     expect(loadDocSettings("/a.md")).toEqual(DEFAULT_DOC_SETTINGS);
   });
@@ -38,6 +39,7 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
       zoom: 150,
       spellcheck: false,
       theme: "dark",
+      navigationPane: true,
     };
     saveDocSettings("/a.md", settings);
     expect(loadDocSettings("/a.md")).toEqual(settings);
@@ -51,6 +53,7 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
       zoom: 120,
       spellcheck: false,
       theme: "serif",
+      navigationPane: true,
     });
     saveDocSettings("/b.md", {
       lineSpacing: "1.15",
@@ -59,6 +62,7 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
       zoom: 80,
       spellcheck: true,
       theme: null,
+      navigationPane: false,
     });
     expect(loadDocSettings("/a.md")).toEqual({
       lineSpacing: "double",
@@ -67,6 +71,7 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
       zoom: 120,
       spellcheck: false,
       theme: "serif",
+      navigationPane: true,
     });
     expect(loadDocSettings("/b.md")).toEqual({
       lineSpacing: "1.15",
@@ -75,6 +80,7 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
       zoom: 80,
       spellcheck: true,
       theme: null,
+      navigationPane: false,
     });
     // An unknown path still gets the defaults.
     expect(loadDocSettings("/c.md")).toEqual(DEFAULT_DOC_SETTINGS);
@@ -88,6 +94,7 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
       zoom: 160,
       spellcheck: false,
       theme: "dark",
+      navigationPane: true,
     });
     saveDocSettings("/a.md", {
       lineSpacing: "single",
@@ -96,6 +103,7 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
       zoom: 100,
       spellcheck: true,
       theme: null,
+      navigationPane: false,
     });
     expect(loadDocSettings("/a.md")).toEqual(DEFAULT_DOC_SETTINGS);
   });
@@ -109,7 +117,15 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
       zoom: 100,
       spellcheck: true,
       theme: "minimal",
+      navigationPane: false,
     });
+  });
+
+  it("persists a navigation-pane toggle and recovers a non-boolean onto the default", () => {
+    saveDocSettings("/a.md", { ...DEFAULT_DOC_SETTINGS, navigationPane: true });
+    expect(loadDocSettings("/a.md").navigationPane).toBe(true);
+    localStorage.setItem(KEY, JSON.stringify({ "/a.md": { navigationPane: "yes" } }));
+    expect(loadDocSettings("/a.md").navigationPane).toBe(false);
   });
 
   it("recovers a corrupted record onto the defaults", () => {
@@ -131,6 +147,7 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
       zoom: 200,
       spellcheck: true,
       theme: null,
+      navigationPane: false,
     });
     localStorage.setItem(KEY, JSON.stringify({ "/a.md": { zoom: 1 } }));
     expect(loadDocSettings("/a.md")).toEqual({
@@ -140,6 +157,7 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
       zoom: 50,
       spellcheck: true,
       theme: null,
+      navigationPane: false,
     });
     // A fractional stored percent rounds to a whole percent.
     localStorage.setItem(KEY, JSON.stringify({ "/a.md": { zoom: 112.6 } }));
@@ -160,6 +178,7 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
       zoom: 110,
       spellcheck: true,
       theme: "high-contrast",
+      navigationPane: true,
     });
     expect(JSON.parse(localStorage.getItem("quillmd.viewMode")!)).toEqual({
       "/a.md": "source",
@@ -172,6 +191,7 @@ describe("docSettings (plan 02 task 2.5, issue #34; zoom per task 2.6, #35)", ()
         zoom: 110,
         spellcheck: true,
         theme: "high-contrast",
+        navigationPane: true,
       },
     });
   });

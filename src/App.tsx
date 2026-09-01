@@ -147,6 +147,7 @@ import StatusBar from "./components/StatusBar";
 import TabBar from "./components/TabBar";
 import Explorer from "./components/Explorer";
 import type { ExplorerHandle } from "./components/Explorer";
+import OutlinePane from "./components/OutlinePane";
 import FindReplacePanel from "./components/FindReplacePanel";
 import type { FindPanelMode, FindPanelOption, FindPanelResult } from "./components/FindReplacePanel";
 import LinkDialog from "./components/LinkDialog";
@@ -271,6 +272,7 @@ const SHORTCUTS_TEXT = [
   "Ctrl+Z / Ctrl+Shift+Z: undo / redo",
   "Ctrl+Shift+V: paste as plain text (Edit > Paste as Text)",
   "Ctrl+Shift+E: toggle explorer",
+  "Ctrl+Shift+8: toggle navigation pane",
 ].join("\n");
 
 export default function App() {
@@ -279,6 +281,10 @@ export default function App() {
   const [recentFiles, setRecentFiles] = useState<string[]>([]);
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [explorerWidth, setExplorerWidth] = useState(240);
+  // Navigation pane width (plan 09 task 9.3, issue #86); like the explorer,
+  // the width is session state (not persisted) and the open/closed state lives
+  // in the per-doc settings (DocSettings.navigationPane).
+  const [navWidth, setNavWidth] = useState(240);
   const [statusbarVisible, setStatusbarVisible] = useState(true);
   // Style inspector (plan 05 task 5.5, issue #58): the built-in style that
   // owns the block under the cursor, published by the WYSIWYG editor (null
@@ -706,6 +712,15 @@ export default function App() {
     if (!activeDoc) return;
     patchDocSettings({ spellcheck: !activeDoc.settings.spellcheck });
     dispatchEditorCommand("spellcheck");
+  }, [activeDoc, patchDocSettings]);
+
+  // Navigation pane (plan 09 task 9.3, issue #86): a right-hand rail listing
+  // the doc's H1-H4 headings with scroll tracking and click-to-jump. The open
+  // state persists per path in DocSettings (like the view mode); the pane is
+  // App-level (not editor DOM), so flipping the setting is the whole toggle.
+  const toggleNavigationPane = useCallback(() => {
+    if (!activeDoc) return;
+    patchDocSettings({ navigationPane: !activeDoc.settings.navigationPane });
   }, [activeDoc, patchDocSettings]);
 
   // Paste as text (plan 02 §2.9, issue #36): the Edit menu item reads the
@@ -1789,6 +1804,8 @@ export default function App() {
         toggleMode();
       } else if (id === "view-explorer") {
         setExplorerOpen((open) => !open);
+      } else if (id === "view-navigation") {
+        toggleNavigationPane();
       } else if (id === "view-statusbar") {
         setStatusbarVisible((visible) => !visible);
       } else if (id === "view-show-marks") {
@@ -1886,6 +1903,7 @@ export default function App() {
       toggleShowMarks,
       toggleWordWrap,
       toggleSpellcheck,
+      toggleNavigationPane,
       doPasteAsText,
       stepZoom,
       changeZoom,
@@ -2063,6 +2081,9 @@ export default function App() {
       } else if (key === "e" && e.shiftKey) {
         e.preventDefault();
         setExplorerOpen((open) => !open);
+      } else if (key === "8" && e.shiftKey) {
+        e.preventDefault();
+        toggleNavigationPane();
       } else if (key === "/") {
         e.preventDefault();
         toggleMode();
@@ -2103,6 +2124,7 @@ export default function App() {
     closeFindPanel,
     findNext,
     findPrev,
+    toggleNavigationPane,
     findPanel.open,
   ]);
 
@@ -2359,6 +2381,15 @@ export default function App() {
             />
           )}
         </div>
+        {activeDoc && activeDoc.settings.navigationPane && (
+          <OutlinePane
+            value={currentText}
+            mode={activeDoc.viewMode}
+            open={activeDoc.settings.navigationPane}
+            width={navWidth}
+            onResize={setNavWidth}
+          />
+        )}
       </div>
 
       {status && <div className="quillmd-status-toast">{status}</div>}

@@ -341,6 +341,7 @@ describe("registry expansion (plan 02 task 2.1)", () => {
         zoom: 100,
         spellcheck: true,
         theme: null,
+        navigationPane: false,
       });
       expect(dom.style.getPropertyValue("--quillmd-line-spacing")).toBe("1.5");
       expect(lineSpacingOf(editor)).toBe("1.5");
@@ -355,6 +356,7 @@ describe("registry expansion (plan 02 task 2.1)", () => {
         zoom: 100,
         spellcheck: true,
         theme: null,
+        navigationPane: false,
       });
       expect(lineSpacingOf(editor)).toBe("single");
       expect(dom.classList.contains("quillmd-show-marks")).toBe(false);
@@ -373,6 +375,7 @@ describe("registry expansion (plan 02 task 2.1)", () => {
         zoom: 140,
         spellcheck: true,
         theme: null,
+        navigationPane: false,
       });
       expect(dom.style.getPropertyValue("--quillmd-zoom")).toBe("140");
       expect(zoomPercentOf(editor)).toBe(140);
@@ -385,6 +388,7 @@ describe("registry expansion (plan 02 task 2.1)", () => {
         zoom: 100,
         spellcheck: true,
         theme: null,
+        navigationPane: false,
       });
       expect(zoomPercentOf(editor)).toBe(100);
 
@@ -396,6 +400,7 @@ describe("registry expansion (plan 02 task 2.1)", () => {
         zoom: 999,
         spellcheck: true,
         theme: null,
+        navigationPane: false,
       });
       expect(zoomPercentOf(editor)).toBe(200);
       editor.destroy();
@@ -412,6 +417,7 @@ describe("registry expansion (plan 02 task 2.1)", () => {
         zoom: 150,
         spellcheck: true,
         theme: null,
+        navigationPane: false,
       });
       runEditorCommand(editor, "wordWrap");
       expect(md(editor)).toBe(before);
@@ -545,6 +551,7 @@ describe("registry expansion (plan 02 task 2.1)", () => {
         zoom: 100,
         spellcheck: false,
         theme: null,
+        navigationPane: false,
       });
       expect((editor.view.dom as HTMLElement).getAttribute("spellcheck")).toBe("false");
       expect(spellcheckOf(editor)).toBe(false);
