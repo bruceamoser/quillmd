@@ -8,7 +8,7 @@
 // toolbar and the native menu dispatch, so the behavior is identical). The
 // surface wiring (the contextmenu handlers that render the shared
 // ContextMenu) is covered end-to-end at the bottom.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { Editor } from "@tiptap/core";
@@ -27,6 +27,7 @@ import QuillEditor, {
   AlignedHeading,
   AlignedParagraph,
 } from "../../components/Editor";
+import PreviewView from "../../components/PreviewView";
 import {
   EDITOR_COMMANDS,
   runEditorCommand,
@@ -294,13 +295,17 @@ describe("buildTextMenu (WYSIWYG, plan 03 §2)", () => {
     caretAt(linked, 8);
     const linkItem = findItem(buildTextMenu(linked), "text-link")!;
     expect(linkItem.label).toBe("Link");
+    // The full link item set (plan 03 task 3.5, issue #43), in plan 03 §2
+    // order: Open / Edit / Copy address / Remove.
     expect(entriesOf(linkItem.submenu!).map((e) => e.id)).toEqual([
-      "text-link-edit",
       "text-link-open",
+      "text-link-edit",
+      "text-link-copy-address",
       "text-link-remove",
     ]);
     expect(findItem(linkItem.submenu!, "text-link-edit")!.command).toBe("link");
     expect(findItem(linkItem.submenu!, "text-link-open")!.action).toBe("open-link");
+    expect(findItem(linkItem.submenu!, "text-link-copy-address")!.action).toBe("copy-address");
     const remove = findItem(linkItem.submenu!, "text-link-remove")!;
     expect(remove.action).toBe("remove-link");
     expect(remove.danger).toBe(true);
@@ -366,16 +371,24 @@ describe("buildPreviewMenu (plan 03 §3)", () => {
     expect(findItem(entries, "preview-open-wysiwyg")!.action).toBe("open-in-wysiwyg");
   });
 
-  it("is a Link submenu (Open / Copy address) on a link", () => {
+  it("is the full Link submenu (Open / Edit / Copy address / Remove) on a link", () => {
     const entries = buildPreviewMenu(true, "https://example.com");
     const link = findItem(entries, "preview-link")!;
     expect(link.enabled).toBe(true);
+    // The same item set as the WYSIWYG link submenu (plan 03 task 3.5,
+    // issue #43), in plan 03 §2 order.
     expect(entriesOf(link.submenu!).map((e) => e.id)).toEqual([
       "preview-link-open",
+      "preview-link-edit",
       "preview-link-copy-address",
+      "preview-link-remove",
     ]);
     expect(findItem(link.submenu!, "preview-link-open")!.action).toBe("open-link");
+    expect(findItem(link.submenu!, "preview-link-edit")!.action).toBe("edit-link");
     expect(findItem(link.submenu!, "preview-link-copy-address")!.action).toBe("copy-address");
+    const remove = findItem(link.submenu!, "preview-link-remove")!;
+    expect(remove.action).toBe("remove-link");
+    expect(remove.danger).toBe(true);
   });
 
   it("disables the link items when the link has no href", () => {
@@ -383,7 +396,9 @@ describe("buildPreviewMenu (plan 03 §3)", () => {
     const link = findItem(entries, "preview-link")!;
     expect(link.enabled).toBe(true);
     expect(findItem(link.submenu!, "preview-link-open")!.enabled).toBe(false);
+    expect(findItem(link.submenu!, "preview-link-edit")!.enabled).toBe(false);
     expect(findItem(link.submenu!, "preview-link-copy-address")!.enabled).toBe(false);
+    expect(findItem(link.submenu!, "preview-link-remove")!.enabled).toBe(false);
   });
 });
 
@@ -497,6 +512,215 @@ describe("WYSIWYG surface end-to-end (plan 03 AC1)", () => {
     });
     // The pick ran the command and closed the menu.
     expect(tiptapToMarkdown(editor.getJSON())).toContain("**Hello**");
+    expect(document.querySelector(".quillmd-context-menu")).toBeNull();
+  });
+
+  it("right-click on a link: Link > Copy address copies the destination (plan 03 task 3.5)", async () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window.navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    const r = createRoot(container);
+    root = r;
+    await act(async () => {
+      r.render(<QuillEditor value={LINK_MD} onChange={() => {}} />);
+    });
+    const editor = currentFindEditor();
+    if (!editor) throw new Error("no live editor");
+
+    // The caret inside the link's text ("the site", at doc position 8).
+    await act(async () => {
+      caretAt(editor, 8);
+      editor.view.dom.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 120,
+          clientY: 80,
+        }),
+      );
+    });
+    const menu = document.querySelector(".quillmd-context-menu");
+    expect(menu).not.toBeNull();
+
+    // Roving focus lands on the first enabled item (Paste — Cut/Copy are
+    // disabled for the collapsed caret), so End jumps to the last item
+    // (Emoji), one ArrowUp reaches Link, ArrowRight opens its submenu
+    // (focus lands on Open link), two ArrowDowns reach Copy address, and
+    // Enter activates it.
+    const key = (k: string) =>
+      menu!.dispatchEvent(
+        new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }),
+      );
+    await act(async () => {
+      key("End");
+    });
+    await act(async () => {
+      key("ArrowUp");
+    });
+    await act(async () => {
+      key("ArrowRight");
+    });
+    expect(menuItemButton("Open link")).not.toBeNull();
+    await act(async () => {
+      key("ArrowDown");
+    });
+    await act(async () => {
+      key("ArrowDown");
+    });
+    await act(async () => {
+      key("Enter");
+    });
+    // The pick copied the link's destination and closed the menu.
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText).toHaveBeenCalledWith("https://example.com");
+    expect(document.querySelector(".quillmd-context-menu")).toBeNull();
+    Object.defineProperty(window.navigator, "clipboard", {
+      value: undefined,
+      configurable: true,
+    });
+    editor.destroy();
+  });
+});
+
+describe("Preview surface end-to-end (plan 03 task 3.5, issue #43)", () => {
+  let container: HTMLDivElement;
+  let root: Root | null = null;
+
+  const PREVIEW_LINK_MD = "See [the site](https://example.com) now";
+
+  afterEach(() => {
+    const current = root;
+    if (current) {
+      act(() => current.unmount());
+      root = null;
+    }
+    document.body.innerHTML = "";
+  });
+
+  function menuItemButton(label: string): HTMLButtonElement {
+    const button = document.querySelector<HTMLButtonElement>(
+      `.quillmd-context-item[aria-label="${label}"]`,
+    );
+    if (!button) throw new Error(`menu item not found: ${label}`);
+    return button;
+  }
+
+  // Renders the preview with the given link-menu handlers and right-clicks
+  // the rendered anchor, opening the preview context menu on it.
+  async function openLinkMenu(
+    onEditLink: (href: string, text: string) => void,
+    onRemoveLink: (href: string, text: string) => void,
+  ): Promise<void> {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    const r = createRoot(container);
+    root = r;
+    await act(async () => {
+      r.render(<PreviewView value={PREVIEW_LINK_MD} onEditLink={onEditLink} onRemoveLink={onRemoveLink} />);
+    });
+    const anchor = container.querySelector("a[href]");
+    if (!anchor) throw new Error("no rendered anchor");
+    await act(async () => {
+      anchor.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 10,
+          clientY: 10,
+        }),
+      );
+    });
+    expect(document.querySelector(".quillmd-context-menu")).not.toBeNull();
+  }
+
+  // Roving focus lands on the first enabled item (Copy), so End jumps to
+  // the last item (Open in WYSIWYG) and one ArrowUp reaches Link.
+  async function focusLinkItem(menu: Element): Promise<void> {
+    const key = (k: string) =>
+      menu.dispatchEvent(
+        new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }),
+      );
+    await act(async () => {
+      key("End");
+    });
+    await act(async () => {
+      key("ArrowUp");
+    });
+  }
+
+  it("right-click on a link offers the full link submenu (Open / Edit / Copy address / Remove)", async () => {
+    await openLinkMenu(vi.fn(), vi.fn());
+    const menu = document.querySelector(".quillmd-context-menu")!;
+    await focusLinkItem(menu);
+    await act(async () => {
+      menu.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(menuItemButton("Open link")).not.toBeNull();
+    expect(menuItemButton("Edit link")).not.toBeNull();
+    expect(menuItemButton("Copy address")).not.toBeNull();
+    expect(menuItemButton("Remove link")).not.toBeNull();
+  });
+
+  it("Link > Edit link reports the anchor (href + display text) to the app", async () => {
+    const onEditLink = vi.fn();
+    await openLinkMenu(onEditLink, vi.fn());
+    const menu = document.querySelector(".quillmd-context-menu")!;
+    const key = (k: string) =>
+      menu.dispatchEvent(
+        new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }),
+      );
+    await focusLinkItem(menu);
+    await act(async () => {
+      key("ArrowRight");
+    });
+    // Focus lands on Open link; one ArrowDown reaches Edit link.
+    await act(async () => {
+      key("ArrowDown");
+    });
+    await act(async () => {
+      key("Enter");
+    });
+    expect(onEditLink).toHaveBeenCalledTimes(1);
+    expect(onEditLink).toHaveBeenCalledWith("https://example.com", "the site");
+    // The pick closed the menu.
+    expect(document.querySelector(".quillmd-context-menu")).toBeNull();
+  });
+
+  it("Link > Remove link reports the anchor (href + display text) to the app", async () => {
+    const onRemoveLink = vi.fn();
+    await openLinkMenu(vi.fn(), onRemoveLink);
+    const menu = document.querySelector(".quillmd-context-menu")!;
+    const key = (k: string) =>
+      menu.dispatchEvent(
+        new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }),
+      );
+    await focusLinkItem(menu);
+    await act(async () => {
+      key("ArrowRight");
+    });
+    // Focus lands on Open link; three ArrowDowns reach Remove link. Each
+    // keypress is its own act — a batch of synthetic keydowns in one act
+    // would all read the same render's focus state.
+    await act(async () => {
+      key("ArrowDown");
+    });
+    await act(async () => {
+      key("ArrowDown");
+    });
+    await act(async () => {
+      key("ArrowDown");
+    });
+    await act(async () => {
+      key("Enter");
+    });
+    expect(onRemoveLink).toHaveBeenCalledTimes(1);
+    expect(onRemoveLink).toHaveBeenCalledWith("https://example.com", "the site");
     expect(document.querySelector(".quillmd-context-menu")).toBeNull();
   });
 });

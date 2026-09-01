@@ -70,6 +70,12 @@ import {
   removeLink,
 } from "./lib/links";
 import type { LinkPayload, LinkPrefill } from "./lib/links";
+import {
+  findMarkdownLink,
+  relinkMarkdownLink,
+  unlinkMarkdownLink,
+} from "./lib/markdownLinks";
+import type { MarkdownLinkRef } from "./lib/markdownLinks";
 import type { Editor as CoreEditor } from "@tiptap/core";
 import { NodeSelection } from "@tiptap/pm/state";
 import { loadDocSettings, saveDocSettings } from "./lib/docSettings";
@@ -285,10 +291,15 @@ export default function App() {
   // Link dialog (plan 08 task 8.1, issue #76): the registry link command
   // (toolbar button, Insert > Link, Ctrl+K, /link) requests the dialog; the
   // editor the request came from is kept so the dialog prefills from the
-  // caret and applies its result to the same instance.
+  // caret and applies its result to the same instance. The preview link menu
+  // (plan 03 task 3.5, issue #43) reuses the same dialog with a markdown
+  // target instead: its Edit item has no TipTap instance to edit, so the
+  // result splices the active doc's markdown source (`md`) — exactly one of
+  // `editor` / `md` is set.
   const [linkDialog, setLinkDialog] = useState<{
-    editor: CoreEditor;
+    editor: CoreEditor | null;
     prefill: LinkPrefill;
+    md: MarkdownLinkRef | null;
   } | null>(null);
   // Image dialog (plan 08 task 8.2, issue #77): the registry "image" command
   // (toolbar main button, Insert > Image > From URL, /image) requests the
@@ -1010,7 +1021,7 @@ export default function App() {
 
   useEffect(() => {
     return registerLinkDialogListener((editor) => {
-      setLinkDialog({ editor, prefill: readLinkPrefill(editor) });
+      setLinkDialog({ editor, prefill: readLinkPrefill(editor), md: null });
     });
   }, []);
 
@@ -1028,17 +1039,70 @@ export default function App() {
   const applyLinkDialog = useCallback(
     (payload: LinkPayload) => {
       if (!linkDialog) return;
-      applyLink(linkDialog.editor, payload);
+      if (linkDialog.editor) {
+        applyLink(linkDialog.editor, payload);
+      } else if (linkDialog.md && activeDoc) {
+        // Markdown target (plan 03 task 3.5, issue #43): the preview link
+        // menu's Edit item — the result splices the matched link's span in
+        // the active doc's source, every other byte untouched.
+        const next = relinkMarkdownLink(activeDoc.currentText, linkDialog.md, payload);
+        if (next !== activeDoc.currentText) setActiveText(next);
+      }
       setLinkDialog(null);
     },
-    [linkDialog],
+    [linkDialog, activeDoc, setActiveText],
   );
 
   const removeLinkDialog = useCallback(() => {
     if (!linkDialog) return;
-    removeLink(linkDialog.editor);
+    if (linkDialog.editor) {
+      removeLink(linkDialog.editor);
+    } else if (linkDialog.md && activeDoc) {
+      const next = unlinkMarkdownLink(activeDoc.currentText, linkDialog.md);
+      if (next !== activeDoc.currentText) setActiveText(next);
+    }
     setLinkDialog(null);
-  }, [linkDialog]);
+  }, [linkDialog, activeDoc, setActiveText]);
+
+  // The preview link menu (plan 03 task 3.5, issue #43): the preview is
+  // read-only rendered HTML with no editor to run the link mark on, so its
+  // Edit / Remove items resolve the anchor under the caret (destination +
+  // display text) to the matching markdown link and act on the source.
+  // Edit reopens the link dialog with the markdown span as its target.
+  const editPreviewLink = useCallback(
+    (href: string, text: string) => {
+      if (!activeDoc) return;
+      const ref = findMarkdownLink(activeDoc.currentText, { href, text });
+      if (!ref) {
+        setStatus("Could not find this link in the document");
+        return;
+      }
+      setLinkDialog({
+        editor: null,
+        prefill: { href: ref.href, title: ref.title, text: ref.text, isEditing: true },
+        md: ref,
+      });
+    },
+    [activeDoc, setStatus],
+  );
+
+  const removePreviewLink = useCallback(
+    (href: string, text: string) => {
+      if (!activeDoc) return;
+      const ref = findMarkdownLink(activeDoc.currentText, { href, text });
+      if (!ref) {
+        setStatus("Could not find this link in the document");
+        return;
+      }
+      const next = unlinkMarkdownLink(activeDoc.currentText, ref);
+      if (next === activeDoc.currentText) {
+        setStatus("Could not remove this link from the document");
+        return;
+      }
+      setActiveText(next);
+    },
+    [activeDoc, setStatus, setActiveText],
+  );
 
   // "Open": launch the destination in the system browser, then close (Word
   // parity — following the link dismisses the edit dialog).
@@ -2032,6 +2096,8 @@ export default function App() {
             value={currentText}
             theme={activeTheme}
             onOpenInWysiwyg={() => setMode("wysiwyg")}
+            onEditLink={editPreviewLink}
+            onRemoveLink={removePreviewLink}
           />
         );
         break;
