@@ -498,6 +498,27 @@ button.quillmd-status-spellcheck:hover {
   background: rgba(255, 255, 255, 0.25);
 }
 
+/* Trash Undo (plan 03 task 3.6, issue #44): styled like the zoom/spellcheck
+   readouts; the button restores the entry the explorer just moved to the
+   app-local trash (visible for ~30s after the delete). */
+.quillmd-status-trash {
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-radius: 3px;
+  padding: 1px 7px;
+  font-size: 11px;
+  cursor: default;
+}
+
+button.quillmd-status-trash {
+  cursor: pointer;
+}
+
+button.quillmd-status-trash:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
 /* Block-style indicator (plan 05 task 5.5, issue #58): styled like the
    zoom/spellcheck readouts; the button opens the inspector popover above the
    status bar, which names the block's style and offers the "jump to style"
