@@ -1597,6 +1597,73 @@ button.quillmd-status-trash:hover {
   margin-bottom: 4px;
 }
 
+/* Table of contents (plan 09 task 9.1, issue #84): the tocBlock renders as a
+   read-only, clickable panel of the document's H1-H4 headings. The same class
+   serves both the WYSIWYG node view and the preview, so the selectors are
+   context-independent. The document bytes stay the fixed comment token; this
+   is a view artifact. */
+.quillmd-toc {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin: 0.6em 0;
+  font-family: var(--font-ui);
+  font-size: 0.95em;
+  position: relative;
+}
+
+.quillmd-toc-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  margin-bottom: 6px;
+}
+
+.quillmd-toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.quillmd-toc-item {
+  margin: 1px 0;
+}
+
+/* Indent by heading level (data-level is the 1-4 string). */
+.quillmd-toc-item[data-level="2"] {
+  padding-left: 1em;
+}
+.quillmd-toc-item[data-level="3"] {
+  padding-left: 2em;
+}
+.quillmd-toc-item[data-level="4"] {
+  padding-left: 3em;
+}
+
+.quillmd-toc-link {
+  display: inline-block;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.quillmd-toc-link:hover {
+  color: var(--text-bright);
+  text-decoration: underline;
+}
+
+.quillmd-toc-empty {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
 /* Broken-image placeholder (plan 08 task 8.5, issue #80): an inline image
    whose local file is gone renders as a named chip with the re-link button.
    View-only — the markdown keeps the original src until the user re-links. */
