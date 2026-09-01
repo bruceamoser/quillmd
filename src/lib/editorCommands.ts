@@ -90,6 +90,7 @@ export type EditorCommandId =
   | "wordWrap"
   | "zoom"
   | "spellcheck"
+  | "spelling"
   | "wordCount"
   | "pasteAsText"
   | "fontFamily"
@@ -1582,6 +1583,20 @@ export const EDITOR_COMMANDS: EditorCommand[] = [
     run: (editor) => requestWordCountDialog(editor),
   },
   {
+    id: "spelling",
+    label: "Spelling…",
+    shortcut: "Ctrl+Shift+F7",
+    // Plan 09 task 9.5 (issue #88): the scan-and-flag spell check. Distinct
+    // from the "spellcheck" command above (the contenteditable toggle,
+    // issue #36): this one scans the doc against the bundled wordlist and
+    // requests the "Spelling…" dialog (App.tsx renders it), the same shape
+    // as the word-count dialog command. The request carries the live editor
+    // so the dialog can scan its doc and select the first misspelling;
+    // without a mounted editor the app falls back to the flat markdown text
+    // (source/preview modes).
+    run: (editor) => requestSpellCheckDialog(editor),
+  },
+  {
     id: "editorFont",
     label: "Editor font",
     run: (editor, param) => {
@@ -1882,6 +1897,30 @@ export function registerWordCountDialogListener(fn: WordCountDialogListener): ()
 export function requestWordCountDialog(editor: CoreEditor): boolean {
   if (!wordCountDialogListener) return false;
   wordCountDialogListener(editor);
+  return true;
+}
+
+// Spell-check dialog plumbing (plan 09 task 9.5, issue #88). The spelling
+// command cannot render UI itself, so it requests the dialog and the app
+// shell (App.tsx) renders it: the request carries the live editor so the
+// dialog can scan its doc and select the first misspelling, the same shape
+// as the word-count dialog command.
+type SpellCheckDialogListener = (editor: CoreEditor) => void;
+let spellCheckDialogListener: SpellCheckDialogListener | null = null;
+
+export function registerSpellCheckDialogListener(fn: SpellCheckDialogListener): () => void {
+  spellCheckDialogListener = fn;
+  return () => {
+    if (spellCheckDialogListener === fn) spellCheckDialogListener = null;
+  };
+}
+
+// Requests the spell-check dialog for the given editor. Returns false (no-op)
+// when no renderer is registered — e.g. outside WYSIWYG where there is no
+// TipTap instance to edit.
+export function requestSpellCheckDialog(editor: CoreEditor): boolean {
+  if (!spellCheckDialogListener) return false;
+  spellCheckDialogListener(editor);
   return true;
 }
 

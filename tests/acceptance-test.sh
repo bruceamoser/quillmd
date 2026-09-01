@@ -4265,6 +4265,102 @@ test_wc_suites_green() {
     fi
 }
 
+# --- p4-doc-tools: spell check (task 9.5, issue #88) -----------------------------
+# Tools > Spelling… (Ctrl+Shift+F7): a scan-and-flag dialog over the doc's
+# prose (code is never scanned) against the bundled wordlist ∪ the personal
+# dictionary ∪ the session ignore list. Per term: "Ignore" (session only) and
+# "Add to dictionary" (persisted in app config, survives a restart — AC4). The
+# wordlist is a Tauri resource with an embedded fallback; the personal
+# dictionary is stored by Rust get/set_wordlist_settings commands. The pure
+# scanner is pinned in spellcheck.test.ts; the dialog + wiring in
+# spellCheckDialog.test.tsx, which run below.
+
+test_spell_menu_wiring() {
+    note "spell.menu Tools > Spelling… (tools-spelling, Ctrl+Shift+F7) present"
+    if grep -q 'MenuItem::with_id(app, "tools-spelling", "Spelling…", true, Some("Ctrl+Shift+F7"))' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q 'SubmenuBuilder::new(app, "Tools")' "$ROOT/src-tauri/src/menu.rs" \
+        && grep -q '\.items(&\[&file, &edit, &view, &insert, &format, &tools, &help\])' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "spell.menu Tools > Spelling… (tools-spelling, Ctrl+Shift+F7) present"
+    else
+        fail "spell.menu Tools > Spelling… (tools-spelling, Ctrl+Shift+F7) present"
+    fi
+}
+
+test_spell_wordlist_resource() {
+    note "spell.resource wordlist.txt bundled + embedded fallback"
+    if [ -s "$ROOT/src-tauri/resources/wordlist.txt" ] \
+        && grep -q '"resources"' "$ROOT/src-tauri/tauri.conf.json" \
+        && grep -q 'resources/wordlist.txt' "$ROOT/src-tauri/tauri.conf.json" \
+        && grep -q 'include_str!("../resources/wordlist.txt")' "$ROOT/src-tauri/src/commands.rs"; then
+        pass "spell.resource wordlist.txt bundled + embedded fallback"
+    else
+        fail "spell.resource wordlist.txt bundled + embedded fallback"
+    fi
+}
+
+test_spell_rust_commands() {
+    note "spell.rust load_wordlist + get/set_wordlist_settings commands"
+    if grep -q 'pub fn load_wordlist' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'pub fn get_wordlist_settings' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'pub fn set_wordlist_settings' "$ROOT/src-tauri/src/commands.rs" \
+        && grep -q 'commands::load_wordlist' "$ROOT/src-tauri/src/lib.rs" \
+        && grep -q 'commands::get_wordlist_settings' "$ROOT/src-tauri/src/lib.rs" \
+        && grep -q 'commands::set_wordlist_settings' "$ROOT/src-tauri/src/lib.rs"; then
+        pass "spell.rust load_wordlist + get/set_wordlist_settings commands"
+    else
+        fail "spell.rust load_wordlist + get/set_wordlist_settings commands"
+    fi
+}
+
+test_spell_lib() {
+    note "spell.lib spellcheck.ts scanner + settings storage"
+    if [ -f "$ROOT/src/lib/spellcheck.ts" ] \
+        && grep -q 'export function extractWordTokens' "$ROOT/src/lib/spellcheck.ts" \
+        && grep -q 'export function isCheckableToken' "$ROOT/src/lib/spellcheck.ts" \
+        && grep -q 'export function scanText' "$ROOT/src/lib/spellcheck.ts" \
+        && grep -q 'export function scanDoc' "$ROOT/src/lib/spellcheck.ts" \
+        && grep -q 'export function buildKnownSet' "$ROOT/src/lib/spellcheck.ts" \
+        && grep -q 'export function normalizeSpellcheckSettings' "$ROOT/src/lib/spellcheck.ts" \
+        && grep -q 'export async function loadWordlist' "$ROOT/src/lib/spellcheck.ts" \
+        && grep -q 'export function ignoreWordForSession' "$ROOT/src/lib/spellcheck.ts" \
+        && grep -q 'export async function saveSpellcheckSettings' "$ROOT/src/lib/spellcheck.ts" \
+        && grep -q 'codeBlock' "$ROOT/src/lib/spellcheck.ts"; then
+        pass "spell.lib spellcheck.ts scanner + settings storage"
+    else
+        fail "spell.lib spellcheck.ts scanner + settings storage"
+    fi
+}
+
+test_spell_app_wiring() {
+    note "spell.app App.tsx routes tools-spelling + Ctrl+Shift+F7 and renders the dialog"
+    if grep -q 'id === "tools-spelling"' "$ROOT/src/App.tsx" \
+        && grep -q 'registerSpellCheckDialogListener' "$ROOT/src/App.tsx" \
+        && grep -q 'key === "f7" && e.shiftKey' "$ROOT/src/App.tsx" \
+        && grep -q 'Ctrl+Shift+F7: spelling (Tools > Spelling…)' "$ROOT/src/App.tsx" \
+        && grep -q '<SpellCheckDialog' "$ROOT/src/App.tsx" \
+        && grep -q 'from "./components/SpellCheckDialog"' "$ROOT/src/App.tsx" \
+        && [ -f "$ROOT/src/components/SpellCheckDialog.tsx" ]; then
+        pass "spell.app App.tsx routes tools-spelling + Ctrl+Shift+F7 and renders the dialog"
+    else
+        fail "spell.app App.tsx routes tools-spelling + Ctrl+Shift+F7 and renders the dialog"
+    fi
+}
+
+test_spell_suites_green() {
+    note "spell.green spell-check vitest suites pass"
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (node / node_modules not available)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/spellcheck.test.ts src/lib/__tests__/spellCheckDialog.test.tsx) 2>&1 ); then
+        pass "spell.green spell-check vitest suites pass"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "spell.green spell-check vitest suites failed (plan 09 task 9.5)"
+    fi
+}
+
 # --- runner ---------------------------------------------------------------------
 SUBSET="${1:-core}"
 echo "QuillMD acceptance tests — subset: $SUBSET  ($(date -u +%FT%TZ))"
@@ -4677,6 +4773,13 @@ case "$SUBSET" in
         test_wc_app_wiring
         test_wc_statusbar_shared
         test_wc_suites_green
+        # Task 9.5 (issue #88): spell check
+        test_spell_menu_wiring
+        test_spell_wordlist_resource
+        test_spell_rust_commands
+        test_spell_lib
+        test_spell_app_wiring
+        test_spell_suites_green
         ;;
     shell)
         test_shell_new_bundled

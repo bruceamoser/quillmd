@@ -544,7 +544,15 @@ fn build_tools_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>>
     // text is selected; the accelerator matches the browser-dev shortcut.
     let word_count =
         MenuItem::with_id(app, "tools-word-count", "Word Count", true, Some("Ctrl+Shift+F5"))?;
-    let tools = SubmenuBuilder::new(app, "Tools").item(&word_count).build()?;
+    // Spell check (plan 09 task 9.5, issue #88): the scan-and-flag "Spelling…"
+    // dialog. The frontend (App.tsx) resolves the id; the accelerator matches
+    // the browser-dev shortcut.
+    let spelling =
+        MenuItem::with_id(app, "tools-spelling", "Spelling…", true, Some("Ctrl+Shift+F7"))?;
+    let tools = SubmenuBuilder::new(app, "Tools")
+        .item(&word_count)
+        .item(&spelling)
+        .build()?;
     Ok(tools)
 }
 

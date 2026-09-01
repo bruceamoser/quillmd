@@ -2686,6 +2686,111 @@ button.quillmd-status-trash:hover {
   border-color: var(--accent-hover);
 }
 
+/* --- Spell check dialog (plan 09 task 9.5, issue #88) ---------------------- */
+
+.quillmd-spellcheck-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quillmd-spellcheck-dialog {
+  width: 400px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  padding: 14px 16px 12px;
+}
+
+.quillmd-spellcheck-title {
+  color: var(--text-bright);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+/* The scan summary: the flagged-term count, or the all-clear note. */
+.quillmd-spellcheck-scope {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.quillmd-spellcheck-terms {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.quillmd-spellcheck-term {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* The flagged term, with its occurrence count in parens. */
+.quillmd-spellcheck-word {
+  color: var(--text-bright);
+  font-size: 13px;
+}
+
+.quillmd-spellcheck-term-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.quillmd-spellcheck-button {
+  background: var(--bg-active);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.quillmd-spellcheck-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-faint);
+}
+
+.quillmd-spellcheck-button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+
+.quillmd-spellcheck-button.primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.quillmd-spellcheck-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
+.quillmd-spellcheck-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 /* --- Modify Style dialog (plan 05 task 5.4, issue #57) -------------------- */
 
 .quillmd-modify-overlay {
