@@ -386,6 +386,65 @@ pub fn set_wordlist_settings(app: tauri::AppHandle, json: String) -> Result<(), 
     write_wordlist_settings_file(&path, &json)
 }
 
+// --- app settings (plan 10 task 10.1, issue #93) ---------------------------
+//
+// The app-wide settings are a single JSON file in the app config dir
+// (~/.config/quillmd/settings.json) — machine-local by design, the same
+// posture as the style overrides. The frontend owns the schema (and
+// default-merges/normalizes it, src/lib/settings.ts); the Rust side only
+// guards the file shape (a JSON object) so a stray payload can never turn
+// the config file into something the frontend cannot parse back. Unlike the
+// earlier config files, writes go through the fs safety core's atomic write
+// (atomic.rs), so a crash mid-save never leaves a half-written settings file
+// behind. The path-based helpers keep the logic testable; the
+// #[tauri::command] wrappers resolve the config dir.
+
+fn settings_file<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Option<PathBuf> {
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|d| d.join("settings.json"))
+}
+
+/// Reads the settings file as raw JSON text; a missing or unreadable file
+/// reads as an empty object so a first run (or a hand-deleted file) is a
+/// clean state, not an error.
+pub fn read_settings_file(path: &std::path::Path) -> String {
+    match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(_) => "{}".to_string(),
+    }
+}
+
+/// Writes the settings payload after validating it is a JSON object, using
+/// the atomic write (temp file + fsync + rename in the target directory).
+pub fn write_settings_file(path: &std::path::Path, json: &str) -> Result<(), String> {
+    let value: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| err("invalid_json", e))?;
+    if !value.is_object() {
+        return Err(err("invalid_json", "settings payload must be a JSON object"));
+    }
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|e| err("io", format!("create {}: {e}", dir.display())))?;
+    }
+    crate::fs::atomic::write_file_atomic(path, json.as_bytes())
+        .map_err(|e| err("io", format!("write {}: {e}", path.display())))
+}
+
+#[tauri::command]
+pub fn read_settings(app: tauri::AppHandle) -> String {
+    settings_file(&app)
+        .map(|p| read_settings_file(&p))
+        .unwrap_or_else(|| "{}".to_string())
+}
+
+#[tauri::command]
+pub fn write_settings(app: tauri::AppHandle, json: String) -> Result<(), String> {
+    let path =
+        settings_file(&app).ok_or_else(|| err("config_dir", "app config dir unavailable"))?;
+    write_settings_file(&path, &json)
+}
+
 // --- explorer file operations (plan 03 task 3.6, issue #44) ----------------
 //
 // The Explorer context menu (New file / New folder / Rename / Delete) runs on
@@ -948,6 +1007,91 @@ mod tests {
         }
         // Nothing was written.
         assert!(!path.exists());
+    }
+
+    // --- app settings (plan 10 task 10.1, issue #93) -------------------------
+
+    #[test]
+    fn settings_read_missing_is_empty_object() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        assert_eq!(read_settings_file(&path), "{}");
+    }
+
+    #[test]
+    fn settings_write_roundtrips_unknown_keys_verbatim() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        // An unknown key (a newer app's setting) must survive the write
+        // byte-for-byte: the Rust side guards the shape, not the schema.
+        let payload = r#"{"theme":"dark","uiScale":125,"futureKey":{"deep":[1,2]}}"#;
+
+        write_settings_file(&path, payload).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), payload);
+        assert_eq!(read_settings_file(&path), payload);
+    }
+
+    #[test]
+    fn settings_write_creates_parent_dirs() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("nested").join("settings.json");
+
+        write_settings_file(&path, "{}").unwrap();
+        assert!(path.is_file());
+    }
+
+    #[test]
+    fn settings_write_rejects_non_object_payloads() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        for payload in [r#"[1, 2]"#, r#""theme""#, "not json", "42"] {
+            let res = write_settings_file(&path, payload);
+            assert!(res.is_err(), "{payload} must be rejected");
+            let msg = res.unwrap_err();
+            assert!(msg.starts_with("invalid_json:"), "got {msg}");
+        }
+        // Nothing was written.
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn settings_write_is_atomic_overwrite_with_no_temp_leftovers() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(&path, r#"{"theme":"quill"}"#).unwrap();
+
+        write_settings_file(&path, r#"{"theme":"dark"}"#).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), r#"{"theme":"dark"}"#);
+
+        let leftovers: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "temp files left behind: {leftovers:?}");
+    }
+
+    #[test]
+    fn settings_write_failure_reports_error_and_leaves_no_temp_files() {
+        let dir = tempdir().unwrap();
+        // A directory at the target path forces the final rename to fail;
+        // the atomic write must surface the error, clean up its temp file,
+        // and leave the target untouched (crash-safety of the shared
+        // mechanism itself is covered by the atomic.rs suite).
+        let target = dir.path().join("settings.json");
+        fs::create_dir(&target).unwrap();
+
+        let msg = write_settings_file(&target, r#"{"theme":"dark"}"#).unwrap_err();
+        assert!(msg.starts_with("io:"), "got {msg}");
+        assert!(target.is_dir(), "the target must remain untouched");
+
+        let leftovers: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "temp files left behind: {leftovers:?}");
     }
 
     // --- explorer file operations (plan 03 task 3.6, issue #44) -------------

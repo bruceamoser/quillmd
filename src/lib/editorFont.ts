@@ -51,9 +51,10 @@ export function isEditorFontSize(value: unknown): value is number {
 const FONT_KEY = "quillmd.editorFont";
 
 // Merge a possibly-partial or corrupted stored record onto the defaults so a
-// bad localStorage payload can never take down the app (same posture as
-// docSettings.ts).
-function normalize(raw: unknown): EditorFontSettings {
+// bad stored payload can never take down the app (same posture as
+// docSettings.ts). Exported so the app settings module (settings.ts)
+// normalizes the editor-font setting through the same rules.
+export function normalizeEditorFont(raw: unknown): EditorFontSettings {
   const out: EditorFontSettings = { ...DEFAULT_EDITOR_FONT };
   if (typeof raw !== "object" || raw === null) return out;
   const record = raw as Record<string, unknown>;
@@ -68,7 +69,7 @@ export function loadEditorFont(): EditorFontSettings {
   try {
     const raw = localStorage.getItem(FONT_KEY);
     if (!raw) return { ...DEFAULT_EDITOR_FONT };
-    return normalize(JSON.parse(raw));
+    return normalizeEditorFont(JSON.parse(raw));
   } catch {
     return { ...DEFAULT_EDITOR_FONT };
   }
