@@ -105,8 +105,23 @@ export async function renderMermaid(
   // Offscreen container: mermaid.render appends its temporary render
   // element here (and removes it when done), so no visible document node is
   // ever touched. The container itself is removed unconditionally.
+  //
+  // The container must be *laid out*, not display:none. Mermaid measures
+  // node-label text with real SVG geometry APIs (getBBox) inside this
+  // subtree; a display:none box has no layout, so every node measures
+  // 0x0 and the flowchart's edge-label placement throws "Could not find a
+  // suitable point for the given distance". Positioning it offscreen keeps
+  // it out of the viewport while geometry stays live. (jsdom tests cannot
+  // catch this — their SVG geometry is mocked — hence the explicit
+  // regression assertion in mermaidRender.test.ts.)
   const container = document.createElement("div");
-  container.style.display = "none";
+  container.style.position = "fixed";
+  container.style.left = "-99999px";
+  container.style.top = "0";
+  container.style.width = "100px";
+  container.style.height = "100px";
+  container.style.overflow = "hidden";
+  container.setAttribute("aria-hidden", "true");
   document.body.appendChild(container);
   try {
     const { svg } = await mermaid.render(nextRenderId(), source, container);

@@ -118,6 +118,33 @@ describe("renderMermaid: offscreen container (issue #101)", () => {
     await renderMermaid("graph TD\n  A -->\n", "quill");
     expect(document.body.innerHTML).toBe(before);
   }, 30000);
+
+  // Regression (2026-09-02): a display:none container has no layout, so
+  // mermaid's real getBBox() label measurements inside it return 0x0 and the
+  // flowchart edge-label placement throws "Could not find a suitable point
+  // for the given distance" in a real webview. jsdom cannot catch this
+  // (SVG geometry is mocked here), so assert the invariant directly: the
+  // temporary container must be laid out (offscreen), never display:none.
+  it("keeps the temporary render container laid out, not display:none", async () => {
+    let captured: HTMLDivElement | null = null;
+    const originalAppend = document.body.appendChild.bind(document.body);
+    vi.spyOn(document.body, "appendChild").mockImplementation(((el: Node) => {
+      if (el instanceof HTMLDivElement) {
+        captured = el as HTMLDivElement;
+      }
+      return originalAppend(el);
+    }) as typeof document.body.appendChild);
+    try {
+      const result = await renderMermaid(FLOWCHART, "quill");
+      expect(result.error).toBeNull();
+      expect(captured).not.toBeNull();
+      expect(captured!.style.display).not.toBe("none");
+      // Offscreen but laid out: geometry APIs must see real layout.
+      expect(captured!.style.position).toBe("fixed");
+    } finally {
+      vi.restoreAllMocks();
+    }
+  }, 30000);
 });
 
 describe("debounce (issue #101)", () => {
