@@ -3,7 +3,7 @@
 // the webview by default; App.tsx listens with onDragDropEvent and hands the
 // dropped paths here. Each dropped path is classified with the existing
 // list_dir command (success means directory) so no Rust changes are needed:
-// directories switch the Explorer root, markdown files open as tabs, image
+// directories add Explorer roots, markdown files open as tabs, image
 // files are routed through the from-file flow (asset copy + insert at the
 // active editor's caret), and every dropped item — including skipped ones —
 // gets its own status-bar line. A failure on one item never aborts the batch.
@@ -44,7 +44,7 @@ export interface DragDropDeps {
   // irrelevant, so Promise<unknown> accepts both openByPath (Promise<void>)
   // and openPath (Promise<OpenFileResult>) call sites.
   openFile: (path: string) => Promise<unknown>;
-  // Switches the Explorer root to the given folder.
+  // Adds the given folder as an Explorer root.
   openFolder: (path: string) => void;
   // Routes a dropped image file through the from-file flow (plan 08 task
   // 8.6, issue #81): the asset-copy pipeline (assets.ts) and the insert at
@@ -58,7 +58,7 @@ export interface DragDropDeps {
 }
 
 // Handles one drop of files and folders (acceptance #7: dropping 2 .md files
-// + 1 folder opens 2 tabs and switches the Explorer root to the folder;
+// + 1 folder opens 2 tabs and adds the folder as an Explorer root;
 // plan 08 task 8.6: dropped image files are inserted through the from-file
 // flow instead of being skipped).
 export async function handleDroppedPaths(paths: string[], deps: DragDropDeps): Promise<void> {
