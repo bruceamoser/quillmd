@@ -305,16 +305,16 @@ describe("App menu-event e2e: Tools > Word Count (issue #87)", () => {
       "Entire document"
     );
     expect(rowValue("Words")).toBe("6");
-    // The editor normalizes the live text with a trailing newline on mount,
-    // so the live length is 46 (the file's 45 plus the final newline).
-    expect(rowValue("Characters (with spaces)")).toBe("46");
+    // Programmatic editor setup does not rewrite the opened source, so the
+    // live count stays byte-for-byte aligned with the 45-character file.
+    expect(rowValue("Characters (with spaces)")).toBe("45");
     expect(rowValue("Characters (no spaces)")).toBe("39");
     expect(rowValue("Sentences")).toBe("2");
     expect(rowValue("Paragraphs")).toBe("2");
     expect(rowValue("Reading time (200 wpm)")).toBe("1 min");
     // Plan 09 AC3: the dialog's numbers are the status bar's numbers.
     expect(statusBar()).toContain("6 words");
-    expect(statusBar()).toContain("46 chars");
+    expect(statusBar()).toContain("45 chars");
   });
 
   it("Ctrl+Shift+F5 opens the dialog in browser dev", async () => {

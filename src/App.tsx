@@ -670,10 +670,10 @@ export default function App() {
     }
   }, [openByPath]);
 
-  const doSave = useCallback(async () => {
-    const doc = activeDoc;
-    if (!doc || !model) return;
-    const result = saveDocument(model, doc.currentText);
+  const doSave = useCallback(async (path: string | null = activePath): Promise<boolean> => {
+    const doc = path ? docs[path] : undefined;
+    if (!doc) return false;
+    const result = saveDocument(createDocument(doc.open.source), doc.currentText);
     let bytes: Uint8Array;
     if (result.kind === "verbatim") {
       bytes = doc.open.originalBytes;
@@ -684,11 +684,10 @@ export default function App() {
     // First save of an untitled doc: native save dialog, then re-key the tab
     // from the synthetic path to the chosen one (plan 01 acceptance #3).
     if (runningInTauri() && isUntitledPath(doc.open.path)) {
-      await saveNewDocument(doc.open.path, bytes, {
+      return saveNewDocument(doc.open.path, bytes, {
         status: setStatus,
         onSaved: (out, hash) => rekeyDoc(doc.open.path, out, result.text, bytes, hash),
       });
-      return;
     }
 
     if (runningInTauri() && isAbsolutePath(doc.open.path)) {
@@ -701,11 +700,11 @@ export default function App() {
           const opened = await openPath(doc.open.path);
           updateDoc(doc.open.path, { open: opened, currentText: opened.source });
         }
-        return;
+        return false;
       }
       if (external === "Deleted") {
         window.alert("The file was deleted on disk. Use Save As to recreate it.");
-        return;
+        return false;
       }
       const newHash = await saveFile(doc.open.path, bytes, doc.open.hash);
       updateDoc(doc.open.path, {
@@ -713,7 +712,7 @@ export default function App() {
         currentText: result.text,
       });
       setStatus("Saved");
-      return;
+      return true;
     }
 
     const downloadName = isUntitledPath(doc.open.path)
@@ -725,7 +724,17 @@ export default function App() {
       currentText: result.text,
     });
     setStatus("Saved (downloaded)");
-  }, [activeDoc, model, updateDoc, rekeyDoc]);
+    return true;
+  }, [activePath, docs, updateDoc, rekeyDoc]);
+
+  const saveBeforeClose = useCallback(async (path: string): Promise<boolean> => {
+    try {
+      return await doSave(path);
+    } catch (err) {
+      setStatus(`Save failed: ${path} (${String(err)})`);
+      return false;
+    }
+  }, [doSave]);
 
   const doSaveAs = useCallback(async () => {
     const doc = activeDoc;
@@ -1085,8 +1094,9 @@ export default function App() {
       if (!d) return;
       const dirty = d.currentText !== d.open.source;
       if (dirty) {
-        const ok = await confirmCloseTab({ path, displayName: docDisplayName(path), dirty });
-        if (!ok) return;
+        const action = await confirmCloseTab({ path, displayName: docDisplayName(path), dirty });
+        if (action === "cancel") return;
+        if (action === "save" && !(await saveBeforeClose(path))) return;
       }
       const next = { ...docs };
       delete next[path];
@@ -1096,7 +1106,7 @@ export default function App() {
         setActivePath(remaining.length > 0 ? remaining[remaining.length - 1] : null);
       }
     },
-    [docs, activePath],
+    [docs, activePath, saveBeforeClose],
   );
 
   // File > Close All: confirms once, listing the dirty tabs (clean-only
@@ -1104,18 +1114,23 @@ export default function App() {
   const closeAll = useCallback(async () => {
     const docsList = Object.values(docs);
     if (docsList.length === 0) return;
-    const ok = await confirmCloseAll(
+    const action = await confirmCloseAll(
       docsList.map((d) => ({
         path: d.open.path,
         displayName: docDisplayName(d.open.path),
         dirty: d.currentText !== d.open.source,
       })),
     );
-    if (!ok) return;
+    if (action === "cancel") return;
+    if (action === "save") {
+      for (const d of docsList.filter((candidate) => candidate.currentText !== candidate.open.source)) {
+        if (!(await saveBeforeClose(d.open.path))) return;
+      }
+    }
     setDocs({});
     setActivePath(null);
     setStatus("Closed all documents");
-  }, [docs]);
+  }, [docs, saveBeforeClose]);
 
   // Tab context menu > Close Others (plan 03 task 3.6, issue #44): closes
   // every tab except the right-clicked one. The dirty check runs as one batch
@@ -1125,21 +1140,26 @@ export default function App() {
     async (keepPath: string) => {
       const others = Object.entries(docs).filter(([path]) => path !== keepPath);
       if (others.length === 0) return;
-      const ok = await confirmCloseAll(
+      const action = await confirmCloseAll(
         others.map(([path, d]) => ({
           path,
           displayName: docDisplayName(path),
           dirty: d.currentText !== d.open.source,
         })),
       );
-      if (!ok) return;
+      if (action === "cancel") return;
+      if (action === "save") {
+        for (const [, d] of others.filter(([, candidate]) => candidate.currentText !== candidate.open.source)) {
+          if (!(await saveBeforeClose(d.open.path))) return;
+        }
+      }
       const next = { ...docs };
       for (const [path] of others) delete next[path];
       setDocs(next);
       setActivePath(keepPath);
       setStatus("Closed other documents");
     },
-    [docs],
+    [docs, saveBeforeClose],
   );
 
   // --- explorer trash Undo (plan 03 task 3.6, issue #44) -------------------

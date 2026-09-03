@@ -364,6 +364,32 @@ describe("decoration pipeline in the app editor (issue #70)", () => {
     expect(doc?.textBetween(0, doc.content.size)).toBe("hello hello");
   });
 
+  it("does not report programmatic editor setup as a document change", () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    const emitted: string[] = [];
+    const root = createRoot(container);
+    roots.push(root);
+
+    act(() => {
+      root.render(<AppEditor value="opened without a final newline" onChange={(md) => emitted.push(md)} />);
+    });
+    expect(emitted).toEqual([]);
+
+    // Read-only changes call TipTap's setEditable. They are view state too
+    // and must not make App think the document has unsaved edits.
+    act(() => {
+      root.render(
+        <AppEditor
+          value="opened without a final newline"
+          onChange={(md) => emitted.push(md)}
+          readOnly
+        />,
+      );
+    });
+    expect(emitted).toEqual([]);
+  });
+
   it("a replace through the bridge fires onChange with the new markdown (issue #71)", () => {
     // App.tsx owns the dirty flag as (currentText !== open.source); the only
     // way a replace dirties the doc is by flowing through the editor's
@@ -386,8 +412,8 @@ describe("decoration pipeline in the app editor (issue #70)", () => {
       replaceAllMatches(editor, state, "dog");
     });
 
-    // The editor emits once on mount (the unchanged source) and once per doc
-    // update; the replace is the update that dirties the doc.
+    // The editor stays silent during setup; the replace is the document
+    // update that dirties the doc.
     const dirty = emitted[emitted.length - 1];
     expect(dirty).toBe("dog one\ndog two\n\nuntouched **block**\n");
     // Dirty: the emitted text differs from the opened source.
