@@ -42,6 +42,15 @@ export interface ConfirmMessageOptions {
   buttons?: MessageButtons;
 }
 
+export interface ChoiceMessageOptions {
+  title?: string;
+  message: string;
+  kind?: MessageKind;
+  yes: string;
+  no: string;
+  cancel: string;
+}
+
 const TAUERI_BUTTONS: Record<MessageButtons, "Ok" | "OkCancel" | "YesNo" | "YesNoCancel"> = {
   ok: "Ok",
   okCancel: "OkCancel",
@@ -127,4 +136,24 @@ export async function confirmMessage(options: ConfirmMessageOptions): Promise<Me
   const accepted = window.confirm(options.message);
   if (buttons === "okCancel") return accepted ? "ok" : "cancel";
   return accepted ? "yes" : "no";
+}
+
+// Three-way choice dialog. Custom labels are supported by Tauri's native
+// message dialog. The browser-dev fallback uses two confirms because the Web
+// platform has no native three-button confirm API.
+export async function choiceMessage(options: ChoiceMessageOptions): Promise<"yes" | "no" | "cancel"> {
+  if (isTauri()) {
+    const { message } = await import("@tauri-apps/plugin-dialog");
+    const result = await message(options.message, {
+      title: options.title,
+      kind: options.kind,
+      buttons: { yes: options.yes, no: options.no, cancel: options.cancel },
+    });
+    if (result === options.yes) return "yes";
+    if (result === options.no) return "no";
+    return "cancel";
+  }
+  if (window.confirm(`${options.message}\n\n${options.yes}?`)) return "yes";
+  if (window.confirm(options.no + "?")) return "no";
+  return "cancel";
 }

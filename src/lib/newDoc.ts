@@ -129,14 +129,16 @@ export async function saveNewDocument(
   path: string,
   bytes: Uint8Array,
   deps: SaveNewDeps,
-): Promise<void> {
+): Promise<boolean> {
   const out = await pickSavePath(untitledDefaultName(path), MARKDOWN_FILTER, "Save");
-  if (out === null) return;
+  if (out === null) return false;
   try {
     const hash = await saveAs(out, bytes);
     deps.onSaved(out, hash);
     deps.status(`Saved as ${out}`);
+    return true;
   } catch (err) {
     deps.status(`Save failed: ${out} (${String(err)})`);
+    return false;
   }
 }

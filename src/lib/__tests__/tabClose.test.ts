@@ -57,81 +57,82 @@ describe("docDisplayName (#25)", () => {
 });
 
 describe("File > Close dirty-check (#25)", () => {
-  it("confirms a dirty tab through the native message dialog and closes on Yes", async () => {
+  it("offers save, discard, and cancel through the native message dialog", async () => {
     g.isTauri = true;
-    const calls = tauriIpc(() => "Yes");
+    const calls = tauriIpc(() => "Save and close");
     await expect(
       confirmCloseTab({ path: "/docs/notes.md", displayName: "notes.md", dirty: true }),
-    ).resolves.toBe(true);
+    ).resolves.toBe("save");
     expect(calls.map((c) => c.cmd)).toEqual(["plugin:dialog|message"]);
     const payload = calls[0].payload as Record<string, unknown>;
-    expect(payload.message).toBe("notes.md has unsaved changes. Close anyway?");
-    expect(payload.buttons).toBe("YesNo");
+    expect(payload.message).toBe("notes.md has unsaved changes.");
+    expect(payload.buttons).toEqual({
+      YesNoCancelCustom: ["Save and close", "Close anyway", "Don't close"],
+    });
     expect(payload.kind).toBe("warning");
   });
 
-  it("keeps the tab when the user answers No", async () => {
+  it("returns close when the user chooses Close anyway", async () => {
     g.isTauri = true;
-    tauriIpc(() => "No");
+    tauriIpc(() => "Close anyway");
     await expect(
       confirmCloseTab({ path: "/docs/notes.md", displayName: "notes.md", dirty: true }),
-    ).resolves.toBe(false);
+    ).resolves.toBe("close");
   });
 
   it("keeps the tab when the dialog is cancelled", async () => {
     g.isTauri = true;
-    tauriIpc(() => "Cancel");
+    tauriIpc(() => "Don't close");
     await expect(
       confirmCloseTab({ path: "/docs/notes.md", displayName: "notes.md", dirty: true }),
-    ).resolves.toBe(false);
+    ).resolves.toBe("cancel");
   });
 
   it("names the untitled tab in the confirm message", async () => {
     g.isTauri = true;
-    const calls = tauriIpc(() => "Yes");
+    const calls = tauriIpc(() => "Save and close");
     await expect(
       confirmCloseTab({ path: ":new:3", displayName: docDisplayName(":new:3"), dirty: true }),
-    ).resolves.toBe(true);
-    expect(messageOf(calls[0])).toBe("Untitled 3 has unsaved changes. Close anyway?");
+    ).resolves.toBe("save");
+    expect(messageOf(calls[0])).toBe("Untitled 3 has unsaved changes.");
   });
 
-  it("falls back to window.confirm in the browser and maps yes/no", async () => {
+  it("falls back to two browser confirms for the three choices", async () => {
     const win = g.window as { confirm: Mock };
     win.confirm.mockReturnValue(true);
     await expect(
       confirmCloseTab({ path: "notes.md", displayName: "notes.md", dirty: true }),
-    ).resolves.toBe(true);
-    expect(win.confirm).toHaveBeenCalledWith("notes.md has unsaved changes. Close anyway?");
-    win.confirm.mockReturnValue(false);
+    ).resolves.toBe("save");
+    win.confirm.mockReset().mockReturnValueOnce(false).mockReturnValueOnce(true);
     await expect(
       confirmCloseTab({ path: "notes.md", displayName: "notes.md", dirty: true }),
-    ).resolves.toBe(false);
+    ).resolves.toBe("close");
   });
 });
 
 describe("File > Close All dirty-check (#25)", () => {
   it("closes without any dialog when no tab is dirty (acceptance #5)", async () => {
     g.isTauri = true;
-    const calls = tauriIpc(() => "Yes");
+    const calls = tauriIpc(() => "Save and close");
     await expect(
       confirmCloseAll([
         { path: "/docs/a.md", displayName: "a.md", dirty: false },
         { path: "/docs/b.md", displayName: "b.md", dirty: false },
       ]),
-    ).resolves.toBe(true);
+    ).resolves.toBe("close");
     expect(calls).toEqual([]);
   });
 
   it("lists every dirty tab in a single confirm dialog", async () => {
     g.isTauri = true;
-    const calls = tauriIpc(() => "Yes");
+    const calls = tauriIpc(() => "Save and close");
     await expect(
       confirmCloseAll([
         { path: "/docs/a.md", displayName: "a.md", dirty: true },
         { path: "/docs/b.md", displayName: "b.md", dirty: false },
         { path: "/docs/c.md", displayName: "c.md", dirty: true },
       ]),
-    ).resolves.toBe(true);
+    ).resolves.toBe("save");
     expect(calls.map((c) => c.cmd)).toEqual(["plugin:dialog|message"]);
     const message = messageOf(calls[0]);
     expect(message).toContain("Close all documents?");
@@ -143,25 +144,25 @@ describe("File > Close All dirty-check (#25)", () => {
 
   it("wording is singular for one dirty tab", async () => {
     g.isTauri = true;
-    const calls = tauriIpc(() => "Yes");
+    const calls = tauriIpc(() => "Save and close");
     await expect(
       confirmCloseAll([{ path: "/docs/a.md", displayName: "a.md", dirty: true }]),
-    ).resolves.toBe(true);
+    ).resolves.toBe("save");
     expect(messageOf(calls[0])).toContain("1 document has unsaved changes");
   });
 
   it("keeps every tab when the user answers No", async () => {
     g.isTauri = true;
-    tauriIpc(() => "No");
+    tauriIpc(() => "Don't close");
     await expect(
       confirmCloseAll([{ path: "/docs/a.md", displayName: "a.md", dirty: true }]),
-    ).resolves.toBe(false);
+    ).resolves.toBe("cancel");
   });
 
   it("an empty batch resolves true without a dialog", async () => {
     g.isTauri = true;
-    const calls = tauriIpc(() => "Yes");
-    await expect(confirmCloseAll([])).resolves.toBe(true);
+    const calls = tauriIpc(() => "Save and close");
+    await expect(confirmCloseAll([])).resolves.toBe("close");
     expect(calls).toEqual([]);
   });
 });

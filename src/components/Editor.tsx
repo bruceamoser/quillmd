@@ -1109,7 +1109,12 @@ export default function Editor({
   }, [value, editor]);
 
   useEffect(() => {
-    editor?.setEditable(!readOnly);
+    // This is view-state synchronization, not a document edit. TipTap's
+    // setEditable() emits an update event by default even though the document
+    // did not change; that runs onChange with normalized Markdown and can make
+    // a freshly opened tab look dirty. Suppress that synthetic update so only
+    // real document transactions reach App's dirty-state tracking.
+    editor?.setEditable(!readOnly, false);
   }, [readOnly, editor]);
 
   // Per-doc view settings (plan 02 task 2.5): restore the line spacing, word
