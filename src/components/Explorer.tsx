@@ -1,11 +1,13 @@
-import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
 import {
   fsNewDir,
   fsNewFile,
   fsRename,
   fsTrash,
+  getOpenFolders,
   listDir,
   runningInTauri,
+  setOpenFolders,
 } from "../lib/fileIo";
 import type { DirEntry } from "../lib/fileIo";
 import { confirmMessage } from "../lib/dialogs";
@@ -98,7 +100,8 @@ export default forwardRef<ExplorerHandle, ExplorerProps>(function Explorer(
   { open, width, onResize, activePath, recentFiles, onOpenPath, onDeleted },
   ref,
 ) {
-  const [root, setRoot] = useState<string | null>(null);
+  const [roots, setRoots] = useState<string[]>([]);
+  const [persistentRoots, setPersistentRoots] = useState<Set<string>>(new Set());
   const [children, setChildren] = useState<Record<string, DirEntry[]>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string>("");
@@ -113,17 +116,46 @@ export default forwardRef<ExplorerHandle, ExplorerProps>(function Explorer(
     }
   }, []);
 
-  // Sets the explorer root to a known folder path and loads its first level.
-  // Shared by the Open Folder picker and drag & drop (issue #27).
+  const persistRoots = useCallback((paths: Set<string>) => {
+    if (!runningInTauri()) return;
+    void setOpenFolders([...paths]).catch(() => {
+      // Persistence is best-effort; the open folders remain usable this session.
+    });
+  }, []);
+
+  // Adds a known folder without replacing any roots already in the explorer.
+  // Newly opened roots persist by default and can be unpinned from their row.
   const showFolder = useCallback(
     (path: string) => {
-      setRoot(path);
       setError("");
-      setExpanded(new Set([path]));
+      setRoots((prev) => (prev.includes(path) ? prev : [...prev, path]));
+      setExpanded((prev) => new Set(prev).add(path));
+      setPersistentRoots((prev) => {
+        if (prev.has(path)) return prev;
+        const next = new Set(prev).add(path);
+        persistRoots(next);
+        return next;
+      });
       void loadChildren(path);
     },
-    [loadChildren],
+    [loadChildren, persistRoots],
   );
+
+  useEffect(() => {
+    if (!runningInTauri()) return;
+    getOpenFolders()
+      .then((paths) => {
+        const unique = [...new Set(paths.filter(Boolean))];
+        // Merge in case a drop/picker completed while the startup read was pending.
+        setRoots((prev) => [...unique, ...prev.filter((path) => !unique.includes(path))]);
+        setPersistentRoots((prev) => new Set([...unique, ...prev]));
+        setExpanded((prev) => new Set([...unique, ...prev]));
+        unique.forEach((path) => void loadChildren(path));
+      })
+      .catch(() => {
+        // Folder persistence is optional; an empty explorer remains usable.
+      });
+  }, [loadChildren]);
 
   const openFolder = useCallback(async () => {
     if (runningInTauri()) {
@@ -269,6 +301,37 @@ export default forwardRef<ExplorerHandle, ExplorerProps>(function Explorer(
     setExpanded(new Set());
   }, []);
 
+  const togglePersistentRoot = useCallback(
+    (path: string) => {
+      setPersistentRoots((prev) => {
+        const next = new Set(prev);
+        if (next.has(path)) next.delete(path);
+        else next.add(path);
+        persistRoots(next);
+        return next;
+      });
+    },
+    [persistRoots],
+  );
+
+  const removeRoot = useCallback(
+    (path: string) => {
+      setRoots((prev) => prev.filter((root) => root !== path));
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        next.delete(path);
+        return next;
+      });
+      setPersistentRoots((prev) => {
+        const next = new Set(prev);
+        next.delete(path);
+        persistRoots(next);
+        return next;
+      });
+    },
+    [persistRoots],
+  );
+
   const dispatchMenu = useCallback(
     (item: ExplorerMenuItem) => {
       const target = menu?.target ?? null;
@@ -276,12 +339,12 @@ export default forwardRef<ExplorerHandle, ExplorerProps>(function Explorer(
         case "new-file": {
           // Inside the right-clicked folder, or at the opened root from the
           // section menu.
-          const dir = target?.isDir ? target.path : target ? parentDirOf(target.path) : root;
+          const dir = target?.isDir ? target.path : target ? parentDirOf(target.path) : roots[0];
           if (dir) void doNewEntry(dir, false);
           return;
         }
         case "new-folder": {
-          const dir = target?.isDir ? target.path : target ? parentDirOf(target.path) : root;
+          const dir = target?.isDir ? target.path : target ? parentDirOf(target.path) : roots[0];
           if (dir) void doNewEntry(dir, true);
           return;
         }
@@ -302,7 +365,7 @@ export default forwardRef<ExplorerHandle, ExplorerProps>(function Explorer(
           return;
       }
     },
-    [menu, root, doNewEntry, doRename, doDelete, doCopyPath, doReveal, doCollapseAll],
+    [menu, roots, doNewEntry, doRename, doDelete, doCopyPath, doReveal, doCollapseAll],
   );
 
   const openMenu = useCallback((e: React.MouseEvent, target: ExplorerMenuTarget | null) => {
@@ -413,15 +476,31 @@ export default forwardRef<ExplorerHandle, ExplorerProps>(function Explorer(
           )}
         </div>
 
-        <div
-          className="quillmd-explorer-section"
-          onContextMenu={(e) => openMenu(e, null)}
-        >
-          <div className="quillmd-explorer-section-title">Folder</div>
-          {root ? (
-            renderDir(root, 0)
+        <div className="quillmd-explorer-section" onContextMenu={(e) => openMenu(e, null)}>
+          <div className="quillmd-explorer-section-title">Folders</div>
+          {roots.length > 0 ? (
+            roots.map((root) => {
+              const isOpen = expanded.has(root);
+              const isPersistent = persistentRoots.has(root);
+              return (
+                <div className="quillmd-explorer-root" key={root}>
+                  <div className="quillmd-explorer-root-row" onContextMenu={(e) => openMenu(e, { path: root, name: baseName(root), isDir: true })}>
+                    <button className="quillmd-tree-row quillmd-tree-dir" type="button" onClick={() => void toggleDir(root)} title={root}>
+                      <span className="quillmd-tree-chevron">{isOpen ? "\u25BE" : "\u25B8"}</span>
+                      <FolderIcon open={isOpen} />
+                      <span className="quillmd-tree-name">{baseName(root)}</span>
+                    </button>
+                    <button className="quillmd-explorer-root-action" type="button" onClick={() => togglePersistentRoot(root)} title={isPersistent ? "Don't reopen on startup" : "Reopen on startup"} aria-label={isPersistent ? `Don't reopen ${root} on startup` : `Reopen ${root} on startup`}>
+                      {isPersistent ? "\u2605" : "\u2606"}
+                    </button>
+                    <button className="quillmd-explorer-root-action" type="button" onClick={() => removeRoot(root)} title="Remove folder" aria-label={`Remove ${root}`}>×</button>
+                  </div>
+                  {isOpen && renderDir(root, 0)}
+                </div>
+              );
+            })
           ) : (
-            <div className="quillmd-explorer-empty">No folder opened</div>
+            <div className="quillmd-explorer-empty">No folders opened</div>
           )}
           {error && <div className="quillmd-explorer-error">{error}</div>}
         </div>
@@ -432,7 +511,7 @@ export default forwardRef<ExplorerHandle, ExplorerProps>(function Explorer(
             y={menu.y}
             label="Explorer menu"
             items={toExplorerContextEntries(
-              buildExplorerMenu(menu.target, root !== null),
+              buildExplorerMenu(menu.target, roots.length > 0),
               dispatchMenu,
             )}
             onClose={() => setMenu(null)}

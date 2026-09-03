@@ -18,8 +18,10 @@ import {
   fsNewFile,
   fsRename,
   fsTrash,
+  getOpenFolders,
   listDir,
   runningInTauri,
+  setOpenFolders,
 } from "../fileIo";
 import type { DirEntry } from "../fileIo";
 import { confirmMessage } from "../dialogs";
@@ -37,6 +39,8 @@ vi.mock("../fileIo", () => ({
   fsNewDir: vi.fn(),
   fsRename: vi.fn(),
   fsTrash: vi.fn(),
+  getOpenFolders: vi.fn(async () => []),
+  setOpenFolders: vi.fn(async () => {}),
 }));
 
 vi.mock("../dialogs", () => ({
@@ -92,6 +96,8 @@ describe("Explorer context menu (plan 03 task 3.6, issue #44)", () => {
     rootEntries = ROOT_ENTRIES;
     mockListDir();
     mockRunningTauri(true);
+    vi.mocked(getOpenFolders).mockResolvedValue([]);
+    vi.mocked(setOpenFolders).mockResolvedValue();
   });
 
   afterEach(() => {
@@ -167,6 +173,32 @@ describe("Explorer context menu (plan 03 task 3.6, issue #44)", () => {
     if (!button) throw new Error(`menu item not found: ${label}`);
     return button;
   }
+
+  it("keeps multiple folder roots and lets each root opt out of startup persistence", async () => {
+    await renderExplorer();
+    await act(async () => {
+      explorerRef.current?.openFolderPath("/notes");
+    });
+
+    expect(hasRow("docs")).toBe(true);
+    expect(hasRow("notes")).toBe(true);
+    expect(vi.mocked(setOpenFolders)).toHaveBeenLastCalledWith([ROOT, "/notes"]);
+
+    const unpin = container.querySelector<HTMLButtonElement>(
+      `[aria-label="Don't reopen ${ROOT} on startup"]`,
+    );
+    expect(unpin).not.toBeNull();
+    act(() => unpin!.click());
+    expect(vi.mocked(setOpenFolders)).toHaveBeenLastCalledWith(["/notes"]);
+  });
+
+  it("restores persisted roots on startup", async () => {
+    vi.mocked(getOpenFolders).mockResolvedValue([ROOT, "/notes", ROOT]);
+    await renderExplorer();
+    expect(hasRow("docs")).toBe(true);
+    expect(hasRow("notes")).toBe(true);
+    expect(container.querySelectorAll(".quillmd-explorer-root")).toHaveLength(2);
+  });
 
   it("right-clicking a file row shows Rename / Delete / Copy Path / Reveal", async () => {
     await renderExplorer();

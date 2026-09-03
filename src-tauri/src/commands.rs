@@ -250,6 +250,37 @@ pub fn set_recent_files(app: tauri::AppHandle, recent: Vec<String>) -> Result<()
     Ok(())
 }
 
+fn open_folders_file(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_config_dir()
+        .map(|dir| dir.join("open-folders.json"))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_open_folders(app: tauri::AppHandle) -> Vec<String> {
+    open_folders_file(&app)
+        .ok()
+        .and_then(|path| fs::read_to_string(path).ok())
+        .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+pub fn set_open_folders(app: tauri::AppHandle, folders: Vec<String>) -> Result<(), String> {
+    let mut seen = std::collections::HashSet::new();
+    let folders: Vec<String> = folders
+        .into_iter()
+        .filter(|path| !path.is_empty() && seen.insert(path.clone()))
+        .collect();
+    let path = open_folders_file(&app)?;
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string(&folders).map_err(|e| e.to_string())?;
+    fs::write(path, json).map_err(|e| e.to_string())
+}
+
 /// User style overrides (plan 05 task 5.4, issue #57): the Word-style
 /// "Modify Style" look of built-in styles, stored as JSON in the app config
 /// dir (~/.config/quillmd/style-overrides.json) — machine-local by design,

@@ -172,6 +172,15 @@ export async function setRecentFiles(recent: string[]): Promise<void> {
   await invoke("set_recent_files", { recent });
 }
 
+// Explorer roots which the user marked to reopen on the next startup.
+export async function getOpenFolders(): Promise<string[]> {
+  return invoke<string[]>("get_open_folders");
+}
+
+export async function setOpenFolders(folders: string[]): Promise<void> {
+  await invoke("set_open_folders", { folders });
+}
+
 export type ExportFormat = "pdf" | "docx" | "epub" | "txt" | "txt-plain";
 
 // Calls the M3 Rust conversion service. Returns the export output path on

@@ -2572,7 +2572,7 @@ export default function App() {
 
   // Drag & drop (plan 01 task 1.6, issue #27; image insert per plan 08 task
   // 8.6, issue #81): Tauri emits tauri://drag-* events to the webview by
-  // default; on drop each .md file opens as a tab, each folder switches the
+  // default; on drop each .md file opens as a tab, each folder is added as an
   // Explorer root, each image file is routed through the from-file flow
   // (asset copy + insert at the active editor's caret), and every dropped
   // item gets its own status-bar line (skipped files included). In browser

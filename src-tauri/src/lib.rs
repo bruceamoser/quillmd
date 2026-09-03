@@ -638,6 +638,8 @@ pub fn run() {
             commands::file_exists,
             commands::get_recent_files,
             commands::set_recent_files,
+            commands::get_open_folders,
+            commands::set_open_folders,
             commands::read_style_overrides,
             commands::write_style_overrides,
             commands::read_settings,
