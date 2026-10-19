@@ -215,6 +215,8 @@ describe("mermaid card: edit mode (issue #102)", () => {
 
 describe("mermaid card: theme (issue #102, AC3)", () => {
   it("re-renders with the mapped mermaid theme when the QuillMD theme changes", async () => {
+    // Start on a light document theme; quill is itself dark.
+    setMermaidCardTheme("minimal");
     const m = await mountDoc(FENCE + "\n");
     mounted.push(m);
     await waitFor(() => m.container.querySelector(".quillmd-mermaid-card svg") !== null, "svg");
@@ -233,7 +235,7 @@ describe("mermaid card: theme (issue #102, AC3)", () => {
 
     // Back to light: the rendering returns to the light form (not stuck on
     // dark) and the document never changes with a theme switch.
-    setMermaidCardTheme("quill");
+    setMermaidCardTheme("minimal");
     await waitFor(
       () => normalizeIds(cardOf(m.container).querySelector("svg")!.outerHTML) === lightSvg,
       "light re-render",

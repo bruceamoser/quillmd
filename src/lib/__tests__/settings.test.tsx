@@ -54,7 +54,13 @@ describe("normalizeSettings (issue #93)", () => {
   });
 
   it("merges a valid partial record onto the defaults", () => {
-    const out = normalizeSettings({ theme: "dark", uiScale: 125, spellcheck: false });
+    const out = normalizeSettings({
+      appearanceMode: "light",
+      theme: "dark",
+      uiScale: 125,
+      spellcheck: false,
+    });
+    expect(out.appearanceMode).toBe("light");
     expect(out.theme).toBe("dark");
     expect(out.uiScale).toBe(125);
     expect(out.spellcheck).toBe(false);
@@ -70,6 +76,7 @@ describe("normalizeSettings (issue #93)", () => {
       spellcheck: "yes",
       assetFolder: "assets/",
       assetCollision: "maybe",
+      appearanceMode: "auto",
       theme: "neon",
       editorFont: "big",
       showSourceLineNumbers: 1,
@@ -106,6 +113,7 @@ describe("normalizeSettings (issue #93)", () => {
     expect(DEFAULT_SETTINGS.spellcheck).toBe(true);
     expect(DEFAULT_SETTINGS.assetFolder).toBe("assets");
     expect(DEFAULT_SETTINGS.assetCollision).toBe("suffix");
+    expect(DEFAULT_SETTINGS.appearanceMode).toBe("system");
     expect(DEFAULT_SETTINGS.theme).toBe(DEFAULT_THEME);
     expect(DEFAULT_SETTINGS.editorFont).toEqual(DEFAULT_EDITOR_FONT);
     expect(DEFAULT_SETTINGS.showSourceLineNumbers).toBe(false);

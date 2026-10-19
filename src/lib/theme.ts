@@ -11,17 +11,29 @@
 
 export type ThemeId = "quill" | "minimal" | "serif" | "dark" | "high-contrast";
 
+// App appearance (Settings > Appearance > Mode): the chrome palette and the
+// document page both follow the resolved light/dark mode. "system" tracks the
+// OS preference live.
+export type AppearanceMode = "system" | "light" | "dark";
+export type ResolvedAppearance = "light" | "dark";
+
+export const DEFAULT_APPEARANCE: AppearanceMode = "system";
+
 export interface Theme {
   id: ThemeId;
   label: string;
+  // The appearance this theme's palette belongs to. The document renders a
+  // theme only when its mode matches the resolved app appearance; otherwise
+  // the mode's default theme is used.
+  mode: ResolvedAppearance;
 }
 
 export const THEMES: readonly Theme[] = [
-  { id: "quill", label: "Quill" },
-  { id: "minimal", label: "Minimal" },
-  { id: "serif", label: "Serif / Book" },
-  { id: "dark", label: "Dark" },
-  { id: "high-contrast", label: "High Contrast" },
+  { id: "quill", label: "Quill", mode: "dark" },
+  { id: "minimal", label: "Minimal", mode: "light" },
+  { id: "serif", label: "Serif / Book", mode: "light" },
+  { id: "dark", label: "Dark", mode: "dark" },
+  { id: "high-contrast", label: "High Contrast", mode: "dark" },
 ];
 
 // "quill" is the named default (plan 05); the OS-dark default is a separate
@@ -40,6 +52,37 @@ export function themeById(id: string): Theme | undefined {
   return THEMES.find((theme) => theme.id === id);
 }
 
+export function isAppearanceMode(value: unknown): value is AppearanceMode {
+  return value === "system" || value === "light" || value === "dark";
+}
+
+// The appearance a theme's palette belongs to.
+export function themeMode(id: ThemeId): ResolvedAppearance {
+  return themeById(id)?.mode ?? "dark";
+}
+
+// The document theme a mode falls back to when the configured theme belongs
+// to the other appearance.
+export function defaultThemeForAppearance(mode: ResolvedAppearance): ThemeId {
+  return mode === "light" ? "minimal" : "quill";
+}
+
+// The concrete light/dark appearance for a mode; "system" follows the OS.
+export function resolveAppearance(
+  mode: AppearanceMode,
+  osDark: boolean = osPrefersDark(),
+): ResolvedAppearance {
+  if (mode === "system") return osDark ? "dark" : "light";
+  return mode;
+}
+
+// The theme the document page renders in: a theme of the matching appearance
+// stays as chosen; a mismatch falls back to the mode's default so the page
+// never renders a light palette inside dark chrome (or vice versa).
+export function themeForAppearance(theme: ThemeId, mode: ResolvedAppearance): ThemeId {
+  return themeMode(theme) === mode ? theme : defaultThemeForAppearance(mode);
+}
+
 // The theme a document renders in: its per-doc override when present,
 // otherwise the app-wide default.
 export function resolveTheme(appDefault: ThemeId, docOverride: ThemeId | null): ThemeId {
@@ -48,12 +91,38 @@ export function resolveTheme(appDefault: ThemeId, docOverride: ThemeId | null): 
 
 // The OS dark-mode signal. Tauri's useDarkMode is the stretch path named in
 // the plan; the webview exposes the same OS preference through the standard
-// media query, so this keeps the behavior dependency-free.
+// media query, so this keeps the behavior dependency-free. A platform that
+// cannot answer keeps the app's built-in dark look.
 export function osPrefersDark(): boolean {
   try {
-    return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+    const media = window.matchMedia?.("(prefers-color-scheme: dark)");
+    return media ? media.matches : true;
   } catch {
-    return false;
+    return true;
+  }
+}
+
+// The last chosen appearance, cached for the first paint (settings.json is
+// read asynchronously; the cache avoids a dark flash for light-mode users).
+// Not authoritative — AppSettings.appearanceMode is.
+const APPEARANCE_KEY = "quillmd.appearance";
+
+export function loadCachedAppearance(): AppearanceMode {
+  try {
+    const raw = localStorage.getItem(APPEARANCE_KEY);
+    if (!raw) return DEFAULT_APPEARANCE;
+    const value = JSON.parse(raw) as unknown;
+    return isAppearanceMode(value) ? value : DEFAULT_APPEARANCE;
+  } catch {
+    return DEFAULT_APPEARANCE;
+  }
+}
+
+export function saveCachedAppearance(mode: AppearanceMode): void {
+  try {
+    localStorage.setItem(APPEARANCE_KEY, JSON.stringify(mode));
+  } catch {
+    // localStorage may be unavailable (private mode); the cache is best-effort.
   }
 }
 

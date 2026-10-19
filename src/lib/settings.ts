@@ -22,7 +22,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { DEFAULT_THEME, isThemeId, type ThemeId } from "./theme";
+import {
+  DEFAULT_APPEARANCE,
+  DEFAULT_THEME,
+  isAppearanceMode,
+  isThemeId,
+  type AppearanceMode,
+  type ThemeId,
+} from "./theme";
 import {
   DEFAULT_EDITOR_FONT,
   normalizeEditorFont,
@@ -61,6 +68,7 @@ export interface AppSettings {
   assetFolder: AssetFolderSetting;
   assetCollision: AssetCollisionBehavior;
   // Appearance
+  appearanceMode: AppearanceMode;
   theme: ThemeId;
   editorFont: EditorFontSettings;
   showSourceLineNumbers: boolean;
@@ -79,6 +87,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   spellcheck: true,
   assetFolder: "assets",
   assetCollision: "suffix",
+  appearanceMode: DEFAULT_APPEARANCE,
   theme: DEFAULT_THEME,
   editorFont: { ...DEFAULT_EDITOR_FONT },
   showSourceLineNumbers: false,
@@ -138,6 +147,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
   if (typeof raw.spellcheck === "boolean") out.spellcheck = raw.spellcheck;
   if (isAssetFolderSetting(raw.assetFolder)) out.assetFolder = raw.assetFolder;
   if (isAssetCollisionBehavior(raw.assetCollision)) out.assetCollision = raw.assetCollision;
+  if (isAppearanceMode(raw.appearanceMode)) out.appearanceMode = raw.appearanceMode;
   if (isThemeId(raw.theme)) out.theme = raw.theme;
   out.editorFont = normalizeEditorFont(raw.editorFont);
   if (typeof raw.showSourceLineNumbers === "boolean") {

@@ -31,12 +31,12 @@ function normalizeIds(svg: string): string {
 
 describe("mermaidThemeFor (issue #101)", () => {
   it("maps the light QuillMD themes to mermaid's default theme", () => {
-    expect(mermaidThemeFor("quill")).toBe("default");
     expect(mermaidThemeFor("minimal")).toBe("default");
     expect(mermaidThemeFor("serif")).toBe("default");
   });
 
   it("maps the dark QuillMD themes to mermaid's dark theme", () => {
+    expect(mermaidThemeFor("quill")).toBe("dark");
     expect(mermaidThemeFor("dark")).toBe("dark");
     expect(mermaidThemeFor("high-contrast")).toBe("dark");
   });
@@ -78,7 +78,7 @@ describe("renderMermaid: render/error API (issue #101)", () => {
 
 describe("renderMermaid: theme mapping (issue #101)", () => {
   it("renders the same source differently for light vs dark (AC3)", async () => {
-    const light = await renderMermaid(FLOWCHART, "quill");
+    const light = await renderMermaid(FLOWCHART, "minimal");
     const dark = await renderMermaid(FLOWCHART, "dark");
     expect(light.error).toBeNull();
     expect(dark.error).toBeNull();

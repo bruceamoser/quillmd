@@ -2,6 +2,7 @@
    document look for accessibility. View-only CSS variable sheet — no markdown
    is added. */
 .quillmd-content[data-theme="high-contrast"] {
+  color-scheme: dark;
   --bg: #000000;
   --bg-elevated: #0a0a0a;
   --bg-panel: #111111;

@@ -2,6 +2,7 @@
    reading look with serif body text and a tighter heading scale. View-only
    CSS variable sheet — no markdown is added. */
 .quillmd-content[data-theme="serif"] {
+  color-scheme: light;
   --bg: #fbf7ef;
   --bg-elevated: #f2ecdf;
   --bg-panel: #e9e1d1;

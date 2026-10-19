@@ -20,7 +20,13 @@ import {
   EDITOR_FONT_SIZES,
   type EditorFontFamily,
 } from "../lib/editorFont";
-import { THEMES, type ThemeId } from "../lib/theme";
+import {
+  THEMES,
+  themeForAppearance,
+  type AppearanceMode,
+  type ResolvedAppearance,
+  type ThemeId,
+} from "../lib/theme";
 import type {
   AssetCollisionBehavior,
   AssetFolderSetting,
@@ -49,6 +55,9 @@ export interface SettingsDialogProps {
   onClose: () => void;
   // The app info for the Advanced tab; null until it resolves.
   appInfo: AppInfo | null;
+  // The resolved light/dark appearance the dialog edits against: the Mode
+  // pick and the document themes offered both follow it.
+  resolvedAppearance: ResolvedAppearance;
   // Open the app config dir in the OS file manager (Advanced tab).
   onOpenConfigDir: () => void;
 }
@@ -87,6 +96,12 @@ const ASSET_COLLISIONS: Array<{ value: AssetCollisionBehavior; label: string }> 
 
 const UI_SCALES: Array<UiScale> = [100, 110, 125];
 
+const APPEARANCE_MODES: Array<{ value: AppearanceMode; label: string }> = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
+
 const TAB_KEYS: Array<{ value: TabKeyBehavior; label: string }> = [
   { value: "spaces", label: "Insert four spaces" },
   { value: "indent", label: "Indent (nest lists/quotes)" },
@@ -112,6 +127,7 @@ export default function SettingsDialog({
   onClose,
   appInfo,
   onOpenConfigDir,
+  resolvedAppearance,
 }: SettingsDialogProps) {
   const [tab, setTab] = useState<Tab>("general");
   const firstTabRef = useRef<HTMLButtonElement>(null);
@@ -236,13 +252,28 @@ export default function SettingsDialog({
 
           {tab === "appearance" && (
             <>
-              <Row label="Theme" hint="Applies live">
+              <Row label="Mode" hint="Light, dark, or follow the system">
                 <select
                   className="quillmd-settings-select"
-                  value={settings.theme}
+                  value={settings.appearanceMode}
+                  onChange={(e) =>
+                    onChange({ appearanceMode: e.target.value as AppearanceMode })
+                  }
+                >
+                  {APPEARANCE_MODES.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </Row>
+              <Row label="Theme" hint="Applies live; only themes for the current mode">
+                <select
+                  className="quillmd-settings-select"
+                  value={themeForAppearance(settings.theme, resolvedAppearance)}
                   onChange={(e) => onChange({ theme: e.target.value as ThemeId })}
                 >
-                  {THEMES.map((t) => (
+                  {THEMES.filter((t) => t.mode === resolvedAppearance).map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.label}
                     </option>

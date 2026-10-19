@@ -94,11 +94,16 @@ import {
   THEME_DEFAULT_MENU_ID_PREFIX,
   THEME_MENU_ID_PREFIX,
   THEME_RESET_MENU_ID,
-  hasSavedThemeDefault,
   isThemeId,
+  loadCachedAppearance,
   loadThemeDefault,
+  osPrefersDark,
+  resolveAppearance,
   resolveTheme,
+  saveCachedAppearance,
   saveThemeDefault,
+  themeForAppearance,
+  themeMode,
 } from "./lib/theme";
 import type { ThemeId } from "./lib/theme";
 import { isEditorFontFamily, isEditorFontSize, loadEditorFont, saveEditorFont } from "./lib/editorFont";
@@ -398,6 +403,10 @@ export default function App() {
   // present, otherwise this app-wide default. Cosmetic only — the document
   // bytes are never touched.
   const [appTheme, setAppTheme] = useState<ThemeId>(() => loadThemeDefault());
+  // The OS light/dark signal for Mode = System (kept live below).
+  const [osDark, setOsDark] = useState(() => osPrefersDark());
+  // The cached mode covers the first paint before settings.json resolves.
+  const [cachedAppearance] = useState(loadCachedAppearance);
   // App-wide settings (plan 10 task 10.2, issue #94): the unified settings.json
   // record, read through useSettings (async; null until the first read
   // resolves). `appSettings` is the always-present view (defaults until
@@ -408,6 +417,16 @@ export default function App() {
     reset: resetAppSettings,
   } = useSettings();
   const appSettings = settings ?? DEFAULT_SETTINGS;
+  // The concrete appearance the chrome and document page follow. The stored
+  // mode wins once settings load; the cached mode covers the first paint. An
+  // app-wide theme from the other appearance is clamped to this mode's
+  // default so a light page cannot render inside dark chrome (a per-doc theme
+  // override remains an explicit choice).
+  const resolvedAppearance = resolveAppearance(
+    settings?.appearanceMode ?? cachedAppearance,
+    osDark,
+  );
+  const appThemeForAppearance = themeForAppearance(appTheme, resolvedAppearance);
   // The Settings dialog (Tools > Settings… / Ctrl+,) and the app info its
   // Advanced tab shows (version + config dir, read from Rust once on mount).
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
@@ -473,7 +492,9 @@ export default function App() {
   // the active doc's per-doc override when present, otherwise the app-wide
   // default. View-only — it drives the data-theme attribute and the scoped
   // CSS variable sheets, never the document bytes.
-  const activeTheme = activeDoc ? resolveTheme(appTheme, activeDoc.settings.theme) : appTheme;
+  const activeTheme = activeDoc
+    ? resolveTheme(appThemeForAppearance, activeDoc.settings.theme)
+    : appThemeForAppearance;
 
   // The CSS the stored style overrides render as (plan 05 task 5.4,
   // issue #57): scoped to the WYSIWYG and preview content containers, so
@@ -943,12 +964,20 @@ export default function App() {
     (theme: ThemeId) => {
       setAppTheme(theme);
       saveThemeDefault(theme);
+      // Picking a theme of the other appearance switches the mode with it, so
+      // the pick is visible instead of being clamped to the mode default.
+      const family = themeMode(theme);
+      if (family !== resolvedAppearance) {
+        saveCachedAppearance(family);
+        void updateAppSettings({ theme, appearanceMode: family });
+        return;
+      }
       // Plan 10 task 10.2 (issue #94): keep the unified settings.json record
       // in sync so the Settings dialog and restart reflect every pick (the
       // View > Default theme menu included), not just the dialog's own.
       void updateAppSettings({ theme });
     },
-    [updateAppSettings],
+    [updateAppSettings, resolvedAppearance],
   );
 
   // Settings dialog (plan 10 task 10.2, issue #94): the dialog reports a
@@ -2551,23 +2580,47 @@ export default function App() {
     return registerBlockStyleListener(setBlockStyleLabel);
   }, []);
 
-  // OS dark-mode default (plan 05 task 5.3, issue #56, AC5): while the user
-  // has not saved an explicit app-wide theme, follow the OS preference live —
-  // Dark when the OS reports dark mode, Quill otherwise. An explicit pick
-  // (View > Default theme) saves the choice and stops the tracking.
+  // settings.json is the source of truth for the app-wide theme; the
+  // loadThemeDefault() seed above only covers the first paint before the async
+  // read lands.
+  const settingsTheme = settings?.theme;
+  useEffect(() => {
+    if (settingsTheme) setAppTheme(settingsTheme);
+  }, [settingsTheme]);
+
+  // Appearance mode (Settings > Appearance > Mode): apply the resolved
+  // light/dark palette to the chrome. The document page follows through the
+  // mode-matched theme (resolvedAppearance above). The choice is cached so the
+  // first paint after a restart does not flash the other mode.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.appearance = resolvedAppearance;
+    root.style.colorScheme = resolvedAppearance;
+    saveCachedAppearance(settings?.appearanceMode ?? cachedAppearance);
+  }, [resolvedAppearance, settings?.appearanceMode, cachedAppearance]);
+
+  // Mode = System follows the OS preference live (the document theme and the
+  // chrome both switch with it).
   useEffect(() => {
     let media: MediaQueryList | undefined;
     try {
-      media = window.matchMedia("(prefers-color-scheme: dark)");
+      media = window.matchMedia?.("(prefers-color-scheme: dark)");
     } catch {
       return;
     }
-    const update = () => {
-      if (!hasSavedThemeDefault()) setAppTheme(media?.matches ? "dark" : "quill");
-    };
+    if (!media) return;
+    const update = () => setOsDark(media!.matches);
     update();
     media.addEventListener?.("change", update);
-    return () => media.removeEventListener?.("change", update);
+    // Some webviews do not deliver the media query's change event; re-check
+    // when the window regains focus or becomes visible.
+    window.addEventListener("focus", update);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      media.removeEventListener?.("change", update);
+      window.removeEventListener("focus", update);
+      document.removeEventListener("visibilitychange", update);
+    };
   }, []);
 
   // Drag & drop (plan 01 task 1.6, issue #27; image insert per plan 08 task
@@ -3072,6 +3125,7 @@ export default function App() {
           onClose={() => setSettingsDialogOpen(false)}
           appInfo={appInfo}
           onOpenConfigDir={() => void openConfigDir()}
+          resolvedAppearance={resolvedAppearance}
         />
       )}
 

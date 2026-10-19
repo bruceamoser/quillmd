@@ -16,6 +16,7 @@ import App from "../../App";
 import SettingsDialog, { type AppInfo } from "../../components/SettingsDialog";
 import { DEFAULT_SETTINGS } from "../settings";
 import type { AppSettings } from "../settings";
+import type { ResolvedAppearance } from "../theme";
 
 // React 19 act() requires the environment flag in jsdom.
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -76,6 +77,7 @@ describe("SettingsDialog component (issue #94)", () => {
   function renderDialog(
     settings: AppSettings = DEFAULT_SETTINGS,
     appInfo: AppInfo | null = APP_INFO,
+    resolvedAppearance: ResolvedAppearance = "dark",
   ): Harness {
     const onChange = vi.fn();
     const onReset = vi.fn();
@@ -94,6 +96,7 @@ describe("SettingsDialog component (issue #94)", () => {
           onClose={onClose}
           appInfo={appInfo}
           onOpenConfigDir={onOpenConfigDir}
+          resolvedAppearance={resolvedAppearance}
         />,
       );
     });
@@ -196,9 +199,10 @@ describe("SettingsDialog component (issue #94)", () => {
     expect(h.rowSelect("Asset name collision").value).toBe("suffix");
   });
 
-  it("the Appearance tab exposes theme, editor font, line numbers, and UI scale", () => {
+  it("the Appearance tab exposes mode, theme, editor font, line numbers, and UI scale", () => {
     const h = renderDialog();
     clickTab(h, "Appearance");
+    expect(h.rowSelect("Mode").value).toBe(DEFAULT_SETTINGS.appearanceMode);
     expect(h.rowSelect("Theme").value).toBe(DEFAULT_SETTINGS.theme);
     expect(h.rowSelect("Editor font").value).toBe(DEFAULT_SETTINGS.editorFont.family);
     expect(h.rowSelect("Editor font size").value).toBe(
@@ -206,6 +210,36 @@ describe("SettingsDialog component (issue #94)", () => {
     );
     expect(h.rowCheckbox("Show line numbers in source").checked).toBe(false);
     expect(h.rowSelect("UI scale").value).toBe("100");
+  });
+
+  it("offers System / Light / Dark for the mode and reports the pick", () => {
+    const h = renderDialog();
+    clickTab(h, "Appearance");
+    const mode = h.rowSelect("Mode");
+    expect(Array.from(mode.options).map((o) => [o.value, o.textContent])).toEqual([
+      ["system", "System"],
+      ["light", "Light"],
+      ["dark", "Dark"],
+    ]);
+    setSelectValue(mode, "light");
+    expect(h.onChange).toHaveBeenLastCalledWith({ appearanceMode: "light" });
+  });
+
+  it("offers only the document themes that match the resolved appearance", () => {
+    const dark = renderDialog(DEFAULT_SETTINGS, APP_INFO, "dark");
+    clickTab(dark, "Appearance");
+    expect(Array.from(dark.rowSelect("Theme").options).map((o) => o.value)).toEqual([
+      "quill",
+      "dark",
+      "high-contrast",
+    ]);
+
+    const light = renderDialog(DEFAULT_SETTINGS, APP_INFO, "light");
+    clickTab(light, "Appearance");
+    const theme = light.rowSelect("Theme");
+    expect(Array.from(theme.options).map((o) => o.value)).toEqual(["minimal", "serif"]);
+    // The stored dark default is clamped to the light mode's default theme.
+    expect(theme.value).toBe("minimal");
   });
 
   it("the Editor tab exposes the tab key and the input/paste behaviors", () => {
@@ -493,6 +527,23 @@ describe("App e2e: Tools > Settings… (issue #94)", () => {
     // write is the changeAppTheme's async read-modify-write.
     await waitFor(() => JSON.parse(store.json).theme === "dark", "theme persisted");
     expect(dataTheme()).toBe("dark");
+  });
+
+  it("a mode pick applies the light chrome and a matching document theme", async () => {
+    await renderApp();
+    await emitMenu("tools-settings");
+    await clickTab("Appearance");
+    setSelectValue(dialogSelect("Mode"), "light");
+    await waitFor(
+      () => document.documentElement.dataset.appearance === "light",
+      "light appearance applied",
+    );
+    // The default dark document theme is clamped to the light mode default.
+    expect(dataTheme()).toBe("minimal");
+    await waitFor(
+      () => JSON.parse(store.json).appearanceMode === "light",
+      "mode persisted",
+    );
   });
 
   it("Reset to defaults restores the defaults in settings.json and live state (AC2)", async () => {

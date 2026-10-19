@@ -1,6 +1,7 @@
 /* Minimal theme (plan 05 task 5.3, issue #56): a low-ornament, high-contrast
    document look. View-only CSS variable sheet — no markdown is added. */
 .quillmd-content[data-theme="minimal"] {
+  color-scheme: light;
   --bg: #f7f7f5;
   --bg-elevated: #efefec;
   --bg-panel: #e8e8e4;

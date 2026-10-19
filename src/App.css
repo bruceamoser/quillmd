@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --bg: #1e1e1e;
   --bg-elevated: #252526;
   --bg-panel: #2d2d2d;
@@ -14,14 +15,57 @@
   --accent-soft: rgba(0, 122, 204, 0.18);
   --danger: #f14c4c;
   --warn: #cca700;
+  --folder: #dcb67a;
   --font-ui: "Segoe UI", -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
   --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
   --font-text: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
 }
 
+/* Light app chrome (Settings > Appearance > Mode). The document page follows
+   the selected theme sheet on .quillmd-content; this palette covers the
+   chrome around it. */
+:root[data-appearance="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-elevated: #f8f8f8;
+  --bg-panel: #f3f3f3;
+  --bg-hover: #ececec;
+  --bg-active: #dedede;
+  --border: #d4d4d4;
+  --text: #1f1f1f;
+  --text-bright: #000000;
+  --text-muted: #616161;
+  --text-faint: #8c8c8c;
+  --accent: #0066b8;
+  --accent-hover: #005a9e;
+  --accent-soft: rgba(0, 102, 184, 0.14);
+  --danger: #cd3131;
+  --warn: #9a6700;
+  --folder: #b07d2c;
+}
+
 * {
   box-sizing: border-box;
+}
+
+/* Native controls (select popups, checkboxes, scrollbars) follow the app's
+   chrome color-scheme. Document theme sheets opt into their own light/dark
+   color-scheme for the content surface. */
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-faint);
+  opacity: 1;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
+}
+
+select option {
+  background-color: var(--bg-elevated);
+  color: var(--text);
 }
 
 html,
@@ -73,6 +117,10 @@ body {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  /* The document theme sheet sets --bg/--text on this container; painting the
+     surface here makes the page follow its theme (and the app Mode). */
+  background: var(--bg);
+  color: var(--text);
 }
 
 /* --- full screen (plan 10 task 10.3, issue #95) ----------------------------
@@ -301,7 +349,7 @@ body {
 }
 
 .quillmd-tree-dir svg {
-  color: #dcb67a;
+  color: var(--folder);
 }
 
 .quillmd-tree-chevron {
@@ -794,7 +842,7 @@ button.quillmd-status-trash:hover {
 }
 
 .quillmd-toolbar button:disabled {
-  color: var(--text-faint);
+  color: var(--text-muted);
   cursor: default;
 }
 
@@ -959,7 +1007,7 @@ button.quillmd-status-trash:hover {
 }
 
 .quillmd-table-toolbar button:disabled {
-  color: var(--text-faint);
+  color: var(--text-muted);
   cursor: default;
 }
 
@@ -1259,11 +1307,20 @@ button.quillmd-status-trash:hover {
 .quillmd-font-select {
   height: 28px;
   border: 1px solid var(--border);
-  background: var(--bg-elevated);
-  color: var(--text);
   border-radius: 4px;
+  /* appearance:none is required on WebKitGTK: without it the native select
+     chrome ignores background/color and renders light-on-light. */
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--bg-elevated);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2393a0b0' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 10px 6px;
+  color: var(--text);
+  cursor: pointer;
   font-size: 13px;
-  padding: 0 4px;
+  padding: 0 22px 0 6px;
 }
 
 /* Family names run long ("Franklin Gothic Medium"); clip rather than let
@@ -1668,7 +1725,7 @@ button.quillmd-status-trash:hover {
 
 /* Footnote reference (inline atom). */
 .quillmd-prosemirror sup.quillmd-footnote-ref {
-  color: #4fc1ff;
+  color: var(--quillmd-link, #4fc1ff);
   cursor: pointer;
   font-size: 0.75em;
   padding: 0 1px;
@@ -1691,7 +1748,7 @@ button.quillmd-status-trash:hover {
   content: "[" attr(data-footnote-def) "]:";
   display: inline-block;
   margin-right: 0.5em;
-  color: #4fc1ff;
+  color: var(--quillmd-link, #4fc1ff);
   font-weight: 600;
 }
 
@@ -3433,6 +3490,17 @@ button.quillmd-status-trash:hover {
   border-color: var(--accent);
 }
 
+.quillmd-modify-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2393a0b0' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 10px 6px;
+  cursor: pointer;
+  padding-right: 26px;
+}
+
 .quillmd-modify-color {
   display: flex;
   align-items: center;
@@ -3716,13 +3784,20 @@ button.quillmd-status-trash:hover {
 }
 
 .quillmd-settings-select {
-  background: var(--bg-elevated);
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--bg-elevated);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2393a0b0' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 10px 6px;
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text);
+  cursor: pointer;
   font-size: 13px;
   max-width: 210px;
-  padding: 4px 8px;
+  padding: 4px 26px 4px 8px;
 }
 
 .quillmd-settings-checkbox {

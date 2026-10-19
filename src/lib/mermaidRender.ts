@@ -35,10 +35,11 @@ const STRICT_INIT = {
   suppressErrorRendering: true,
 } as const;
 
-// "dark" and "high-contrast" render with mermaid's dark theme; the remaining
-// light QuillMD themes use the default (light) theme.
+// "quill" is the default dark editor theme (its --bg is #1e1e1e), so it
+// renders with mermaid's dark theme alongside "dark" and "high-contrast".
+// "minimal" and "serif" are the light themes and use the default theme.
 export function mermaidThemeFor(theme: ThemeId): MermaidThemeMode {
-  return theme === "dark" || theme === "high-contrast" ? "dark" : "default";
+  return theme === "minimal" || theme === "serif" ? "default" : "dark";
 }
 
 let mermaidPromise: Promise<MermaidModule> | null = null;

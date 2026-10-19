@@ -30,9 +30,11 @@ takes Settings, Full Screen, and the remaining Tools items).
      per-doc detection only; default applies to new docs), spellcheck on/off
      default, asset folder preference (same folder vs `assets/`, plan 08),
      default asset collision behavior (never — fixed: suffix).
-   - **Appearance:** theme default, editor font/size, show line numbers in
-     source (new, cheap CodeMirror option), UI scale (100/110/125%, applied
-     as root font-size).
+   - **Appearance:** mode (System / Light / Dark — the chrome and the
+     document page both follow it; System tracks the OS live), theme default
+     (the offered themes follow the resolved mode), editor font/size, show
+     line numbers in source (new, cheap CodeMirror option), UI scale
+     (100/110/125%, applied as root font-size).
    - **Editor:** tab key behavior (indent vs 4 spaces — currently inserts;
      make configurable), auto-close brackets/markers (TipTap input rules
      toggle), paste as plain text by default (off).

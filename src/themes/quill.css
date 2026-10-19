@@ -3,6 +3,7 @@
    it restyles the WYSIWYG and preview surfaces without adding any markup to
    the markdown. */
 .quillmd-content[data-theme="quill"] {
+  color-scheme: dark;
   --bg: #1e1e1e;
   --bg-elevated: #252526;
   --bg-panel: #2d2d2d;

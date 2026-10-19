@@ -2,6 +2,7 @@
    (acceptance criterion 5). View-only CSS variable sheet — no markdown is
    added. */
 .quillmd-content[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0f1216;
   --bg-elevated: #161a20;
   --bg-panel: #1c2129;

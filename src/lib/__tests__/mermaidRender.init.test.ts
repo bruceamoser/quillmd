@@ -67,14 +67,14 @@ describe("lazy init (issue #101)", () => {
 
   it("re-initializes when the theme changes, staying strict", async () => {
     const svc = await freshService();
-    await svc.renderMermaid(SOURCE, "quill");
+    await svc.renderMermaid(SOURCE, "minimal");
     await svc.renderMermaid(SOURCE, "dark");
     await svc.renderMermaid(SOURCE, "high-contrast");
     expect(mockInitialize).toHaveBeenCalledTimes(2);
     for (const call of mockInitialize.mock.calls) {
       expect(call[0]).toMatchObject({ securityLevel: "strict" });
     }
-    // quill -> default, then dark -> dark; high-contrast is already dark.
+    // minimal -> default, then dark -> dark; high-contrast is already dark.
     expect(mockInitialize.mock.calls[0][0]).toMatchObject({ theme: "default" });
     expect(mockInitialize.mock.calls[1][0]).toMatchObject({ theme: "dark" });
   });

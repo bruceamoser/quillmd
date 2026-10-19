@@ -18,18 +18,26 @@ import App from "../../App";
 import { tiptapToMarkdown } from "../pm";
 import { currentFindEditor } from "../find";
 import {
+  DEFAULT_APPEARANCE,
   DEFAULT_THEME,
   THEME_DEFAULT_MENU_ID_PREFIX,
   THEME_MENU_ID_PREFIX,
   THEME_RESET_MENU_ID,
   THEMES,
+  defaultThemeForAppearance,
   hasSavedThemeDefault,
+  isAppearanceMode,
   isThemeId,
+  loadCachedAppearance,
   loadThemeDefault,
   osPrefersDark,
+  resolveAppearance,
   resolveTheme,
+  saveCachedAppearance,
   saveThemeDefault,
   themeById,
+  themeForAppearance,
+  themeMode,
   type ThemeId,
 } from "../theme";
 import { loadDocSettings } from "../docSettings";
@@ -87,6 +95,13 @@ describe("theme registry (issue #56)", () => {
       ["dark", "Dark"],
       ["high-contrast", "High Contrast"],
     ]);
+    expect(THEMES.map((theme) => [theme.id, theme.mode])).toEqual([
+      ["quill", "dark"],
+      ["minimal", "light"],
+      ["serif", "light"],
+      ["dark", "dark"],
+      ["high-contrast", "dark"],
+    ]);
     expect(DEFAULT_THEME).toBe("quill");
   });
 
@@ -107,6 +122,75 @@ describe("theme registry (issue #56)", () => {
     expect(resolveTheme("dark", null)).toBe("dark");
     expect(resolveTheme("dark", "serif")).toBe("serif");
     expect(resolveTheme("quill", "high-contrast")).toBe("high-contrast");
+  });
+});
+
+// --- appearance mode (Settings > Appearance) ---------------------------------
+
+describe("appearance mode (Settings > Appearance)", () => {
+  it("resolves system to the OS signal and explicit modes to themselves", () => {
+    expect(DEFAULT_APPEARANCE).toBe("system");
+    expect(resolveAppearance("system", true)).toBe("dark");
+    expect(resolveAppearance("system", false)).toBe("light");
+    expect(resolveAppearance("light", true)).toBe("light");
+    expect(resolveAppearance("dark", false)).toBe("dark");
+  });
+
+  it("maps each theme to the appearance of its palette", () => {
+    expect(themeMode("quill")).toBe("dark");
+    expect(themeMode("dark")).toBe("dark");
+    expect(themeMode("high-contrast")).toBe("dark");
+    expect(themeMode("minimal")).toBe("light");
+    expect(themeMode("serif")).toBe("light");
+  });
+
+  it("clamps a theme of the other appearance to the mode default", () => {
+    expect(defaultThemeForAppearance("light")).toBe("minimal");
+    expect(defaultThemeForAppearance("dark")).toBe("quill");
+    expect(themeForAppearance("minimal", "dark")).toBe("quill");
+    expect(themeForAppearance("serif", "dark")).toBe("quill");
+    expect(themeForAppearance("dark", "light")).toBe("minimal");
+    expect(themeForAppearance("high-contrast", "light")).toBe("minimal");
+    expect(themeForAppearance("serif", "light")).toBe("serif");
+    expect(themeForAppearance("dark", "dark")).toBe("dark");
+  });
+
+  it("isAppearanceMode accepts exactly the supported modes", () => {
+    for (const value of ["system", "light", "dark"]) {
+      expect(isAppearanceMode(value), value).toBe(true);
+    }
+    for (const value of ["auto", "Light", " dark", "", null, undefined, 1]) {
+      expect(isAppearanceMode(value), String(value)).toBe(false);
+    }
+  });
+
+  it("caches the chosen mode for the first paint", () => {
+    localStorage.clear();
+    expect(loadCachedAppearance()).toBe("system");
+    saveCachedAppearance("light");
+    expect(loadCachedAppearance()).toBe("light");
+    for (const raw of ['"nope"', "{not json", "[]", "42"]) {
+      localStorage.setItem("quillmd.appearance", raw);
+      expect(loadCachedAppearance(), raw).toBe("system");
+    }
+  });
+
+  it("assumes the built-in dark look when the platform has no preference query", () => {
+    const original = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    });
+    try {
+      expect(osPrefersDark()).toBe(true);
+    } finally {
+      Object.defineProperty(window, "matchMedia", {
+        value: original,
+        writable: true,
+        configurable: true,
+      });
+    }
   });
 });
 
@@ -221,7 +305,7 @@ describe("theme CSS variable sheets (issue #56)", () => {
   it("App.tsx renders the active theme as data-theme on the content container", () => {
     const app = repoFile("../../App.tsx");
     expect(app).toContain('data-theme={activeTheme}');
-    expect(app).toContain("resolveTheme(appTheme, activeDoc.settings.theme)");
+    expect(app).toContain("resolveTheme(appThemeForAppearance, activeDoc.settings.theme)");
     expect(app).toContain('import "./themes/index.css";');
   });
 });
@@ -272,16 +356,23 @@ describe("App menu-event e2e (issue #56)", () => {
   const g = globalThis as Record<string, unknown>;
   let container: HTMLDivElement;
   let root: Root | null = null;
+  let store: { json: string };
 
   beforeEach(() => {
     localStorage.clear();
     setOsDark(false);
     g.isTauri = true;
+    store = { json: "{}" };
     // The Tauri-side commands the App touches under Tauri on mount; the event
     // plugin is mocked so emit("menu-event", ...) reaches App's listener.
     mockIPC(
-      (cmd) => {
+      (cmd, payload) => {
         if (cmd === "get_recent_files") return [];
+        if (cmd === "read_settings") return store.json;
+        if (cmd === "write_settings") {
+          store.json = (payload as { json: string }).json;
+          return undefined;
+        }
         return undefined;
       },
       { shouldMockEvents: true },
@@ -397,7 +488,9 @@ describe("App menu-event e2e (issue #56)", () => {
     await emitMenu(`${THEME_MENU_ID_PREFIX}minimal`);
     expect(contentEl().dataset.theme).toBe("minimal");
     await emitMenu(THEME_RESET_MENU_ID);
-    expect(contentEl().dataset.theme).toBe("quill");
+    // The OS is light, so the default app theme (Quill, dark) is clamped to
+    // the light mode's default theme.
+    expect(contentEl().dataset.theme).toBe("minimal");
     expect(storedDocTheme()).toBeNull();
     expect(docMd()).toBe("Hello world\n");
   });
@@ -419,7 +512,7 @@ describe("App menu-event e2e (issue #56)", () => {
   it("an unknown theme id is a no-op", async () => {
     await renderDoc();
     await emitMenu(`${THEME_MENU_ID_PREFIX}nope`);
-    expect(contentEl().dataset.theme).toBe("quill");
+    expect(contentEl().dataset.theme).toBe("minimal");
     expect(storedDocTheme()).toBeUndefined();
     await emitMenu(`${THEME_DEFAULT_MENU_ID_PREFIX}nope`);
     expect(storedAppTheme()).toBeNull();
@@ -447,24 +540,27 @@ describe("App menu-event e2e (issue #56)", () => {
     setOsDark(true);
     await renderApp();
     expect(hasSavedThemeDefault()).toBe(false);
-    expect(contentEl().dataset.theme).toBe("dark");
-  });
-
-  it("a new install with no saved choice defaults to Quill when the OS is light", async () => {
-    setOsDark(false);
-    await renderApp();
-    expect(hasSavedThemeDefault()).toBe(false);
+    expect(document.documentElement.dataset.appearance).toBe("dark");
     expect(contentEl().dataset.theme).toBe("quill");
   });
 
-  it("an explicit saved app default wins over the OS preference on re-open", async () => {
-    saveThemeDefault("serif");
+  it("a new install with no saved choice defaults to the light theme when the OS is light", async () => {
+    setOsDark(false);
+    await renderApp();
+    expect(hasSavedThemeDefault()).toBe(false);
+    expect(document.documentElement.dataset.appearance).toBe("light");
+    expect(contentEl().dataset.theme).toBe("minimal");
+  });
+
+  it("an explicit mode wins over the OS preference on re-open", async () => {
+    store.json = JSON.stringify({ appearanceMode: "light", theme: "quill" });
     setOsDark(true);
     await renderApp();
-    expect(contentEl().dataset.theme).toBe("serif");
+    // The stored dark theme is clamped to the light mode's default page.
+    expect(contentEl().dataset.theme).toBe("minimal");
     await openFile("styled.md", "Hello world\n");
     await waitFor(() => currentFindEditor() !== null, "live editor");
-    expect(contentEl().dataset.theme).toBe("serif");
+    expect(contentEl().dataset.theme).toBe("minimal");
     // loadDocSettings still reports no per-doc override for the fresh doc.
     expect(loadDocSettings("styled.md").theme).toBeNull();
   });

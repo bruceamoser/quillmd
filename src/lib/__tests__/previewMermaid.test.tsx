@@ -154,7 +154,7 @@ describe("Preview: mermaid rendering (issue #103)", () => {
 
 describe("Preview: mermaid theme (issue #103, AC3)", () => {
   it("re-renders with the mapped mermaid theme on a theme switch", async () => {
-    const m = await mountPreview(FENCE, "quill");
+    const m = await mountPreview(FENCE, "minimal");
     mounted.push(m);
     await waitFor(() => previewSvg(m.container) !== null, "svg");
     const lightSvg = normalizeIds(previewSvg(m.container)!.outerHTML);
@@ -175,7 +175,7 @@ describe("Preview: mermaid theme (issue #103, AC3)", () => {
     // Back to light: the rendering returns to the light form (not stuck on
     // dark). The holder persists across the theme-only re-render, so the SVG
     // is never torn down — it re-renders in place.
-    m.setTheme("quill");
+    m.setTheme("minimal");
     await waitFor(
       () => {
         const s = previewSvg(m.container);
