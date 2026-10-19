@@ -50,7 +50,13 @@ fn main() {
                 std::process::exit(2);
             }
         },
-        _ => quillmd_lib::run(),
+        _ => {
+            // The AppImage bundles its own GTK/WebKit; prefer the host stack
+            // when it is complete so the two are never mixed (see appimage.rs).
+            #[cfg(target_os = "linux")]
+            quillmd_lib::appimage::prefer_host_libraries();
+            quillmd_lib::run()
+        }
     }
 }
 

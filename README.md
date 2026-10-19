@@ -83,8 +83,27 @@ Produces:
   (`QuillMD-<version>-x64.msi`)
 
 Run the binary directly, or install the bundle. The `.deb` declares its system
-dependencies; the `.AppImage` is fully self-contained. Fresh-machine verification
+dependencies. The `.AppImage` bundles GTK/WebKitGTK but prefers the host's
+GTK/WebKitGTK when a complete pair is installed: mixing WebKitGTK with the
+host's graphics libraries can abort startup with
+`Could not create default EGL display` (see [docs/packaging.md](docs/packaging.md)).
+If the host has no complete GTK/WebKit pair, the AppImage falls back to its
+bundled copies, so it still runs on a machine with no prerequisites. Set
+`QUILLMD_NO_HOST_LIBS=1` to force the bundled stack. Fresh-machine verification
 steps are in [docs/packaging.md](docs/packaging.md).
+
+## Installing (Linux)
+
+Download the `.deb` from the latest release and install it with `apt` so its
+GTK/WebKitGTK dependencies are resolved:
+
+```bash
+sudo apt install ./quillmd_<version>_amd64.deb
+```
+
+This installs `/usr/bin/quillmd`, a desktop entry, and icons, so QuillMD
+appears in the application menu. The `.AppImage` is the portable alternative
+and needs no installation.
 
 ## Tests
 

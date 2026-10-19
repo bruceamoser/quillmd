@@ -11,8 +11,10 @@ The installer bundles everything the app needs:
   `src-tauri/tauri.conf.json`), used only for import/export (PDF, DOCX, EPUB).
 - **WebView2** on Windows: modern Windows 10/11 preinstall the Evergreen
   runtime; the installer detects and prompts if it is absent.
-- **WebKitGTK** on Linux: the `.AppImage` is self-contained; the `.deb`
-  declares the runtime libraries as package dependencies.
+- **WebKitGTK** on Linux: the `.AppImage` bundles GTK3/WebKitGTK, but prefers a
+  complete host pair when one is installed (see
+  `src-tauri/src/appimage.rs`); the `.deb` declares the runtime libraries as
+  package dependencies.
 
 Markdown editing itself needs no external tools. If a sidecar is missing, the
 app errors cleanly on import/export rather than crashing.
@@ -62,3 +64,10 @@ Expected result: all steps succeed with only the installer, no terminal work.
 - `bundle.externalBin` is optional-aware: `scripts/build-release.sh` bundles the
   sidecars when present, and builds without them otherwise. At runtime the
   convert module resolves a bundled sidecar first, then falls back to `$PATH`.
+- **AppImage library selection:** the AppImage bundles GTK3/WebKitGTK, but at
+  launch it re-execs itself with the host's GTK/WebKit directories ahead of the
+  bundled ones when the host has a complete pair. The bundled WebKitGTK build
+  aborted with `Could not create default EGL display: EGL_BAD_PARAMETER` on
+  Ubuntu 26.04 with Mesa 26 (issue #184); the host build does not. If the host
+  has no complete pair, the bundled stack is used. Set
+  `QUILLMD_NO_HOST_LIBS=1` to force the bundled stack.

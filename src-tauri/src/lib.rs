@@ -1,3 +1,4 @@
+pub mod appimage;
 pub mod commands;
 pub mod convert;
 pub mod egl_probe;
