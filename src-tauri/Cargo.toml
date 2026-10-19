@@ -1,8 +1,9 @@
 [package]
 name = "quillmd"
-version = "0.2.3"
-description = "A Tauri App"
-authors = ["you"]
+version = "0.2.4"
+description = "WYSIWYG markdown editor with native markdown persistence"
+authors = ["Bruce Moser <bruceamoser@users.noreply.github.com>"]
+homepage = "https://github.com/bruceamoser/quillmd"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
