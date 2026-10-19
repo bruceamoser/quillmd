@@ -1,6 +1,6 @@
 [package]
 name = "quillmd"
-version = "0.2.4"
+version = "0.2.5"
 description = "WYSIWYG markdown editor with native markdown persistence"
 authors = ["Bruce Moser <bruceamoser@users.noreply.github.com>"]
 homepage = "https://github.com/bruceamoser/quillmd"
