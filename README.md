@@ -102,8 +102,12 @@ sudo apt install ./quillmd_<version>_amd64.deb
 ```
 
 This installs `/usr/bin/quillmd`, a desktop entry, and icons, so QuillMD
-appears in the application menu. The `.AppImage` is the portable alternative
-and needs no installation.
+appears in the application menu. The `.AppImage` is the portable alternative:
+
+```bash
+chmod +x quillmd_<version>_amd64.AppImage
+./quillmd_<version>_amd64.AppImage
+```
 
 ## Tests
 
