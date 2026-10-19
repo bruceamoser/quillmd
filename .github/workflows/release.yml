@@ -29,14 +29,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install pandoc + typst sidecars
-        run: |
-          choco install pandoc -y --no-progress
-          # typst (pinned; adjust version as needed)
-          curl -fsSL https://github.com/typst/typst/releases/latest/download/typst-x86_64-pc-windows-msvc.zip -o typst.zip
-          Expand-Archive typst.zip -DestinationPath typst-tmp
-          Move-Item typst-tmp\typst-x86_64-pc-windows-msvc\typst.exe src-tauri\bin\typst-x86_64-pc-windows-msvc.exe -Force
-          Copy-Item (Get-Command pandoc).Source src-tauri\bin\pandoc-x86_64-pc-windows-msvc.exe
-          ls src-tauri\bin
+        run: powershell -ExecutionPolicy Bypass -File scripts/fetch-release-binaries.ps1
 
       - name: Install frontend deps
         run: npm ci
@@ -124,13 +117,18 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh release create "${{ steps.tag.outputs.tag }}" \
-            --repo "${{ github.repository }}" \
-            --title "QuillMD ${{ steps.tag.outputs.tag }}" \
-            --notes "Self-contained installers (bundles pandoc + typst). No dev tools required." \
-            --draft
+          TAG="${{ steps.tag.outputs.tag }}"
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "release $TAG already exists; uploading assets"
+          else
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "QuillMD $TAG" \
+              --notes "Self-contained installers (bundles pandoc + typst). No dev tools required." \
+              --draft
+          fi
           # Upload files only (find excludes directories like nsis/)
           find dist -type f -print0 | while IFS= read -r -d '' f; do
-            gh release upload "${{ steps.tag.outputs.tag }}" "$f" \
+            gh release upload "$TAG" "$f" \
               --repo "${{ github.repository }}" --clobber
           done
