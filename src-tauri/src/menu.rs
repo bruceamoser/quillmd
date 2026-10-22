@@ -601,10 +601,19 @@ fn build_tools_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>>
 }
 
 fn build_help_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> {
+    let check_updates = MenuItem::with_id(
+        app,
+        "help-check-updates",
+        "Check for Updates…",
+        true,
+        None::<&str>,
+    )?;
     let about = MenuItem::with_id(app, "help-about", "About QuillMD", true, None::<&str>)?;
     let shortcuts =
         MenuItem::with_id(app, "help-shortcuts", "Keyboard Shortcuts", true, None::<&str>)?;
     let help = SubmenuBuilder::new(app, "Help")
+        .item(&check_updates)
+        .separator()
         .items(&[&about, &shortcuts])
         .build()?;
     Ok(help)

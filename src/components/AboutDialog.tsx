@@ -1,9 +1,9 @@
 // About QuillMD dialog (plan 10 task 10.4, issue #96): Help > About QuillMD.
 // Shows the real app version + build hash (Rust get_app_info), the bundled
 // pandoc/typst sidecar versions (Rust get_sidecar_versions), and the GitHub +
-// docs links (system browser via openLinkUrl). "Check for updates" is
-// intentionally disabled — v2 has no auto-update; releases are manual on
-// GitHub (plan 10 §2.5).
+// docs links (system browser via openLinkUrl). "Check for Updates" hands off
+// to the update dialog, which owns the GitHub check/install flow (see
+// src/lib/updates.ts and src-tauri/src/update.rs).
 //
 // Keyboard model (plan 08 §3 convention):
 //   Enter          close (the focused Close button)
@@ -32,6 +32,8 @@ export interface AboutDialogProps {
   sidecars: SidecarVersions | null;
   // Close (Enter, Esc, Close button, or the backdrop).
   onClose: () => void;
+  // Open the update dialog and check GitHub (Help > Check for Updates…).
+  onCheckForUpdates: () => void;
 }
 
 export default function AboutDialog({
@@ -39,6 +41,7 @@ export default function AboutDialog({
   buildHash,
   sidecars,
   onClose,
+  onCheckForUpdates,
 }: AboutDialogProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -119,8 +122,8 @@ export default function AboutDialog({
           <button
             type="button"
             className="quillmd-about-button"
-            disabled
-            title="Manual releases on GitHub"
+            title="Check GitHub for a newer release"
+            onClick={onCheckForUpdates}
           >
             Check for Updates
           </button>

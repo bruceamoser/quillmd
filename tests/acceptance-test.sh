@@ -4912,8 +4912,9 @@ test_fullscreen_suites_green() {
 # clearFormatting registry command (the same one Format > Clear Formatting
 # uses; plan §2.3 keeps it in both menus). Help > About QuillMD (plan §2.5):
 # real version + build hash + the bundled pandoc/typst versions (Rust
-# get_app_info / get_sidecar_versions), GitHub/docs links, and a disabled
-# "Check for updates" (manual releases — no auto-update in v2). AC6: About
+# get_app_info / get_sidecar_versions), GitHub/docs links, and Check for
+# Updates, which hands off to the GitHub release updater (Help > Check for
+# Updates…; see the updater section below). AC6: About
 # shows the real version + sidecar versions — the --self-test about hook
 # asserts the version is non-empty and, for a tool that IS installed, its
 # version line is non-empty too.
@@ -4959,16 +4960,16 @@ test_about_rust_commands() {
 }
 
 test_about_dialog_component() {
-    note "about.dialog AboutDialog.tsx (version/build/sidecars/links + disabled update check)"
+    note "about.dialog AboutDialog.tsx (version/build/sidecars/links + update hand-off)"
     if [ -f "$ROOT/src/components/AboutDialog.tsx" ] \
         && grep -q 'quillmd-about-dialog' "$ROOT/src/components/AboutDialog.tsx" \
         && grep -q 'github.com/bruceamoser/quillmd' "$ROOT/src/components/AboutDialog.tsx" \
         && grep -q 'Check for Updates' "$ROOT/src/components/AboutDialog.tsx" \
-        && grep -q 'Manual releases on GitHub' "$ROOT/src/components/AboutDialog.tsx" \
+        && grep -q 'onCheckForUpdates' "$ROOT/src/components/AboutDialog.tsx" \
         && grep -q 'openLinkUrl' "$ROOT/src/components/AboutDialog.tsx"; then
-        pass "about.dialog AboutDialog.tsx (version/build/sidecars/links + disabled update check)"
+        pass "about.dialog AboutDialog.tsx (version/build/sidecars/links + update hand-off)"
     else
-        fail "about.dialog AboutDialog.tsx (version/build/sidecars/links + disabled update check)"
+        fail "about.dialog AboutDialog.tsx (version/build/sidecars/links + update hand-off)"
     fi
 }
 
@@ -5032,6 +5033,67 @@ test_about_suites_green() {
     else
         printf '%s\n' "$out" | tail -25
         fail "about.green about vitest suites failed (plan 10 task 10.4)"
+    fi
+}
+
+# --- updater: GitHub release checks + install (Help > Check for Updates…) ------
+# src-tauri/src/update.rs is the whole update path: the GitHub releases API
+# check (semver compare against CARGO_PKG_VERSION), the platform asset pick
+# (AppImage/deb/rpm, NSIS/MSI), the download with progress events, the sha256
+# verification against the release's SHA256SUMS asset, and the apply/restart
+# steps. The frontend (src/lib/updates.ts + UpdateDialog.tsx) only offers the
+# update: nothing installs without the user pressing Download & Install.
+
+test_update_rust_commands() {
+    note "update.rust GitHub check/download/checksum/install commands wired"
+    if [ -f "$ROOT/src-tauri/src/update.rs" ] \
+        && grep -q 'api.github.com/repos/bruceamoser/quillmd/releases/latest' "$ROOT/src-tauri/src/update.rs" \
+        && grep -q 'pub fn parse_version' "$ROOT/src-tauri/src/update.rs" \
+        && grep -q 'pub fn check_now' "$ROOT/src-tauri/src/update.rs" \
+        && grep -q 'pub fn install_now' "$ROOT/src-tauri/src/update.rs" \
+        && grep -q 'pub fn restart_now' "$ROOT/src-tauri/src/update.rs" \
+        && grep -q 'SHA256SUMS' "$ROOT/src-tauri/src/update.rs" \
+        && grep -q 'sha256_file' "$ROOT/src-tauri/src/update.rs" \
+        && grep -q 'update::update_check' "$ROOT/src-tauri/src/lib.rs" \
+        && grep -q 'update::update_install' "$ROOT/src-tauri/src/lib.rs" \
+        && grep -q 'update::update_restart' "$ROOT/src-tauri/src/lib.rs" \
+        && grep -q 'ureq' "$ROOT/src-tauri/Cargo.toml" \
+        && grep -q '"help-check-updates"' "$ROOT/src-tauri/src/menu.rs"; then
+        pass "update.rust GitHub check/download/checksum/install commands wired"
+    else
+        fail "update.rust GitHub check/download/checksum/install commands wired"
+    fi
+}
+
+test_update_frontend_wiring() {
+    note "update.app update_check/install/restart hooks + dialog wired"
+    if [ -f "$ROOT/src/lib/updates.ts" ] && [ -f "$ROOT/src/components/UpdateDialog.tsx" ] \
+        && grep -q 'invoke<UpdateCheck>("update_check")' "$ROOT/src/lib/updates.ts" \
+        && grep -q 'invoke<UpdateOutcome>("update_install")' "$ROOT/src/lib/updates.ts" \
+        && grep -q 'invoke<void>("update_restart")' "$ROOT/src/lib/updates.ts" \
+        && grep -q 'export function useUpdater' "$ROOT/src/lib/updates.ts" \
+        && grep -q 'quillmd-update-progress' "$ROOT/src/components/UpdateDialog.tsx" \
+        && grep -q 'id === "help-check-updates"' "$ROOT/src/App.tsx" \
+        && grep -q 'onCheckForUpdates' "$ROOT/src/App.tsx" \
+        && grep -q 'checkUpdatesQuietly' "$ROOT/src/App.tsx"; then
+        pass "update.app update_check/install/restart hooks + dialog wired"
+    else
+        fail "update.app update_check/install/restart hooks + dialog wired"
+    fi
+}
+
+test_update_suites_green() {
+    note "update.green updater + explorer filter/click vitest suites pass"
+    if ! command -v node >/dev/null 2>&1 || [ ! -d "$ROOT/node_modules" ]; then
+        echo "SKIP (node / node_modules not available)"
+        return
+    fi
+    local out
+    if out=$( (cd "$ROOT" && npx vitest run src/lib/__tests__/updates.test.ts src/lib/__tests__/updater.test.tsx src/lib/__tests__/updateDialog.test.tsx src/lib/__tests__/explorerView.test.ts src/lib/__tests__/tabOpen.test.ts src/lib/__tests__/explorerClicks.test.tsx) 2>&1 ); then
+        pass "update.green updater + explorer filter/click vitest suites pass"
+    else
+        printf '%s\n' "$out" | tail -25
+        fail "update.green updater/explorer vitest suites failed"
     fi
 }
 
@@ -5796,6 +5858,10 @@ case "$SUBSET" in
         test_about_app_wiring
         test_about_selftest
         test_about_suites_green
+        # Updater: GitHub release checks + install (Help > Check for Updates…)
+        test_update_rust_commands
+        test_update_frontend_wiring
+        test_update_suites_green
         # Task 10.5 (issue #97): shortcuts table + dialog
         test_shortcuts_table
         test_shortcuts_dialog_component
@@ -6100,6 +6166,9 @@ case "$SUBSET" in
         test_about_app_wiring
         test_about_selftest
         test_about_suites_green
+        test_update_rust_commands
+        test_update_frontend_wiring
+        test_update_suites_green
         test_shortcuts_table
         test_shortcuts_dialog_component
         test_shortcuts_app_wiring

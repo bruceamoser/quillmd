@@ -55,14 +55,15 @@ takes Settings, Full Screen, and the remaining Tools items).
    users' muscle memory; just dispatches the PDF export with the save
    dialog) — labeled "Print (PDF)…".
 5. **About QuillMD** (Help menu) — version, build hash, sidecar versions
-   (pandoc/typst from the Rust convert module), links (GitHub, docs),
-   "Check for updates" disabled with tooltip "manual releases on GitHub"
-   (no auto-update in v2 — documented).
+   (pandoc/typst from the Rust convert module), links (GitHub, docs), and
+   **Check for Updates**, which hands off to the GitHub release updater
+   (also **Help > Check for Updates…**; see "Updates" in the README and
+   `src-tauri/src/update.rs`).
 6. **Shortcuts dialog refresh** — Help > Shortcuts lists every new shortcut
    from plans 01-09 (generated from the registry where possible, so it
    can't drift).
 
-Out of scope: auto-update pipeline, per-window settings, profile/multi-user
+Out of scope: per-window settings, profile/multi-user
 settings, key remapping UI (shortcuts fixed; remapping parked).
 
 ## 3. Design notes

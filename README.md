@@ -109,6 +109,27 @@ chmod +x quillmd_<version>_amd64.AppImage
 ./quillmd_<version>_amd64.AppImage
 ```
 
+## Updates
+
+QuillMD checks GitHub Releases for a newer version a few seconds after launch,
+and on demand from **Help → Check for Updates…** or the **About QuillMD**
+dialog. Nothing installs without confirmation: the dialog shows the release
+notes, the package and its size, and only **Download & Install** starts the
+update.
+
+The downloaded package is verified against the release's `SHA256SUMS` file
+before it is applied:
+
+| Install | What the update does |
+|---|---|
+| AppImage | Replaces the AppImage in place, then relaunches it |
+| Windows (`-setup.exe` / `.msi`) | Runs the installer on restart |
+| `.deb` / `.rpm` | Downloads the package and opens your system installer |
+
+Updates come from published, version-tagged releases (`v0.2.6`, …). Draft
+releases and the `draft-<date>` fallback tags are never offered. The updater
+talks only to `api.github.com` and the release assets on `github.com`.
+
 ## Tests
 
 ```bash

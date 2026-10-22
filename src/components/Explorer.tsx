@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   fsNewDir,
   fsNewFile,
@@ -17,6 +17,14 @@ import {
   type ExplorerMenuTarget,
 } from "../lib/explorerMenu";
 import type { ExplorerMenuItem } from "../lib/explorerMenu";
+import {
+  EXPLORER_DOUBLE_CLICK_MS,
+  filterDirEntries,
+  filterFilePaths,
+  isMarkdownFile,
+  loadShowAllFiles,
+  saveShowAllFiles,
+} from "../lib/explorerView";
 import ContextMenu from "./ContextMenu";
 
 interface ExplorerProps {
@@ -25,7 +33,12 @@ interface ExplorerProps {
   onResize: (width: number) => void;
   activePath: string | null;
   recentFiles: string[];
+  // Single click: open the file in place of the active tab (VS Code's
+  // preview-tab behavior). The App decides whether it replaces, activates an
+  // already-open tab, or falls back to a new tab for a dirty/untitled document.
   onOpenPath: (path: string) => void;
+  // Double click: open the file in a new tab.
+  onOpenPathInNewTab: (path: string) => void;
   // Explorer context menu (plan 03 task 3.6, issue #44): reported after a
   // Delete succeeds so the App can offer the status-bar Undo (the restore
   // is an fs_rename from the trash path back to the original location).
@@ -64,10 +77,6 @@ function FileIcon() {
   );
 }
 
-function isMarkdown(name: string): boolean {
-  return /\.(md|markdown|mdown|mkd)$/i.test(name);
-}
-
 function baseName(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] ?? path;
@@ -97,7 +106,16 @@ interface ExplorerMenuState {
 }
 
 export default forwardRef<ExplorerHandle, ExplorerProps>(function Explorer(
-  { open, width, onResize, activePath, recentFiles, onOpenPath, onDeleted },
+  {
+    open,
+    width,
+    onResize,
+    activePath,
+    recentFiles,
+    onOpenPath,
+    onOpenPathInNewTab,
+    onDeleted,
+  },
   ref,
 ) {
   const [roots, setRoots] = useState<string[]>([]);
@@ -106,6 +124,47 @@ export default forwardRef<ExplorerHandle, ExplorerProps>(function Explorer(
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string>("");
   const [menu, setMenu] = useState<ExplorerMenuState | null>(null);
+  // Left content display: Markdown documents only by default, with a header
+  // toggle that reveals every file in the opened folders (the VS Code "show
+  // all files" affordance). The choice persists app-locally.
+  const [showAllFiles, setShowAllFiles] = useState<boolean>(() => loadShowAllFiles());
+  // A single click waits before it replaces the active tab: a second click on
+  // the same row inside that window is a double click and opens a new tab.
+  const clickTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (clickTimer.current !== null) window.clearTimeout(clickTimer.current);
+    };
+  }, []);
+
+  const toggleShowAllFiles = useCallback(() => {
+    setShowAllFiles((prev) => {
+      const next = !prev;
+      saveShowAllFiles(next);
+      return next;
+    });
+  }, []);
+
+  // Click model (VS Code): one click replaces the active tab; the click is
+  // held briefly so a double click can cancel it and open a new tab instead.
+  const handleFileClick = useCallback(
+    (path: string, doubleClick: boolean) => {
+      if (clickTimer.current !== null) {
+        window.clearTimeout(clickTimer.current);
+        clickTimer.current = null;
+      }
+      if (doubleClick) {
+        onOpenPathInNewTab(path);
+        return;
+      }
+      clickTimer.current = window.setTimeout(() => {
+        clickTimer.current = null;
+        onOpenPath(path);
+      }, EXPLORER_DOUBLE_CLICK_MS);
+    },
+    [onOpenPath, onOpenPathInNewTab],
+  );
 
   const loadChildren = useCallback(async (dir: string) => {
     try {
@@ -393,7 +452,7 @@ export default forwardRef<ExplorerHandle, ExplorerProps>(function Explorer(
   );
 
   const renderDir = (dir: string, depth: number) => {
-    const entries = children[dir] ?? [];
+    const entries = filterDirEntries(children[dir] ?? [], showAllFiles);
     return (
       <ul className="quillmd-tree" style={{ paddingLeft: depth > 0 ? 8 : 0 }}>
         {entries.map((entry) => {
@@ -425,14 +484,14 @@ export default forwardRef<ExplorerHandle, ExplorerProps>(function Explorer(
                 type="button"
                 className={`quillmd-tree-row ${active ? "quillmd-tree-active" : ""}`}
                 style={{ paddingLeft: 20 + depth * 12 }}
-                onClick={() => onOpenPath(entry.path)}
+                onClick={(e) => handleFileClick(entry.path, e.detail >= 2)}
                 onContextMenu={(e) =>
                   openMenu(e, { path: entry.path, name: entry.name, isDir: false })
                 }
               >
                 <FileIcon />
                 <span className="quillmd-tree-name">{entry.name}</span>
-                {isMarkdown(entry.name) && <span className="quillmd-tree-tag">md</span>}
+                {isMarkdownFile(entry.name) && <span className="quillmd-tree-tag">md</span>}
               </button>
             </li>
           );
@@ -443,28 +502,46 @@ export default forwardRef<ExplorerHandle, ExplorerProps>(function Explorer(
 
   if (!open) return null;
 
+  // The Recent list follows the same Markdown-only rule as the tree.
+  const visibleRecent = filterFilePaths(recentFiles, showAllFiles);
+
   return (
     <>
       <aside className="quillmd-explorer" style={{ width }}>
         <div className="quillmd-explorer-header">
           <span>Explorer</span>
-          <button type="button" title="Open Folder" onClick={() => void openFolder()}>
-            Open Folder
-          </button>
+          <div className="quillmd-explorer-header-actions">
+            <button
+              type="button"
+              className="quillmd-explorer-filter"
+              aria-pressed={showAllFiles}
+              title={
+                showAllFiles
+                  ? "Showing all files \u2014 click to show Markdown only"
+                  : "Showing Markdown files only \u2014 click to show all files"
+              }
+              onClick={toggleShowAllFiles}
+            >
+              {showAllFiles ? "All files" : "Markdown"}
+            </button>
+            <button type="button" title="Open Folder" onClick={() => void openFolder()}>
+              Open Folder
+            </button>
+          </div>
         </div>
 
         <div className="quillmd-explorer-section">
           <div className="quillmd-explorer-section-title">Recent</div>
-          {recentFiles.length === 0 ? (
+          {visibleRecent.length === 0 ? (
             <div className="quillmd-explorer-empty">No recent files</div>
           ) : (
             <ul className="quillmd-tree">
-              {recentFiles.map((path) => (
+              {visibleRecent.map((path) => (
                 <li key={path}>
                   <button
                     type="button"
                     className={`quillmd-tree-row ${path === activePath ? "quillmd-tree-active" : ""}`}
-                    onClick={() => onOpenPath(path)}
+                    onClick={(e) => handleFileClick(path, e.detail >= 2)}
                     title={path}
                   >
                     <FileIcon />

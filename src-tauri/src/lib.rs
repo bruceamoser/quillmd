@@ -4,6 +4,7 @@ pub mod convert;
 pub mod egl_probe;
 pub mod fs;
 pub mod menu;
+pub mod update;
 
 // Headless self-test hooks for tests/acceptance-test.sh (spec §5.8).
 // Each baseline exercises a real module and returns Ok(()) or an error. The
@@ -623,6 +624,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(update::InstallLock::default())
         .invoke_handler(tauri::generate_handler![
             commands::open_file,
             commands::save_file,
@@ -653,7 +655,10 @@ pub fn run() {
             commands::fs_new_file,
             commands::fs_new_dir,
             commands::fs_rename,
-            commands::fs_trash
+            commands::fs_trash,
+            update::update_check,
+            update::update_install,
+            update::update_restart
         ])
         .setup(|app| {
             let recent = menu::load_recent(app.handle());

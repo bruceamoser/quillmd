@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 // About QuillMD (plan 10 task 10.4, issue #96): the dialog component (real
 // version + build hash + pandoc/typst sidecar versions + GitHub/docs links,
-// the disabled "Check for updates" with its manual-releases tooltip, and the
-// keyboard model), the Tools > Clear Formatting menu item (plan §2.3: moved
-// to Tools, kept in Format) + its App dispatch, and the Help > About QuillMD
-// routing with the values read from Rust (e2e through the mock IPC).
+// the Check for Updates hand-off to the update dialog, and the keyboard
+// model), the Tools > Clear Formatting menu item (plan §2.3: moved to Tools,
+// kept in Format) + its App dispatch, and the Help > About QuillMD routing
+// with the values read from Rust (e2e through the mock IPC).
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -46,6 +46,12 @@ describe("menu.rs Tools > Clear Formatting (issue #96)", () => {
     );
     expect(src).toContain('SubmenuBuilder::new(app, "Help")');
   });
+
+  it("offers Help > Check for Updates…", () => {
+    const src = repoFile("../../../src-tauri/src/menu.rs");
+    expect(src).toContain('"help-check-updates"');
+    expect(src).toContain('"Check for Updates…"');
+  });
 });
 
 describe("App.tsx dispatch wiring (issue #96)", () => {
@@ -65,12 +71,23 @@ describe("App.tsx dispatch wiring (issue #96)", () => {
     // The old one-line alert is gone.
     expect(app).not.toContain("window.alert(\"QuillMD - a WYSIWYG Markdown editor");
   });
+
+  it("routes help-check-updates + the About button to the update dialog", () => {
+    const app = repoFile("../../App.tsx");
+    expect(app).toContain('id === "help-check-updates"');
+    expect(app).toContain("openUpdateDialog()");
+    expect(app).toContain("onCheckForUpdates");
+    // The startup check is quiet: it only opens the dialog for an update.
+    expect(app).toContain("checkUpdatesQuietly");
+    expect(app).toContain("<UpdateDialog");
+  });
 });
 
 describe("AboutDialog component (issue #96)", () => {
   interface Harness {
     container: HTMLDivElement;
     onClose: ReturnType<typeof vi.fn>;
+    onCheckForUpdates: ReturnType<typeof vi.fn>;
     row: (label: string) => string;
     button: (text: string) => HTMLButtonElement;
     link: (label: string) => HTMLAnchorElement;
@@ -84,13 +101,20 @@ describe("AboutDialog component (issue #96)", () => {
     sidecars: SidecarVersions | null,
   ): Harness {
     const onClose = vi.fn();
+    const onCheckForUpdates = vi.fn();
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
     roots.push(root);
     act(() => {
       root.render(
-        <AboutDialog version={version} buildHash={buildHash} sidecars={sidecars} onClose={onClose} />,
+        <AboutDialog
+          version={version}
+          buildHash={buildHash}
+          sidecars={sidecars}
+          onClose={onClose}
+          onCheckForUpdates={onCheckForUpdates}
+        />,
       );
     });
     const dialog = container.querySelector(".quillmd-about-dialog")!;
@@ -101,6 +125,7 @@ describe("AboutDialog component (issue #96)", () => {
     return {
       container,
       onClose,
+      onCheckForUpdates,
       row: (label) =>
         labelEl(label)!.parentElement!.querySelector(".quillmd-about-value")!.textContent!,
       button: (text) =>
@@ -155,11 +180,13 @@ describe("AboutDialog component (issue #96)", () => {
     expect(GITHUB_URL).toContain("github.com/bruceamoser/quillmd");
   });
 
-  it("disables Check for Updates with the manual-releases tooltip (plan §2.5)", () => {
+  it("hands Check for Updates off to the updater (GitHub releases)", () => {
     const h = renderDialog("0.10.2", "444b672", { pandoc: null, typst: null });
     const updates = h.button("Check for Updates");
-    expect(updates.disabled).toBe(true);
-    expect(updates.getAttribute("title")).toBe("Manual releases on GitHub");
+    expect(updates.disabled).toBe(false);
+    expect(updates.getAttribute("title")).toBe("Check GitHub for a newer release");
+    act(() => updates.click());
+    expect(h.onCheckForUpdates).toHaveBeenCalledTimes(1);
   });
 
   it("autofocuses the Close button; Enter closes", () => {
@@ -291,12 +318,12 @@ describe("App menu-event e2e: Help > About QuillMD (issue #96)", () => {
     expect(rowValue("Build")).toBe("444b672");
     expect(rowValue("Pandoc")).toBe("pandoc 3.6.4");
     expect(rowValue("Typst")).toBe("typst 0.13.0");
-    // The disabled update check is present with its tooltip.
+    // Check for Updates is now the update dialog's entry point.
     const updates = Array.from(dialog().querySelectorAll<HTMLButtonElement>("button")).find(
       (b) => b.textContent === "Check for Updates",
     )!;
-    expect(updates.disabled).toBe(true);
-    expect(updates.getAttribute("title")).toBe("Manual releases on GitHub");
+    expect(updates.disabled).toBe(false);
+    expect(updates.getAttribute("title")).toBe("Check GitHub for a newer release");
   });
 
   it("Esc closes the dialog", async () => {

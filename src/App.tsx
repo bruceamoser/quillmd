@@ -26,6 +26,8 @@ import {
   saveAsDocument,
 } from "./lib/fileMenu";
 import { confirmCloseAll, confirmCloseTab, docDisplayName } from "./lib/tabClose";
+import { replaceDocRecord, singleClickIntent } from "./lib/tabOpen";
+import { useUpdater } from "./lib/updates";
 import {
   isUntitledPath,
   makeUntitledDoc,
@@ -177,6 +179,7 @@ import SettingsDialog from "./components/SettingsDialog";
 import type { AppInfo } from "./components/SettingsDialog";
 import AboutDialog from "./components/AboutDialog";
 import type { SidecarVersions } from "./components/AboutDialog";
+import UpdateDialog from "./components/UpdateDialog";
 import ShortcutsDialog from "./components/ShortcutsDialog";
 import {
   buildKnownSet,
@@ -436,6 +439,18 @@ export default function App() {
   // sidecar versions, and the GitHub/docs links. App-level info, read once
   // on mount — null in browser dev (no Tauri) drives the "…" placeholders.
   const [aboutDialogOpen, setAboutDialogOpen] = useState(false);
+  // GitHub release updates (Help > Check for Updates…, the About button, and
+  // the startup check). The hook owns the dialog state; the network work is in
+  // Rust (src-tauri/src/update.rs).
+  const updater = useUpdater();
+  const {
+    openAndCheck: openUpdateDialog,
+    checkQuietly: checkUpdatesQuietly,
+    install: installUpdate,
+    restart: restartForUpdate,
+    retry: retryUpdate,
+    close: closeUpdateDialog,
+  } = updater;
   const [sidecarVersions, setSidecarVersions] = useState<SidecarVersions | null>(null);
   // Keyboard Shortcuts dialog (plan 10 task 10.5, issue #97): Help > Shortcuts
   // renders the single-source table (src/lib/shortcuts.ts) — replaces the old
@@ -479,6 +494,13 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const explorerRef = useRef<ExplorerHandle | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  // The latest active tab, for async open handlers that must notice a tab
+  // switch that happened while a file was loading.
+  const activePathRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    activePathRef.current = activePath;
+  }, [activePath]);
 
   const activeDoc = activePath ? docs[activePath] : undefined;
   const currentText = activeDoc?.currentText ?? "";
@@ -545,23 +567,24 @@ export default function App() {
     [activePath, updateDoc],
   );
 
-  const addDoc = useCallback(
+  // The per-doc state a freshly opened file lands in: the file itself plus
+  // the app-wide defaults (plan 10 task 10.2, issue #94) for the view mode
+  // and the spellcheck preference.
+  const makeDocState = useCallback(
+    (opened: OpenFileResult): DocState => ({
+      open: opened,
+      currentText: opened.source,
+      viewMode: loadViewMode(opened.path, appSettings.defaultViewMode),
+      settings: loadDocSettings(opened.path, {
+        spellcheck: appSettings.spellcheck,
+      }),
+    }),
+    [appSettings],
+  );
+
+  // The status line + crash-recovery prompt every open path shares.
+  const announceOpened = useCallback(
     (opened: OpenFileResult) => {
-      // Plan 10 task 10.2 (issue #94): the app-wide defaults seed the per-doc
-      // state a doc has not overridden yet — the view mode (no saved per-path
-      // pick) and the spellcheck default.
-      setDocs((prev) => ({
-        ...prev,
-        [opened.path]: {
-          open: opened,
-          currentText: opened.source,
-          viewMode: loadViewMode(opened.path, appSettings.defaultViewMode),
-          settings: loadDocSettings(opened.path, {
-            spellcheck: appSettings.spellcheck,
-          }),
-        },
-      }));
-      setActivePath(opened.path);
       setStatus(`Opened ${opened.path} (${opened.eol.toUpperCase()})`);
       if (opened.snapshot && opened.snapshot.length > 0) {
         const restore = window.confirm(
@@ -574,7 +597,16 @@ export default function App() {
         }
       }
     },
-    [updateDoc, appSettings],
+    [updateDoc],
+  );
+
+  const addDoc = useCallback(
+    (opened: OpenFileResult) => {
+      setDocs((prev) => ({ ...prev, [opened.path]: makeDocState(opened) }));
+      setActivePath(opened.path);
+      announceOpened(opened);
+    },
+    [makeDocState, announceOpened],
   );
 
   const addRecent = useCallback(
@@ -613,6 +645,66 @@ export default function App() {
       }
     },
     [addDoc, addRecent],
+  );
+
+  // Explorer double click: open in a new tab. A path has at most one tab (the
+  // record is keyed by path), so a double click on a file that is already open
+  // brings its tab forward instead of re-reading and clobbering it.
+  const openByPathInNewTab = useCallback(
+    async (path: string) => {
+      if (docs[path]) {
+        setActivePath(path);
+        return;
+      }
+      await openByPath(path);
+    },
+    [docs, openByPath],
+  );
+
+  // Explorer single click (VS Code preview behavior): replace the active tab
+  // in place. An already-open path is activated rather than reloaded, and a
+  // dirty active tab is never discarded — that click opens a new tab instead.
+  const openByPathReplace = useCallback(
+    async (path: string) => {
+      const active = activePath ? docs[activePath] : undefined;
+      const intent = singleClickIntent({
+        path,
+        activePath,
+        openPaths: Object.keys(docs),
+        // A dirty document and an untitled scratch buffer are both permanent:
+        // a single click opens a new tab instead of replacing them.
+        activeProtected: active
+          ? active.currentText !== active.open.source ||
+            (activePath !== null && isUntitledPath(activePath))
+          : false,
+      });
+      if (intent === "activate") {
+        setActivePath(path);
+        return;
+      }
+      if (intent === "open" || activePath === null) {
+        await openByPath(path);
+        return;
+      }
+      const replaceFrom = activePath;
+      try {
+        const opened = await openPath(path);
+        setDocs((prev) => {
+          // If the user moved to another tab while the file was loading, open
+          // a normal tab rather than clobbering whatever is in front now.
+          if (activePathRef.current !== replaceFrom) {
+            return { ...prev, [opened.path]: makeDocState(opened) };
+          }
+          return replaceDocRecord(prev, replaceFrom, opened.path, makeDocState(opened));
+        });
+        setActivePath(opened.path);
+        announceOpened(opened);
+        void addRecent(path);
+      } catch (err) {
+        setStatus(`Open failed: ${String(err)}`);
+      }
+    },
+    [activePath, docs, makeDocState, announceOpened, openByPath, addRecent],
   );
 
   const handleOpenInput = useCallback(
@@ -2430,6 +2522,10 @@ export default function App() {
         setSettingsDialogOpen(true);
       } else if (MENU_TO_COMMAND[id]) {
         dispatchEditorCommand(MENU_TO_COMMAND[id]);
+      } else if (id === "help-check-updates") {
+        // Help > Check for Updates…: the GitHub release check, in the same
+        // dialog the About button and the startup check use.
+        openUpdateDialog();
       } else if (id === "help-about") {
         // Plan 10 task 10.4 (issue #96): Help > About QuillMD — the in-app
         // dialog with the real version, build hash, and the bundled
@@ -2479,6 +2575,7 @@ export default function App() {
       activePath,
       openByPath,
       clearRecent,
+      openUpdateDialog,
     ],
   );
 
@@ -2550,6 +2647,16 @@ export default function App() {
       disposed = true;
     };
   }, []);
+
+  // Startup update check: a few seconds after launch (so the window is
+  // interactive first), ask GitHub for the newest release. Only an available
+  // update opens the dialog — being offline or rate-limited stays silent, and
+  // an explicit Help > Check for Updates… always reports its result.
+  useEffect(() => {
+    if (!runningInTauri()) return;
+    const timer = window.setTimeout(() => checkUpdatesQuietly(), 4000);
+    return () => window.clearTimeout(timer);
+  }, [checkUpdatesQuietly]);
 
   // UI scale (plan 10 task 10.2, issue #94): the root font-size percentage,
   // applied on settings load and on every change (100/110/125%).
@@ -2950,7 +3057,8 @@ export default function App() {
           onResize={setExplorerWidth}
           activePath={activePath}
           recentFiles={recentFiles}
-          onOpenPath={(path) => void openByPath(path)}
+          onOpenPath={(path) => void openByPathReplace(path)}
+          onOpenPathInNewTab={(path) => void openByPathInNewTab(path)}
           onDeleted={offerTrashUndo}
         />
         <div className="quillmd-editor-area">
@@ -3135,6 +3243,25 @@ export default function App() {
           buildHash={appInfo?.buildHash ?? null}
           sidecars={sidecarVersions}
           onClose={() => setAboutDialogOpen(false)}
+          onCheckForUpdates={() => {
+            // One dialog at a time: the update dialog takes over from About.
+            setAboutDialogOpen(false);
+            openUpdateDialog();
+          }}
+        />
+      )}
+
+      {updater.open && (
+        <UpdateDialog
+          status={updater.status}
+          check={updater.check}
+          error={updater.error}
+          progress={updater.progress}
+          outcome={updater.outcome}
+          onInstall={installUpdate}
+          onRestart={restartForUpdate}
+          onRetry={retryUpdate}
+          onClose={closeUpdateDialog}
         />
       )}
 

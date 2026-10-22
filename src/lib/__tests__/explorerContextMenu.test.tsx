@@ -125,6 +125,7 @@ describe("Explorer context menu (plan 03 task 3.6, issue #44)", () => {
           activePath={null}
           recentFiles={[]}
           onOpenPath={() => {}}
+          onOpenPathInNewTab={() => {}}
           onDeleted={(entry, trashPath) => onDeleted?.(entry, trashPath)}
         />,
       );

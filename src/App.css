@@ -287,6 +287,21 @@ body {
   background: var(--bg-active);
 }
 
+/* Header actions: the Markdown / all-files toggle sits before Open Folder. */
+.quillmd-explorer-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* The file-filter toggle (default: Markdown only). aria-pressed reports
+   whether the tree is showing every file. */
+.quillmd-explorer-filter[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+
 .quillmd-explorer-section {
   margin-bottom: 12px;
 }
@@ -2821,7 +2836,6 @@ button.quillmd-status-trash:hover {
 }
 
 /* --- About dialog (plan 10 task 10.4, issue #96) --------------------------- */
-
 .quillmd-about-overlay {
   position: fixed;
   inset: 0;
@@ -2914,7 +2928,7 @@ button.quillmd-status-trash:hover {
   border-color: var(--text-faint);
 }
 
-/* "Check for updates" is intentionally disabled (manual releases). */
+/* A disabled action (e.g. no update package for this platform). */
 .quillmd-about-button:disabled {
   opacity: 0.5;
   cursor: default;
@@ -2929,6 +2943,71 @@ button.quillmd-status-trash:hover {
 .quillmd-about-button.primary:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
+}
+
+/* --- Update dialog (GitHub releases) -------------------------------------- */
+
+.quillmd-update-dialog {
+  width: 500px;
+}
+
+/* The release notes: plain text (the release body is markdown), scrollable so
+   a long changelog cannot push the actions off-screen. */
+.quillmd-update-notes {
+  max-height: 180px;
+  overflow-y: auto;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  background: var(--bg-editor, var(--bg-active));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.quillmd-update-error {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--danger, #b4564f);
+  border-radius: 4px;
+  color: var(--danger, #e08b84);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.quillmd-update-progress {
+  height: 8px;
+  margin-bottom: 6px;
+  background: var(--bg-active);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.quillmd-update-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 120ms linear;
+}
+
+.quillmd-update-progress-label {
+  color: var(--text-bright);
+  font-size: 12px;
+  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Small print: checksum note and the downloaded file path. */
+.quillmd-update-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
 }
 
 /* --- Keyboard shortcuts dialog (plan 10 task 10.5, issue #97) -------------- */

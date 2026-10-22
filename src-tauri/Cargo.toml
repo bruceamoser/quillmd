@@ -1,6 +1,6 @@
 [package]
 name = "quillmd"
-version = "0.2.5"
+version = "0.2.6"
 description = "WYSIWYG markdown editor with native markdown persistence"
 authors = ["Bruce Moser <bruceamoser@users.noreply.github.com>"]
 homepage = "https://github.com/bruceamoser/quillmd"
@@ -28,6 +28,10 @@ notify = "6"
 hex = "0.4"
 tauri-plugin-dialog = "2.7.2"
 libloading = "0.8"
+# GitHub release updates (src/update.rs): HTTPS through rustls (ring), so the
+# updater works on both release targets without OpenSSL or a system TLS
+# library. Only the blocking API is used, inside the Tauri blocking pool.
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 tempfile = "3"
